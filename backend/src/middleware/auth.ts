@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import config from '../config/config';
 import UserModel, { UserWithoutPassword } from '../models/User';
 import { AppError } from './errorHandler';
@@ -98,9 +98,8 @@ export const generateToken = (user: UserWithoutPassword): string => {
     is_admin: user.is_admin
   };
 
-  return jwt.sign(payload, config.jwtSecret, {
-    expiresIn: config.jwtExpiresIn as string
-  });
+  // @ts-ignore - expiresIn type mismatch in v9 types
+  return jwt.sign(payload, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
 };
 
 export const verifyToken = (token: string): JwtPayload => {
