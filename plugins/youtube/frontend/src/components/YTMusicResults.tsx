@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { PlayIcon, CloudArrowDownIcon, MusicalNoteIcon } from '@heroicons/react/24/outline';
-import { apiService } from '../services/api';
-import { useToast } from '../contexts/ToastContext';
 import clsx from 'clsx';
 
+// Types for plugin
 export interface YTMusicResult {
   id: string;
   title: string;
@@ -27,12 +26,27 @@ interface YTMusicResultsProps {
   results: YTMusicResult[];
   onDownloadComplete?: () => void;
   initialDisplayCount?: number;
+  apiService: any; // Injected API service
+  onToast?: (type: 'success' | 'error', message: string) => void;
 }
 
-const YTMusicResults: React.FC<YTMusicResultsProps> = ({ results, onDownloadComplete, initialDisplayCount = 5 }) => {
-  const { showSuccess, showError } = useToast();
+const YTMusicResults: React.FC<YTMusicResultsProps> = ({
+  results,
+  onDownloadComplete,
+  initialDisplayCount = 5,
+  apiService,
+  onToast
+}) => {
   const [downloadStates, setDownloadStates] = useState<DownloadState>({});
   const [showAll, setShowAll] = useState(false);
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    if (onToast) {
+      onToast(type, message);
+    } else {
+      console[type === 'success' ? 'log' : 'error'](message);
+    }
+  };
 
   const handleDownload = async (result: YTMusicResult) => {
     try {
@@ -60,12 +74,11 @@ const YTMusicResults: React.FC<YTMusicResultsProps> = ({ results, onDownloadComp
           }));
 
           if (progressData.status === 'completed') {
-            showSuccess(`"${result.title}" has been downloaded and added to your library!`);
+            showToast('success', `"${result.title}" has been downloaded and added to your library!`);
             onDownloadComplete?.();
           } else if (progressData.status === 'error') {
-            showError(`Failed to download "${result.title}": ${progressData.error}`);
+            showToast('error', `Failed to download "${result.title}": ${progressData.error}`);
           } else if (progressData.status === 'downloading' || progressData.status === 'processing') {
-            // Continue polling more frequently (every 300ms instead of 1000ms)
             setTimeout(pollProgress, 300);
           }
         } catch (error) {
@@ -77,12 +90,11 @@ const YTMusicResults: React.FC<YTMusicResultsProps> = ({ results, onDownloadComp
         }
       };
 
-      // Start polling immediately (no delay)
       pollProgress();
-      
+
     } catch (error) {
       console.error('Download error:', error);
-      showError(`Failed to start download for "${result.title}"`);
+      showToast('error', `Failed to start download for "${result.title}"`);
       setDownloadStates(prev => ({
         ...prev,
         [result.id]: { status: 'error', progress: 0, error: 'Download failed' }
@@ -97,7 +109,7 @@ const YTMusicResults: React.FC<YTMusicResultsProps> = ({ results, onDownloadComp
 
   const getDownloadButtonContent = (result: YTMusicResult) => {
     const downloadState = downloadStates[result.id];
-    
+
     if (!downloadState || downloadState.status === 'idle') {
       return {
         icon: <CloudArrowDownIcon className="w-5 h-5" />,

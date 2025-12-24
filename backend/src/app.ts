@@ -23,9 +23,15 @@ import adminRoutes from './routes/admin';
 import streamRoutes from './routes/stream';
 import favoritesRoutes from './routes/favorites';
 import shareRoutes from './routes/share';
-import youtubeRoutes from './routes/youtube';
-import ytMusicRoutes from './routes/ytMusic';
 import createRoomRoutes from './routes/rooms';
+
+// Plugin system
+import PluginManager from '../../plugins/core/PluginManager';
+import SongModel from './models/Song';
+import ArtistModel from './models/Artist';
+import AlbumModel from './models/Album';
+import UserModel from './models/User';
+import PlaylistModel from './models/Playlist';
 
 const app = express();
 const server = createServer(app);
@@ -137,10 +143,21 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/stream', streamRoutes);
 app.use('/api/favorites', favoritesRoutes);
 app.use('/api/share', shareRoutes);
-app.use('/api/youtube', youtubeRoutes);
-app.use('/api/ytmusic', ytMusicRoutes);
 app.use('/api/rooms', createRoomRoutes(io));
 
+// Initialize plugin system
+const models = {
+  Song: SongModel,
+  Artist: ArtistModel,
+  Album: AlbumModel,
+  User: UserModel,
+  Playlist: PlaylistModel
+};
+
+const pluginManager = new PluginManager(models, config);
+const pluginsDir = path.join(__dirname, '../../plugins');
+
+// Register plugin health endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
@@ -187,10 +204,51 @@ async function startServer(): Promise<void> {
   try {
     await initializeDatabase();
     await seedDatabase();
-    
+
     // Initialize room service
     const roomService = new RoomService(io);
     roomService.startPeriodicSync();
+
+    // Load plugins
+    logger.info('📦 Loading plugins...');
+    await pluginManager.loadPlugins(pluginsDir);
+
+    // Start enabled plugins
+    await pluginManager.startPlugins(io);
+
+    // Register plugin routes
+    const pluginRoutes = pluginManager.getPluginRoutes();
+    pluginRoutes.forEach(({ router, mount }) => {
+      app.use(`/api/plugins/${mount}`, router);
+      logger.info(`✅ Registered plugin routes: /api/plugins/${mount}`);
+    });
+
+    // Plugin info endpoint
+    app.get('/api/plugins', (req, res) => {
+      const plugins = pluginManager.getPlugins();
+      res.json({
+        success: true,
+        data: plugins
+      });
+    });
+
+    // Plugin health endpoint
+    app.get('/api/plugins/:pluginId/health', async (req, res) => {
+      const { pluginId } = req.params;
+      const health = await pluginManager.getPluginHealth(pluginId);
+
+      if (!health) {
+        return res.status(404).json({
+          success: false,
+          error: 'Plugin not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: health
+      });
+    });
 
     server.listen(config.port, '0.0.0.0', () => {
       logger.info(`🎵 Musable server running on port ${config.port}`);
@@ -199,6 +257,7 @@ async function startServer(): Promise<void> {
       logger.info(`🎵 Library paths: ${config.libraryPaths.join(', ')}`);
       logger.info(`🔗 CORS origin: ${config.corsOrigin}`);
       logger.info(`🔌 WebSocket server enabled for real-time rooms`);
+      logger.info(`📦 Plugins loaded: ${pluginManager.getPlugins().length}`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

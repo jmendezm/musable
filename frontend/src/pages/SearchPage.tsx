@@ -7,7 +7,6 @@ import { useRoomStore } from '../stores/roomStore';
 import { handleRoomAwarePlayback } from '../utils/roomPlayback';
 import { useContextMenu } from '../hooks/useContextMenu';
 import ContextMenu from '../components/ContextMenu';
-import YTMusicResults from '../components/YTMusicResults';
 import { useToast } from '../contexts/ToastContext';
 import EditSongModal from '../components/EditSongModal';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
@@ -20,7 +19,6 @@ interface SearchResults {
   songs: Song[];
   artists: Artist[];
   albums: Album[];
-  ytMusicResults?: any[];
 }
 
 const SearchPage: React.FC = () => {
@@ -362,8 +360,8 @@ const SearchPage: React.FC = () => {
             </div>
           )}
 
-          {/* YouTube Music Results */}
-          {results.ytMusicResults && results.ytMusicResults.length > 0 && (
+          {/* YouTube Music Results - moved to plugin */}
+          {/* {results.ytMusicResults && results.ytMusicResults.length > 0 && (
             <YTMusicResults
               results={results.ytMusicResults}
               initialDisplayCount={5}
@@ -372,7 +370,7 @@ const SearchPage: React.FC = () => {
                 performSearch(debouncedQuery);
               }}
             />
-          )}
+          )} */}
 
           {/* Songs Section */}
           {filteredResults.songs.length > 0 && (

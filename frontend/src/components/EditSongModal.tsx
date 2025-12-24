@@ -3,7 +3,6 @@ import { XMarkIcon, PhotoIcon, MusicalNoteIcon, MagnifyingGlassIcon } from '@her
 import { Song } from '../types';
 import { apiService } from '../services/api';
 import { useToast } from '../contexts/ToastContext';
-import ImageSearchModal from './ImageSearchModal';
 
 interface EditSongModalProps {
   isOpen: boolean;
@@ -31,7 +30,6 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [imageSearchOpen, setImageSearchOpen] = useState(false);
 
   const [formData, setFormData] = useState<EditSongData>({
     title: '',
@@ -117,19 +115,6 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
-
-  const handleImageSearchSelect = (imageBlob: Blob, imageUrl: string) => {
-    // Convert blob to File object
-    const file = new File([imageBlob], 'artwork.jpg', { type: imageBlob.type || 'image/jpeg' });
-    
-    setFormData(prev => ({ ...prev, artwork: file }));
-    setPreviewUrl(imageUrl);
-    setImageSearchOpen(false);
-  };
-
-  const handleOpenImageSearch = () => {
-    setImageSearchOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -232,8 +217,9 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
                     <PhotoIcon className="w-4 h-4" />
                     Upload
                   </button>
-                  
-                  <button
+
+                  {/* Image search moved to plugin */}
+                  {/* <button
                     type="button"
                     onClick={handleOpenImageSearch}
                     className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-primary hover:bg-secondary text-white text-sm rounded-lg transition-colors"
@@ -241,7 +227,7 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
                   >
                     <MagnifyingGlassIcon className="w-4 h-4" />
                     Search
-                  </button>
+                  </button> */}
                 </div>
                 
                 {(formData.artwork || previewUrl) && (
@@ -370,8 +356,8 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
         </form>
       </div>
 
-      {/* Image Search Modal */}
-      <ImageSearchModal
+      {/* Image Search Modal - moved to plugin */}
+      {/* <ImageSearchModal
         isOpen={imageSearchOpen}
         onClose={() => setImageSearchOpen(false)}
         onImageSelect={handleImageSearchSelect}
@@ -384,7 +370,7 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
             return parts.join(' ') || 'music artwork';
           })()
         }
-      />
+      /> */}
     </div>
   );
 };

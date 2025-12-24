@@ -4,32 +4,17 @@ import ArtistModel from '../models/Artist';
 import AlbumModel from '../models/Album';
 import AlbumFollowsModel from '../models/AlbumFollows';
 import libraryScanner from '../services/libraryScanner';
-import ytMusicService from '../services/ytMusicService';
 import { AuthRequest } from '../middleware/auth';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
 
 export const getAllSongs = asyncHandler(async (req: Request, res: Response) => {
-  const { search, artist, album, genre, limit = 50, offset = 0, includeYTMusic = 'true' } = req.query;
+  const { search, artist, album, genre, limit = 50, offset = 0 } = req.query;
 
   let songs;
-  let ytMusicResults = [];
 
   if (search) {
     // Get local songs
     songs = await SongModel.searchSongs(search as string);
-    
-    // Also search YouTube Music if enabled
-    console.log(`🎵 Search query: "${search}", includeYTMusic: "${includeYTMusic}"`);
-    if (includeYTMusic === 'true') {
-      try {
-        console.log('🎵 Searching YouTube Music...');
-        ytMusicResults = await ytMusicService.searchMusic(search as string);
-        console.log(`🎵 Found ${ytMusicResults.length} YouTube Music results`);
-      } catch (error) {
-        console.error('YouTube Music search error:', error);
-        // Continue without YT Music results if it fails
-      }
-    }
   } else if (genre) {
     songs = await SongModel.getSongsByGenre(genre as string);
   } else if (artist) {
@@ -42,18 +27,16 @@ export const getAllSongs = asyncHandler(async (req: Request, res: Response) => {
 
   const limitNum = parseInt(limit as string);
   const offsetNum = parseInt(offset as string);
-  
+
   const paginatedSongs = songs.slice(offsetNum, offsetNum + limitNum);
 
   res.json({
     success: true,
     data: {
       songs: paginatedSongs,
-      ytMusicResults: search ? ytMusicResults : [],
       total: songs.length,
       limit: limitNum,
-      offset: offsetNum,
-      hasYTMusicResults: ytMusicResults.length > 0
+      offset: offsetNum
     }
   });
 });

@@ -1,22 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { XMarkIcon, MagnifyingGlassIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
-import { imageSearchService, SearchImage } from '../services/imageSearch';
-import { useToast } from '../contexts/ToastContext';
+
+// Types for plugin
+export interface SearchImage {
+  id: string;
+  url: string;
+  thumbnail: string;
+  title: string;
+  source: string;
+  width?: number;
+  height?: number;
+  videoId?: string;
+  channelTitle?: string;
+}
 
 interface ImageSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImageSelect: (imageBlob: Blob, imageUrl: string) => void;
   initialQuery?: string;
+  apiService: any; // Injected API service
 }
 
 const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
   isOpen,
   onClose,
   onImageSelect,
-  initialQuery = ''
+  initialQuery = '',
+  apiService
 }) => {
-  const { showSuccess, showError } = useToast();
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [searchResults, setSearchResults] = useState<SearchImage[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -41,23 +53,25 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
         setSelectedImage(null);
 
         try {
-          const results = await imageSearchService.searchImages(initialQuery.trim(), 20);
-          setSearchResults(results);
-          
-          if (results.length === 0) {
-            showError('No images found. Try a different search term.');
+          const response = await apiService.searchYouTubeImages(initialQuery.trim(), 20);
+
+          if (response.success && response.data) {
+            setSearchResults(response.data.data);
+
+            if (response.data.data.length === 0) {
+              console.warn('No images found. Try a different search term.');
+            }
           }
         } catch (error) {
           console.error('Image search failed:', error);
-          showError('Failed to search for images. Please try again.');
         } finally {
           setIsSearching(false);
         }
       };
-      
+
       searchWithQuery();
     }
-  }, [isOpen, initialQuery, showError]);
+  }, [isOpen, initialQuery, apiService]);
 
   // Reset state when modal closes
   useEffect(() => {
@@ -76,15 +90,17 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
     setSelectedImage(null);
 
     try {
-      const results = await imageSearchService.searchImages(searchQuery.trim(), 20);
-      setSearchResults(results);
-      
-      if (results.length === 0) {
-        showError('No images found. Try a different search term.');
+      const response = await apiService.searchYouTubeImages(searchQuery.trim(), 20);
+
+      if (response.success && response.data) {
+        setSearchResults(response.data.data);
+
+        if (response.data.data.length === 0) {
+          console.warn('No images found. Try a different search term.');
+        }
       }
     } catch (error) {
       console.error('Image search failed:', error);
-      showError('Failed to search for images. Please try again.');
     } finally {
       setIsSearching(false);
     }
@@ -98,13 +114,16 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
     setIsDownloading(image.id);
 
     try {
-      const blob = await imageSearchService.downloadImage(image.url);
+      // Fetch image directly as blob
+      const response = await fetch(image.url, { mode: 'cors' });
+      const blob = await response.blob();
+
       onImageSelect(blob, image.url);
-      showSuccess('Image selected successfully!');
+      // Success notification would be handled by parent
       onClose();
     } catch (error) {
       console.error('Failed to download image:', error);
-      showError('Failed to download image. Please try another one.');
+      // Error notification would be handled by parent
     } finally {
       setIsDownloading(null);
     }
@@ -223,7 +242,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                     className="w-full h-full object-cover transition-transform group-hover:scale-105"
                     loading="lazy"
                   />
-                  
+
                   {/* Overlay */}
                   <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center">
                     <button
