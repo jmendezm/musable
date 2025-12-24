@@ -4,7 +4,7 @@ A self-hosted personal music library with Spotify-like design and features. Stre
 
 **Have questions or suggestions?** Join our Discord community: https://discord.gg/A4ymNnQkP2
 
-**Want to see it in action?** Check out the [Screenshots](https://github.com/musable/musable/blob/main/SCREENSHOTS.md)
+**Want to see it in action?** Check out the [Screenshots](SCREENSHOTS.md)
 
 ## Features
 
