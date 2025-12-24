@@ -1,0 +1,32 @@
+{
+  "name": "musable",
+  "version": "1.0.0",
+  "description": "Musable - Self-hosted personal music library",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm start",
+    "build": "npm run build:frontend && npm run copy:frontend && npm run build:backend",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "copy:frontend": "cpx \"frontend/build/**/*\" backend/public",
+    "start": "cd backend && npm start",
+    "prod": "npm run build && npm run start",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "clean": "rm -rf backend/dist backend/public frontend/build frontend/node_modules backend/node_modules node_modules"
+  },
+  "keywords": [
+    "music",
+    "library",
+    "self-hosted",
+    "spotify",
+    "audio"
+  ],
+  "author": "Musable",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "cpx": "^1.5.0"
+  }
+}
