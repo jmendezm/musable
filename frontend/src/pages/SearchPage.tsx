@@ -11,6 +11,7 @@ import { useToast } from '../contexts/ToastContext';
 import EditSongModal from '../components/EditSongModal';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
 import { apiService } from '../services/api';
+import { searchExtensionManager, SearchResultItem } from '../services/searchExtensions';
 import { Song, Artist, Album } from '../types';
 import { useDebounce } from 'use-debounce';
 import clsx from 'clsx';
@@ -19,6 +20,7 @@ interface SearchResults {
   songs: Song[];
   artists: Artist[];
   albums: Album[];
+  extensionResults: Map<string, SearchResultItem[]>;
 }
 
 const SearchPage: React.FC = () => {
@@ -43,9 +45,14 @@ const SearchPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'songs' | 'artists' | 'albums'>(
     (searchParams.get('category') as 'all' | 'songs' | 'artists' | 'albums') || 'all'
   );
-  
+
   const [debouncedQuery] = useDebounce(searchQuery, 300);
-  const [results, setResults] = useState<SearchResults>({ songs: [], artists: [], albums: [], ytMusicResults: [] });
+  const [results, setResults] = useState<SearchResults>({
+    songs: [],
+    artists: [],
+    albums: [],
+    extensionResults: new Map()
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -55,30 +62,42 @@ const SearchPage: React.FC = () => {
 
   const performSearch = useCallback(async (query: string) => {
     if (!query.trim()) {
-      setResults({ songs: [], artists: [], albums: [], ytMusicResults: [] });
+      setResults({
+        songs: [],
+        artists: [],
+        albums: [],
+        extensionResults: new Map()
+      });
       return;
     }
 
+    console.log('[SearchPage] 🔍 Performing search for:', query);
     setIsLoading(true);
     try {
-      const [songsRes, artistsRes, albumsRes] = await Promise.all([
-        apiService.getSongs({ search: query, limit: 20, includeYTMusic: 'true' }),
+      const [songsRes, artistsRes, albumsRes, extensionResults] = await Promise.all([
+        apiService.getSongs({ search: query, limit: 20 }),
         apiService.getArtists(query),
-        apiService.getAlbums({ search: query })
+        apiService.getAlbums({ search: query }),
+        searchExtensionManager.searchAll(query)
       ]);
 
-      // Get YouTube Music results from the enhanced song search
-      const ytMusicResults = songsRes.data.ytMusicResults || [];
+      console.log('[SearchPage] 📦 Extension results:', extensionResults);
+      console.log('[SearchPage] 📊 Extension results entries:', Array.from(extensionResults.entries()));
 
       setResults({
         songs: songsRes.data.songs || [],
         artists: artistsRes.data.artists || [],
         albums: albumsRes.data.albums || [],
-        ytMusicResults
+        extensionResults
       });
     } catch (error) {
-      console.error('Search error:', error);
-      setResults({ songs: [], artists: [], albums: [], ytMusicResults: [] });
+      console.error('[SearchPage] ❌ Search error:', error);
+      setResults({
+        songs: [],
+        artists: [],
+        albums: [],
+        extensionResults: new Map()
+      });
     }
     setIsLoading(false);
   }, []);
@@ -360,18 +379,6 @@ const SearchPage: React.FC = () => {
             </div>
           )}
 
-          {/* YouTube Music Results - moved to plugin */}
-          {/* {results.ytMusicResults && results.ytMusicResults.length > 0 && (
-            <YTMusicResults
-              results={results.ytMusicResults}
-              initialDisplayCount={5}
-              onDownloadComplete={() => {
-                // Refresh search results to show newly downloaded songs in local results
-                performSearch(debouncedQuery);
-              }}
-            />
-          )} */}
-
           {/* Songs Section */}
           {filteredResults.songs.length > 0 && (
             <div>
@@ -454,6 +461,28 @@ const SearchPage: React.FC = () => {
             </div>
           )}
 
+          {/* Extension Results (YouTube Music, etc) */}
+          {selectedCategory === 'all' && Array.from(results.extensionResults.entries()).map(([extensionId, extensionItems]) => {
+            if (extensionItems.length === 0) return null;
+
+            const extension = searchExtensionManager.getExtension(extensionId);
+            if (!extension) return null;
+
+            const ExtensionComponent = extension.renderComponent;
+            if (!ExtensionComponent) return null;
+
+            return (
+              <div key={extensionId}>
+                <ExtensionComponent
+                  results={extensionItems}
+                  onDownloadComplete={() => {
+                    performSearch(debouncedQuery);
+                  }}
+                />
+              </div>
+            );
+          })}
+
           {/* Albums Section - Show when filtering specifically for albums */}
           {filteredResults.albums.length > 0 && selectedCategory === 'albums' && (
             <div>
@@ -496,7 +525,7 @@ const SearchPage: React.FC = () => {
       )}
 
       {/* No Results */}
-      {!isLoading && searchQuery && filteredResults.songs.length === 0 && filteredResults.artists.length === 0 && filteredResults.albums.length === 0 && (!results.ytMusicResults || results.ytMusicResults.length === 0) && (
+      {!isLoading && searchQuery && filteredResults.songs.length === 0 && filteredResults.artists.length === 0 && filteredResults.albums.length === 0 && Array.from(results.extensionResults.values()).every(results => results.length === 0) && (
         <div className="text-center py-12">
           <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">No results found</h3>

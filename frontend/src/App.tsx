@@ -1,9 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { useFollowedAlbumsStore } from './stores/followedAlbumsStore';
 import { useFollowedPlaylistsStore } from './stores/followedPlaylistsStore';
 import { ToastProvider } from './contexts/ToastContext';
+import { searchExtensionManager } from './services/searchExtensions';
+import { frontendPluginLoader } from './services/frontendPluginLoader';
 
 // Layout components
 import MainLayout from './components/layout/MainLayout';
@@ -35,6 +37,7 @@ const App: React.FC = () => {
   const { isAuthenticated, isLoading, getProfile, token } = useAuthStore();
   const { loadFollowedAlbums } = useFollowedAlbumsStore();
   const { loadFollowedPlaylists } = useFollowedPlaylistsStore();
+  const [pluginsLoaded, setPluginsLoaded] = useState(false);
 
   useEffect(() => {
     // Initialize auth state from localStorage
@@ -44,6 +47,29 @@ const App: React.FC = () => {
   }, [token, isAuthenticated, getProfile]);
 
   useEffect(() => {
+    // Expose search extension manager to window for plugins
+    (window as any).searchExtensionManager = searchExtensionManager;
+
+    // Load all plugins dynamically on app startup
+    const loadPlugins = async () => {
+      try {
+        await frontendPluginLoader.loadPlugins();
+        console.log('All plugins loaded successfully');
+        setPluginsLoaded(true);
+      } catch (error) {
+        console.error('Error loading plugins:', error);
+        setPluginsLoaded(true);
+      }
+    };
+
+    loadPlugins();
+
+    return () => {
+      frontendPluginLoader.cleanupAll();
+    };
+  }, []);
+
+  useEffect(() => {
     // Load followed items when user is authenticated
     if (isAuthenticated) {
       loadFollowedAlbums();
@@ -51,7 +77,7 @@ const App: React.FC = () => {
     }
   }, [isAuthenticated, loadFollowedAlbums, loadFollowedPlaylists]);
 
-  if (isLoading) {
+  if (isLoading || !pluginsLoaded) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <LoadingSpinner size="large" />

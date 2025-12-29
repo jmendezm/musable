@@ -4,7 +4,6 @@
     "module": "commonjs",
     "lib": ["ES2020"],
     "outDir": "./dist",
-    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -32,12 +31,14 @@
       "@/services/*": ["./services/*"],
       "@/middleware/*": ["./middleware/*"],
       "@/utils/*": ["./utils/*"],
-      "@/config/*": ["./config/*"]
+      "@/config/*": ["./config/*"],
+      "@/plugins/*": ["../../plugins/*"]
     }
   },
   "include": [
     "src/**/*",
-    "src/**/*.sql"
+    "src/**/*.sql",
+    "plugins/**/*"
   ],
   "exclude": [
     "node_modules",

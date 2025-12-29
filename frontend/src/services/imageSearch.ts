@@ -1,4 +1,4 @@
-import { apiService } from './api';
+import { youtubeApiService } from '../plugins/youtube/api';
 
 export interface SearchImage {
   id: string;
@@ -18,12 +18,12 @@ class ImageSearchService {
   async searchImages(query: string, limit = 20): Promise<SearchImage[]> {
     try {
       console.log(`🔍 Searching for images via backend: "${query}" (limit: ${limit})`);
-      
-      const response = await apiService.searchYouTubeImages(query, limit);
-      
+
+      const response = await youtubeApiService.searchImages(query, limit);
+
       if (response.success && response.data) {
-        console.log(`✅ Found ${response.data.data.length} results from backend`);
-        return response.data.data;
+        console.log(`✅ Found ${response.data.length} results from backend`);
+        return response.data;
       } else {
         console.warn('Backend search returned no results, using fallback');
         return this.getFallbackImages(query, limit);
@@ -39,12 +39,12 @@ class ImageSearchService {
   async searchAlbumArtwork(artist: string, album: string): Promise<SearchImage[]> {
     try {
       console.log(`🎨 Searching for album artwork via backend: "${artist}" - "${album}"`);
-      
-      const response = await apiService.searchYouTubeAlbumArtwork(artist, album);
-      
+
+      const response = await youtubeApiService.searchAlbumArtwork(artist, album);
+
       if (response.success && response.data) {
-        console.log(`✅ Found ${response.data.data.length} album artwork results from backend`);
-        return response.data.data;
+        console.log(`✅ Found ${response.data.length} album artwork results from backend`);
+        return response.data;
       } else {
         console.warn('Backend album artwork search returned no results, fallback to regular search');
         // Fallback to regular search

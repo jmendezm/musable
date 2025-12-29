@@ -157,13 +157,61 @@ const models = {
 const pluginManager = new PluginManager(models, config);
 const pluginsDir = path.join(__dirname, '../../plugins');
 
-// Register plugin health endpoint
+// Track if plugins have finished loading
+let pluginsLoaded = false;
+
+// Register general health endpoint
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     version: '1.0.0'
   });
+});
+
+// Register plugin health endpoint (must be before server starts)
+app.get('/api/plugins/:pluginId/health', async (req, res) => {
+  const { pluginId } = req.params;
+
+  logger.info(`[Health Check] Checking plugin: ${pluginId}, pluginsLoaded: ${pluginsLoaded}`);
+
+  // If plugins haven't loaded yet, return starting status
+  if (!pluginsLoaded) {
+    logger.info(`[Health Check] Plugins still loading, returning 'starting' status`);
+    return res.json({
+      success: true,
+      data: {
+        status: 'healthy',
+        message: 'Plugin is starting',
+        metadata: { starting: true }
+      }
+    });
+  }
+
+  try {
+    const health = await pluginManager.getPluginHealth(pluginId);
+
+    if (!health) {
+      logger.warn(`[Health Check] Plugin not found: ${pluginId}`);
+      return res.status(404).json({
+        success: false,
+        error: 'Plugin not found'
+      });
+    }
+
+    logger.info(`[Health Check] Plugin ${pluginId} is ${health.status}`);
+    return res.json({
+      success: true,
+      data: health
+    });
+  } catch (error) {
+    logger.error(`[Health Check] Error checking plugin health:`, error);
+    return res.status(500).json({
+      success: false,
+      error: 'Health check failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
 });
 
 // Serve frontend static files in production (Docker)
@@ -209,9 +257,23 @@ async function startServer(): Promise<void> {
     const roomService = new RoomService(io);
     roomService.startPeriodicSync();
 
-    // Load plugins
+    // Start server FIRST so it can accept connections
+    server.listen(config.port, '0.0.0.0', () => {
+      logger.info(`🎵 Musable server running on port ${config.port}`);
+      logger.info(`🌍 Environment: ${config.nodeEnv}`);
+      logger.info(`📁 Upload path: ${config.uploadPath}`);
+      logger.info(`🎵 Library paths: ${config.libraryPaths.join(', ')}`);
+      logger.info(`🔗 CORS origin: ${config.corsOrigin}`);
+      logger.info(`🔌 WebSocket server enabled for real-time rooms`);
+    });
+
+    // Load plugins AFTER server is listening
     logger.info('📦 Loading plugins...');
     await pluginManager.loadPlugins(pluginsDir);
+
+    // Mark plugins as loaded
+    pluginsLoaded = true;
+    logger.info('✅ Plugins loaded, health endpoint now active');
 
     // Start enabled plugins
     await pluginManager.startPlugins(io);
@@ -232,33 +294,7 @@ async function startServer(): Promise<void> {
       });
     });
 
-    // Plugin health endpoint
-    app.get('/api/plugins/:pluginId/health', async (req, res) => {
-      const { pluginId } = req.params;
-      const health = await pluginManager.getPluginHealth(pluginId);
-
-      if (!health) {
-        return res.status(404).json({
-          success: false,
-          error: 'Plugin not found'
-        });
-      }
-
-      res.json({
-        success: true,
-        data: health
-      });
-    });
-
-    server.listen(config.port, '0.0.0.0', () => {
-      logger.info(`🎵 Musable server running on port ${config.port}`);
-      logger.info(`🌍 Environment: ${config.nodeEnv}`);
-      logger.info(`📁 Upload path: ${config.uploadPath}`);
-      logger.info(`🎵 Library paths: ${config.libraryPaths.join(', ')}`);
-      logger.info(`🔗 CORS origin: ${config.corsOrigin}`);
-      logger.info(`🔌 WebSocket server enabled for real-time rooms`);
-      logger.info(`📦 Plugins loaded: ${pluginManager.getPlugins().length}`);
-    });
+    logger.info(`📦 Plugins loaded: ${pluginManager.getPlugins().length}`);
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);

@@ -34,18 +34,10 @@ class ApiService {
 
   async initialize() {
     if (this.initialized) return;
-    
-    try {
-      const apiBaseUrl = getApiBaseUrl();
-      this.api.defaults.baseURL = apiBaseUrl;
-      this.initialized = true;
-    } catch (error) {
-      console.warn('Config not loaded yet, using fallback API URL');
-      // Check if we're on the development server (localhost:3000) vs production domain
-      const isLocalDevelopment = window.location.hostname === 'localhost' && window.location.port === '3000';
-      this.api.defaults.baseURL = isLocalDevelopment ? '/api' : 'https://musable.breadjs.nl/api';
-      this.initialized = true;
-    }
+
+    const apiBaseUrl = getApiBaseUrl();
+    this.api.defaults.baseURL = apiBaseUrl;
+    this.initialized = true;
   }
 
   private setupInterceptors() {
@@ -360,15 +352,6 @@ class ApiService {
     return this.request('POST', `/favorites/${songId}/toggle`);
   }
 
-  // YouTube search endpoints
-  async searchYouTubeImages(query: string, limit = 20): Promise<ApiResponse<{ data: any[]; count: number; query: string; limit: number }>> {
-    return this.request('GET', `/youtube/search?q=${encodeURIComponent(query)}&limit=${limit}`);
-  }
-
-  async searchYouTubeAlbumArtwork(artist: string, album: string): Promise<ApiResponse<{ data: any[]; count: number; artist: string; album: string }>> {
-    return this.request('GET', `/youtube/album-artwork?artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`);
-  }
-
   async checkFavoriteStatus(songId: number): Promise<ApiResponse<{ songId: number; isFavorited: boolean }>> {
     return this.request('GET', `/favorites/${songId}/status`);
   }
@@ -481,57 +464,15 @@ class ApiService {
 
   // Stream endpoint
   getStreamUrl(songId: number): string {
-    // In development, use relative URLs to leverage proxy configuration
-    const isDevelopment = process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost';
-    
-    if (isDevelopment) {
-      return `/api/stream/${songId}`;
-    }
-    
-    try {
-      const baseUrl = getBaseUrl();
-      return `${baseUrl}/api/stream/${songId}`;
-    } catch (error) {
-      // Production fallback
-      return `https://musable.breadjs.nl/api/stream/${songId}`;
-    }
+    const apiBaseUrl = getApiBaseUrl();
+    return `${apiBaseUrl}/stream/${songId}`;
   }
 
   getArtworkUrl(path: string): string {
     if (!path) return '';
-    
-    // In development, use relative URLs to leverage proxy configuration
-    const isDevelopment = process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost';
-    
-    if (isDevelopment) {
-      return path; // path already includes /uploads/artwork/...
-    }
-    
-    try {
-      const baseUrl = getBaseUrl();
-      return `${baseUrl}${path}`;
-    } catch (error) {
-      // Production fallback
-      return `https://musable.breadjs.nl${path}`;
-    }
-  }
 
-  // YouTube Music endpoints
-  async searchYTMusic(query: string): Promise<ApiResponse<{ results: any[]; source: string }>> {
-    const queryString = new URLSearchParams({ query }).toString();
-    return this.request('GET', `/ytmusic/search?${queryString}`);
-  }
-
-  async downloadYTMusicSong(videoId: string): Promise<ApiResponse<{ downloadId: string; message: string }>> {
-    return this.request('POST', `/ytmusic/download/${videoId}`);
-  }
-
-  async getDownloadProgress(downloadId: string): Promise<ApiResponse<{ id: string; status: string; progress: number; error?: string }>> {
-    return this.request('GET', `/ytmusic/download/${downloadId}/progress`);
-  }
-
-  async getActiveDownloads(): Promise<ApiResponse<any[]>> {
-    return this.request('GET', `/ytmusic/downloads`);
+    const baseUrl = getBaseUrl();
+    return `${baseUrl}${path}`;
   }
 }
 

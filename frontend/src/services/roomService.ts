@@ -32,7 +32,7 @@ class RoomWebSocketService {
 
         // Create new socket connection
         const baseWebSocketUrl = getWebSocketUrl();
-        
+
         // Force socket.io to use the exact URL without port inference
         const socketioOptions = {
           auth: {
@@ -43,15 +43,9 @@ class RoomWebSocketService {
           upgrade: true,
           rememberUpgrade: false
         };
-        
-        
-        // Try to bypass socket.io's URL parsing by using the raw URL
-        if (baseWebSocketUrl.includes('musable.breadjs.nl')) {
-          // For production, try using just the domain without protocol to let socket.io handle it
-          this.socket = io('https://musable.breadjs.nl', socketioOptions);
-        } else {
-          this.socket = io(baseWebSocketUrl, socketioOptions);
-        }
+
+        // Use WebSocket URL from config
+        this.socket = io(baseWebSocketUrl, socketioOptions);
       } catch (configError) {
         console.error('🎵 Failed to load config:', configError);
         reject(configError);

@@ -68,8 +68,6 @@ export interface Song {
   year?: number;
   bitrate?: number;
   sample_rate?: number;
-  source: 'local' | 'youtube';
-  youtube_id?: string;
   artwork_path?: string;
   created_at: string;
   updated_at: string;

@@ -151,7 +151,6 @@ const PlaylistDetailPage: React.FC = () => {
       artwork_path: playlistSong.artwork_path,
       file_path: '', // Will be fetched when playing
       artist_id: 0,
-      source: 'local' as const,
       created_at: '',
       updated_at: ''
     }));
@@ -165,7 +164,7 @@ const PlaylistDetailPage: React.FC = () => {
 
   const handleShufflePlay = () => {
     if (songs.length === 0) return;
-    
+
     const songList = songs.map(playlistSong => ({
       id: playlistSong.song_id,
       title: playlistSong.title,
@@ -175,7 +174,6 @@ const PlaylistDetailPage: React.FC = () => {
       artwork_path: playlistSong.artwork_path,
       file_path: '',
       artist_id: 0,
-      source: 'local' as const,
       created_at: '',
       updated_at: ''
     }));
@@ -195,7 +193,6 @@ const PlaylistDetailPage: React.FC = () => {
       artwork_path: playlistSong.artwork_path,
       file_path: '',
       artist_id: 0,
-      source: 'local' as const,
       created_at: '',
       updated_at: ''
     }));
@@ -218,7 +215,6 @@ const PlaylistDetailPage: React.FC = () => {
     artwork_path: playlistSong.artwork_path,
     file_path: '',
     artist_id: 0,
-    source: 'local' as const,
     created_at: '',
     updated_at: ''
   });
