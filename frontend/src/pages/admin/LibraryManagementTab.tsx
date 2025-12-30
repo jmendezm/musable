@@ -50,20 +50,24 @@ const LibraryManagementTab: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanStatus?.status]);
 
+  // Reset to page 1 when search query changes
   useEffect(() => {
-    // Reset to page 1 when search query changes
-    if (currentPage !== 1) {
-      setCurrentPage(1);
-      return; // Let the currentPage effect handle the API call
-    }
-    
-    // Debounced search effect
     const timeoutId = setTimeout(() => {
-      fetchSongs(currentPage, searchQuery);
+      setCurrentPage(1);
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, currentPage]);
+  }, [searchQuery]);
+
+  // Fetch songs when currentPage changes
+  useEffect(() => {
+    // Debounced fetch to avoid excessive calls
+    const timeoutId = setTimeout(() => {
+      fetchSongs(currentPage, searchQuery);
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [currentPage, searchQuery]);
 
   const fetchLibraryData = async () => {
     try {
@@ -84,14 +88,14 @@ const LibraryManagementTab: React.FC = () => {
     try {
       setLoadingSongs(true);
       const offset = (page - 1) * songsPerPage;
-      const songsResponse = await apiService.getSongs({ 
-        limit: songsPerPage, 
+      const songsResponse = await apiService.getSongs({
+        limit: songsPerPage,
         offset,
         search: search || undefined
       });
       setSongs(songsResponse.data.songs);
       setTotalSongs(songsResponse.data.total);
-      setCurrentPage(page);
+      // Don't set currentPage here - it's already set by the component that called this
     } catch (err: any) {
       console.error('Failed to fetch songs:', err);
       setError(err.message || 'Failed to load songs');
@@ -401,9 +405,9 @@ const LibraryManagementTab: React.FC = () => {
                     <td className="py-3 px-4">
                       <div className="flex items-center">
                         {song.artwork_path ? (
-                          <img 
-                            src={song.artwork_path} 
-                            alt="" 
+                          <img
+                            src={apiService.getArtworkUrl(song.artwork_path)}
+                            alt=""
                             className="w-10 h-10 rounded object-cover mr-3"
                           />
                         ) : (
