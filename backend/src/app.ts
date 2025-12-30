@@ -25,13 +25,21 @@ import favoritesRoutes from './routes/favorites';
 import shareRoutes from './routes/share';
 import createRoomRoutes from './routes/rooms';
 
-// Plugin system
-import PluginManager from '../../plugins/core/PluginManager';
+// Models
 import SongModel from './models/Song';
 import ArtistModel from './models/Artist';
 import AlbumModel from './models/Album';
 import UserModel from './models/User';
 import PlaylistModel from './models/Playlist';
+
+// Plugin system (optional)
+let PluginManager: any = null;
+let pluginManager: any = null;
+try {
+  PluginManager = require('../../plugins/core/PluginManager').default;
+} catch (error) {
+  logger.info('Plugin system not available - plugins folder not found');
+}
 
 const app = express();
 const server = createServer(app);
@@ -154,8 +162,17 @@ const models = {
   Playlist: PlaylistModel
 };
 
-const pluginManager = new PluginManager(models, config);
+// Initialize plugin manager if available
 const pluginsDir = path.join(__dirname, '../../plugins');
+if (PluginManager) {
+  try {
+    pluginManager = new PluginManager(models, config);
+    logger.info('Plugin manager initialized');
+  } catch (error) {
+    logger.error('Failed to initialize plugin manager:', error);
+    pluginManager = null;
+  }
+}
 
 // Track if plugins have finished loading
 let pluginsLoaded = false;
@@ -172,6 +189,14 @@ app.get('/health', (req, res) => {
 // Register plugin health endpoint (must be before server starts)
 app.get('/api/plugins/:pluginId/health', async (req, res) => {
   const { pluginId } = req.params;
+
+  // If plugin system is not available, return 503
+  if (!pluginManager) {
+    return res.status(503).json({
+      success: false,
+      error: 'Plugin system not available'
+    });
+  }
 
   logger.info(`[Health Check] Checking plugin: ${pluginId}, pluginsLoaded: ${pluginsLoaded}`);
 
@@ -267,34 +292,51 @@ async function startServer(): Promise<void> {
       logger.info(`🔌 WebSocket server enabled for real-time rooms`);
     });
 
-    // Load plugins AFTER server is listening
-    logger.info('📦 Loading plugins...');
-    await pluginManager.loadPlugins(pluginsDir);
+    // Load plugins AFTER server is listening (if plugin manager is available)
+    if (pluginManager) {
+      try {
+        logger.info('📦 Loading plugins...');
+        await pluginManager.loadPlugins(pluginsDir);
 
-    // Mark plugins as loaded
-    pluginsLoaded = true;
-    logger.info('✅ Plugins loaded, health endpoint now active');
+        // Mark plugins as loaded
+        pluginsLoaded = true;
+        logger.info('✅ Plugins loaded, health endpoint now active');
 
-    // Start enabled plugins
-    await pluginManager.startPlugins(io);
+        // Start enabled plugins
+        await pluginManager.startPlugins(io);
 
-    // Register plugin routes
-    const pluginRoutes = pluginManager.getPluginRoutes();
-    pluginRoutes.forEach(({ router, mount }) => {
-      app.use(`/api/plugins/${mount}`, router);
-      logger.info(`✅ Registered plugin routes: /api/plugins/${mount}`);
-    });
+        // Register plugin routes
+        const pluginRoutes = pluginManager.getPluginRoutes();
+        pluginRoutes.forEach(({ router, mount }) => {
+          app.use(`/api/plugins/${mount}`, router);
+          logger.info(`✅ Registered plugin routes: /api/plugins/${mount}`);
+        });
 
-    // Plugin info endpoint
-    app.get('/api/plugins', (req, res) => {
-      const plugins = pluginManager.getPlugins();
-      res.json({
-        success: true,
-        data: plugins
+        // Plugin info endpoint
+        app.get('/api/plugins', (req, res) => {
+          const plugins = pluginManager.getPlugins();
+          res.json({
+            success: true,
+            data: plugins
+          });
+        });
+
+        logger.info(`📦 Plugins loaded: ${pluginManager.getPlugins().length}`);
+      } catch (error) {
+        logger.error('Failed to load plugins:', error);
+        logger.info('Continuing without plugins...');
+      }
+    } else {
+      logger.info('⚠️  Plugin system not available - running without plugins');
+      // Add plugin info endpoint that returns empty list
+      app.get('/api/plugins', (req, res) => {
+        res.json({
+          success: true,
+          data: [],
+          message: 'Plugin system not available'
+        });
       });
-    });
-
-    logger.info(`📦 Plugins loaded: ${pluginManager.getPlugins().length}`);
+    }
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);
