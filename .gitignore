@@ -47,6 +47,11 @@ web_modules/
 # TypeScript cache
 *.tsbuildinfo
 
+# Source maps
+*.map
+*.js.map
+*.d.ts.map
+
 # Optional npm cache directory
 .npm
 
@@ -170,3 +175,5 @@ yt-downloads/
 dist/
 build/
 backend/public/
+
+plugins/

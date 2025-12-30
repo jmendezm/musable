@@ -24,7 +24,6 @@
     "resolveJsonModule": true,
     "isolatedModules": false,
     "noEmit": true,
-    "suppressImplicitAnyIndexErrors": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
     "baseUrl": "src",
