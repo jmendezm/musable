@@ -106,7 +106,9 @@ export class LibraryScanner {
     }
 
     if (paths.length === 0) {
-      throw new Error('No library paths configured');
+      const error = new Error('No library paths configured. Please add at least one library path in the system settings.');
+      (error as any).statusCode = 400;
+      throw error;
     }
 
     this.isScanning = true;

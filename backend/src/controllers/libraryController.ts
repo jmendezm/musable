@@ -3,6 +3,7 @@ import SongModel from '../models/Song';
 import ArtistModel from '../models/Artist';
 import AlbumModel from '../models/Album';
 import AlbumFollowsModel from '../models/AlbumFollows';
+import SettingsModel from '../models/Settings';
 import libraryScanner from '../services/libraryScanner';
 import { AuthRequest } from '../middleware/auth';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
@@ -180,6 +181,13 @@ export const startLibraryScan = asyncHandler(async (req: AuthRequest, res: Respo
 
   if (libraryScanner.isCurrentlyScanning()) {
     throw new AppError('Library scan already in progress', 409);
+  }
+
+  // Check if any library paths are configured
+  const libraryPaths = await SettingsModel.getActivePaths();
+
+  if (!paths && libraryPaths.length === 0) {
+    throw new AppError('No library paths configured. Please add at least one library path in System Settings before scanning.', 400);
   }
 
   const scanId = await libraryScanner.startScan(paths);

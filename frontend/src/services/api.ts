@@ -387,6 +387,19 @@ class ApiService {
     return this.request('PUT', `/admin/settings/${key}`, { value: String(value) });
   }
 
+  // System Statistics
+  async getSystemStats(): Promise<ApiResponse<{
+    uptime: number;
+    cpu: { usage: number; cores: number; loadAverage: string[] };
+    memory: { total: number; used: number; free: number; usage: number };
+    platform: string;
+    architecture: string;
+    nodeVersion: string;
+    hostname: string;
+  }>> {
+    return this.request('GET', '/system/stats');
+  }
+
   // Album following endpoints
   async toggleAlbumFollow(albumId: number): Promise<ApiResponse<{ isFollowing: boolean; message: string }>> {
     return this.request('POST', `/library/albums/${albumId}/toggle-follow`);

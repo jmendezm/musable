@@ -19,6 +19,11 @@ interface SystemSettings {
     uptime: number;
     nodeVersion: string;
     platform: string;
+    cpuUsage: number;
+    cpuCores: number;
+    memoryUsage: number;
+    memoryTotal: number;
+    memoryUsed: number;
   };
   databaseInfo: {
     size: number;
@@ -59,26 +64,42 @@ const SystemSettingsTab: React.FC = () => {
     fetchSystemSettings();
   }, []);
 
+  const handleTabClick = (tab: 'general' | 'library' | 'security' | 'maintenance') => {
+    setActiveTab(tab);
+    if (tab === 'general') {
+      fetchSystemSettings();
+    }
+  };
+
   const fetchSystemSettings = async () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Fetch real scan status
       const scanResponse = await apiService.getScanStatus();
       setScanStatus(scanResponse.data.currentScan);
-      
+
+      // Fetch real system stats
+      const statsResponse = await apiService.getSystemStats();
+      const stats = statsResponse.data;
+
       // Fetch real system settings
       const settingsResponse = await apiService.getAllSystemSettings();
       const realSettings = settingsResponse.data.settings;
-      
-      // Build system settings object with real data for security settings and mock data for others
+
+      // Build system settings object with real data
       const mockSettings: SystemSettings = {
         serverInfo: {
           version: '1.0.0',
-          uptime: 86400, // 1 day in seconds
-          nodeVersion: 'v18.0.0',
-          platform: 'win32'
+          uptime: stats.uptime,
+          nodeVersion: stats.nodeVersion,
+          platform: stats.platform,
+          cpuUsage: stats.cpu.usage,
+          cpuCores: stats.cpu.cores,
+          memoryUsage: stats.memory.usage,
+          memoryTotal: stats.memory.total,
+          memoryUsed: stats.memory.used
         },
         databaseInfo: {
           size: 15728640, // 15MB in bytes
@@ -255,7 +276,7 @@ const SystemSettingsTab: React.FC = () => {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => handleTabClick(tab.id as any)}
                   className={clsx(
                     'flex items-center space-x-2 py-4 border-b-2 font-medium text-sm transition-colors',
                     activeTab === tab.id
@@ -281,7 +302,7 @@ const SystemSettingsTab: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="bg-gray-700 rounded-lg p-4">
                         <p className="text-gray-400 text-sm">Version</p>
-                        <p className="text-white font-medium">{settings.serverInfo.version}</p>
+                        <p className="text-white font-medium">v{settings.serverInfo.version}</p>
                       </div>
                       <div className="bg-gray-700 rounded-lg p-4">
                         <p className="text-gray-400 text-sm">Uptime</p>
@@ -294,6 +315,41 @@ const SystemSettingsTab: React.FC = () => {
                       <div className="bg-gray-700 rounded-lg p-4">
                         <p className="text-gray-400 text-sm">Platform</p>
                         <p className="text-white font-medium">{settings.serverInfo.platform}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-lg font-medium text-white mb-4">System Resources</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* CPU Usage */}
+                      <div className="bg-gray-700 rounded-lg p-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <p className="text-gray-400 text-sm">CPU Usage</p>
+                          <p className="text-white font-medium text-sm">{settings.serverInfo.cpuUsage.toFixed(1)}%</p>
+                        </div>
+                        <div className="w-full bg-gray-600 rounded-full h-1.5">
+                          <div
+                            className="bg-primary h-1.5 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.min(settings.serverInfo.cpuUsage, 100)}%` }}
+                          />
+                        </div>
+                        <p className="text-gray-500 text-xs mt-1">{settings.serverInfo.cpuCores} cores</p>
+                      </div>
+
+                      {/* RAM Usage */}
+                      <div className="bg-gray-700 rounded-lg p-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <p className="text-gray-400 text-sm">RAM Usage</p>
+                          <p className="text-white font-medium text-sm">{settings.serverInfo.memoryUsage.toFixed(1)}%</p>
+                        </div>
+                        <div className="w-full bg-gray-600 rounded-full h-1.5">
+                          <div
+                            className="bg-purple-500 h-1.5 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.min(settings.serverInfo.memoryUsage, 100)}%` }}
+                          />
+                        </div>
+                        <p className="text-gray-500 text-xs mt-1">{formatBytes(settings.serverInfo.memoryUsed)} / {formatBytes(settings.serverInfo.memoryTotal)}</p>
                       </div>
                     </div>
                   </div>

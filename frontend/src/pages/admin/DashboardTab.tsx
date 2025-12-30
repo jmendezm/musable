@@ -128,11 +128,11 @@ const DashboardTab: React.FC = () => {
 
       {/* Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Users */}
+        {/* Recently Played */}
         <div className="bg-gray-800 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-            <UsersIcon className="w-5 h-5 mr-2" />
-            Recent Users
+            <PlayIcon className="w-5 h-5 mr-2" />
+            Recently Played
           </h3>
           <div className="space-y-3">
             {stats?.recentActivity?.slice(0, 5).map((activity: any, index: number) => (
@@ -145,10 +145,13 @@ const DashboardTab: React.FC = () => {
                   <p className="text-gray-400 text-sm">
                     {new Date(activity.played_at).toLocaleDateString()}
                   </p>
+                  <p className="text-gray-500 text-xs">
+                    {new Date(activity.played_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
               </div>
             )) || (
-              <p className="text-gray-400 text-center py-4">No recent users</p>
+              <p className="text-gray-400 text-center py-4">No recent plays</p>
             )}
           </div>
         </div>
