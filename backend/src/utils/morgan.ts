@@ -1,4 +1,5 @@
 import morgan from 'morgan';
+import { Request } from 'express';
 import logger from './logger';
 
 // ANSI color codes
@@ -37,19 +38,19 @@ function getStatusColor(status: number): string {
 }
 
 // Custom Morgan format with colors
-morgan.token('colored-status', (req, res) => {
+morgan.token('colored-status', (req: Request, res) => {
   const status = res.statusCode;
   const color = getStatusColor(status);
   return `${color}${status}${colors.reset}`;
 });
 
-morgan.token('colored-method', (req) => {
+morgan.token('colored-method', (req: Request) => {
   const method = req.method;
   const color = methodColors[method] || colors.white;
   return `${color}${method}${colors.reset}`;
 });
 
-morgan.token('short-url', (req) => {
+morgan.token('short-url', (req: Request) => {
   // Shorten URL by removing query parameters for cleaner logs
   const url = req.originalUrl || req.url;
   const cleanUrl = url.split('?')[0];
@@ -57,7 +58,7 @@ morgan.token('short-url', (req) => {
 });
 
 // Use default dev format with our custom tokens
-morgan.format('musable-dev', (tokens, req, res) => {
+morgan.format('musable-dev', (tokens, req: Request, res) => {
   const method = tokens['colored-method'](req, res);
   const url = tokens['short-url'](req, res);
   const status = tokens['colored-status'](req, res);
@@ -75,7 +76,7 @@ morgan.format('musable-dev', (tokens, req, res) => {
 
 // Create Morgan middleware with custom format
 const morganMiddleware = morgan('musable-dev', {
-  skip: (req, res) => {
+  skip: (req: Request, res) => {
     // Skip logging for health check endpoint to reduce noise
     return req.path === '/health';
   },
