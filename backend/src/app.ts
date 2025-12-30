@@ -26,6 +26,7 @@ import favoritesRoutes from './routes/favorites';
 import shareRoutes from './routes/share';
 import createRoomRoutes from './routes/rooms';
 import pluginsRoutes from './routes/plugins';
+import updatesRoutes from './routes/updates';
 
 // Models
 import SongModel from './models/Song';
@@ -159,6 +160,7 @@ app.use('/api/favorites', favoritesRoutes);
 app.use('/api/share', shareRoutes);
 app.use('/api/rooms', createRoomRoutes(io));
 app.use('/api/plugins', pluginsRoutes);
+app.use('/api/updates', updatesRoutes);
 
 // Serve plugin assets (icons, etc.) statically
 const pluginsDir = path.join(__dirname, '../../plugins');
