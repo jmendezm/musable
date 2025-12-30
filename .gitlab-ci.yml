@@ -6,9 +6,7 @@ variables:
   DOCKER_TLS_CERTDIR: ""
   DOCKER_HOST: tcp://docker:2375
   DOCKER_DRIVER: overlay2
-  CI_REGISTRY: git.breadjs.nl
-
-# Build and push Musable image
+  
 build-push-musable:
   stage: build
   image: docker:latest
@@ -18,22 +16,19 @@ build-push-musable:
   before_script:
     - echo "Waiting for Docker daemon to start..."
     - timeout 60 sh -c 'until docker info; do sleep 1; done'
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin git.breadjs.nl
-    - export IMAGE="${CI_REGISTRY}/${CI_PROJECT_PATH}"
-    - echo "Image will be tagged as $IMAGE"
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
   script:
     - echo "Building Musable image..."
-    - docker build -t $IMAGE:$CI_COMMIT_SHORT_SHA .
-    - docker tag $IMAGE:$CI_COMMIT_SHORT_SHA $IMAGE:latest
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA $CI_REGISTRY_IMAGE:latest
     - echo "Pushing Musable image to GitLab registry..."
-    - docker push $IMAGE:$CI_COMMIT_SHORT_SHA
-    - docker push $IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $CI_REGISTRY_IMAGE:latest
   only:
     - main
     - dev
     - tags
 
-# Optional: Create release tags
 release-tag:
   stage: push
   image: docker:latest
@@ -43,16 +38,14 @@ release-tag:
   before_script:
     - echo "Waiting for Docker daemon to start..."
     - timeout 60 sh -c 'until docker info; do sleep 1; done'
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin git.breadjs.nl
-    - export IMAGE="${CI_REGISTRY}/${CI_PROJECT_PATH}"
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
   script:
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
         echo "Creating release tag for $CI_COMMIT_TAG..."
-        docker pull $IMAGE:latest
-        docker tag $IMAGE:latest $IMAGE:$CI_COMMIT_TAG
-        docker push $IMAGE:$CI_COMMIT_TAG
-        echo "Release tag created successfully!"
+        docker pull $CI_REGISTRY_IMAGE:latest
+        docker tag $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
+        docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
       fi
   only:
     - tags
