@@ -29,8 +29,6 @@ build-push-musable:
     - main
     - dev
     - tags
-  tags:
-    - docker
 
 # Optional: Create release tags
 release-tag:
