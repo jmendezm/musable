@@ -1,12 +1,17 @@
+version: '3.8'
+
 services:
   musable:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Replace with your actual GitLab registry path
+    # Example: git.breadjs.nl/yourusername/musable:latest
+    # Or registry.gitlab.com/yourusername/musable:latest
+    image: ${IMAGE_NAME:-git.breadjs.nl/musable/musable}:latest
+
     container_name: musable
     restart: unless-stopped
     ports:
       - "3001:3001"
+
     environment:
       # Server Configuration
       - PORT=3001
@@ -63,7 +68,7 @@ services:
       - ${MUSIC_UPLOAD_PATH:-./music-uploads}:/music-uploads
 
       # Mount config file so it can be edited on the fly
-      - ./frontend/public/config.docker.json:/app/public/config.json:ro
+      - ./frontend/public/config.json:/app/public/config.json:ro
 
       # Persistent data storage
       - musable_data:/app/data
