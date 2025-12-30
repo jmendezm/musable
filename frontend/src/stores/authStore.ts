@@ -41,9 +41,7 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const response = await apiService.login(credentials);
           const { user, token } = response.data;
-          
-          localStorage.setItem('authToken', token);
-          
+
           set({
             user,
             token,
@@ -68,9 +66,7 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const response = await apiService.register(data);
           const { user, token } = response.data;
-          
-          localStorage.setItem('authToken', token);
-          
+
           set({
             user,
             token,
@@ -91,12 +87,9 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       logout: () => {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('user');
-        
         // Call API logout endpoint (fire and forget)
         apiService.logout().catch(console.error);
-        
+
         set({
           user: null,
           token: null,
@@ -106,7 +99,7 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       getProfile: async () => {
-        const token = get().token || localStorage.getItem('authToken');
+        const token = get().token;
         if (!token) {
           set({ isAuthenticated: false, user: null, token: null });
           return;
@@ -116,7 +109,7 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const response = await apiService.getProfile();
           const { user } = response.data;
-          
+
           set({
             user,
             token,
@@ -125,9 +118,6 @@ export const useAuthStore = create<AuthStore>()(
             error: null,
           });
         } catch (error: any) {
-          localStorage.removeItem('authToken');
-          localStorage.removeItem('user');
-          
           set({
             user: null,
             token: null,
@@ -215,30 +205,40 @@ export const useAuthStore = create<AuthStore>()(
         token: state.token,
         isAuthenticated: state.isAuthenticated,
       }),
+      // Custom storage to also sync token to localStorage for API interceptor
+      storage: {
+        getItem: (name) => {
+          const str = localStorage.getItem(name);
+          return str ? JSON.parse(str) : null;
+        },
+        setItem: (name, value) => {
+          const str = JSON.stringify(value);
+          localStorage.setItem(name, str);
+
+          // Also save token to localStorage for API interceptor
+          const state = value.state;
+          if (state?.token) {
+            localStorage.setItem('authToken', state.token);
+          } else if (state?.token === null) {
+            localStorage.removeItem('authToken');
+          }
+        },
+        removeItem: (name) => {
+          localStorage.removeItem(name);
+          localStorage.removeItem('authToken');
+        },
+      },
     }
   )
 );
 
-// Initialize auth state from localStorage on app start
+// Initialize auth state from zustand persist storage on app start
 if (typeof window !== 'undefined') {
-  // Wait for the store to rehydrate, then check auth
-  const checkAuth = () => {
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      // Set loading state and attempt to get profile
-      useAuthStore.setState({ isLoading: true });
+  // Wait for zustand persist to rehydrate from localStorage
+  useAuthStore.persist.onFinishHydration((state) => {
+    // If we have a token in the rehydrated state, verify it's still valid
+    if (state?.token) {
       useAuthStore.getState().getProfile();
     }
-  };
-
-  // Check if store has been persisted/rehydrated
-  const unsubscribe = useAuthStore.persist.onFinishHydration(() => {
-    checkAuth();
-    unsubscribe();
   });
-
-  // Fallback - if hydration has already finished, check immediately
-  if (useAuthStore.persist.hasHydrated()) {
-    checkAuth();
-  }
 }

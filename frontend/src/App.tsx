@@ -34,17 +34,10 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 
 const App: React.FC = () => {
-  const { isAuthenticated, isLoading, getProfile, token } = useAuthStore();
+  const { isAuthenticated, isLoading } = useAuthStore();
   const { loadFollowedAlbums } = useFollowedAlbumsStore();
   const { loadFollowedPlaylists } = useFollowedPlaylistsStore();
   const [pluginsLoaded, setPluginsLoaded] = useState(false);
-
-  useEffect(() => {
-    // Initialize auth state from localStorage
-    if (token && !isAuthenticated) {
-      getProfile();
-    }
-  }, [token, isAuthenticated, getProfile]);
 
   useEffect(() => {
     // Expose search extension manager to window for plugins

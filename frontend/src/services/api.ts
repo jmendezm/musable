@@ -60,8 +60,9 @@ class ApiService {
       (response: AxiosResponse) => response,
       (error) => {
         if (error.response?.status === 401) {
+          // Clear both auth-storage and authToken from localStorage
+          localStorage.removeItem('auth-storage');
           localStorage.removeItem('authToken');
-          localStorage.removeItem('user');
           // Don't auto-redirect - let components handle 401 errors gracefully
           // Components can check if user is logged in and show appropriate UI
         }
