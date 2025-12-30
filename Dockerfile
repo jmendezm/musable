@@ -10,25 +10,30 @@ RUN apk add --no-cache \
     make \
     g++
 
-# Create app user
+# Create app user early
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S musable -u 1001
 
 # Set working directory
 WORKDIR /app
 
-# Copy entire project
-COPY . .
+# Create necessary directories with correct permissions BEFORE copying files
+RUN mkdir -p /app/uploads /app/yt-downloads /app/data /music && \
+    chown -R musable:nodejs /app /music
+
+# Copy package files first (for better caching)
+COPY --chown=musable:nodejs package*.json ./
+COPY --chown=musable:nodejs backend/package*.json ./backend/
+COPY --chown=musable:nodejs frontend/package*.json ./frontend/
+
+# Switch to non-root user BEFORE installing packages
+USER musable
 
 # Install all dependencies (root, backend, frontend)
 RUN npm run install:all && npm cache clean --force
 
-# Create necessary directories with correct permissions
-RUN mkdir -p /app/uploads /app/yt-downloads /app/data /music && \
-    chown -R musable:nodejs /app /music
-
-# Switch to non-root user
-USER musable
+# Copy rest of the application
+COPY --chown=musable:nodejs . .
 
 # Expose ports (3001 for backend, 3000 for frontend dev server)
 EXPOSE 3001 3000
