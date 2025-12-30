@@ -13,7 +13,7 @@
     "copy:frontend": "cpx \"frontend/build/**/*\" backend/public",
     "start": "cd backend && npm start",
     "prod": "npm run build && npm run start",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install && cd ../plugins/core && npm install && cd ../youtube/backend && npm install && cd ../youtube/frontend && npm install",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
     "clean": "shx rm -rf backend/dist backend/public frontend/build frontend/node_modules backend/node_modules node_modules plugins/*/node_modules plugins/*/dist"
   },
   "keywords": [
