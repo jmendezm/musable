@@ -10,12 +10,13 @@ services:
     container_name: musable
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "3000:3000"  # Frontend dev server
+      - "3001:3001"  # Backend API
 
     environment:
       # Server Configuration
       - PORT=3001
-      - NODE_ENV=production
+      - NODE_ENV=development
 
       # Database
       - DATABASE_PATH=/app/data/musable.db
@@ -66,9 +67,6 @@ services:
       # Files added here will be auto-detected and scanned
       # This folder is read-write so Musable can also download YouTube music here
       - ${MUSIC_UPLOAD_PATH:-./music-uploads}:/music-uploads
-
-      # Mount config file so it can be edited on the fly
-      - ./frontend/public/config.json:/app/public/config.json:ro
 
       # Persistent data storage
       - musable_data:/app/data
