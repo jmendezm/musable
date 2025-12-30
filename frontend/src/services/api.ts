@@ -474,7 +474,9 @@ class ApiService {
 
     // Use backend URL for static files (uploads, artwork, etc)
     const backendUrl = getApiBaseUrl().replace('/api', '');
-    return `${backendUrl}${path}`;
+    // Ensure path starts with / to avoid missing slash
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return `${backendUrl}${normalizedPath}`;
   }
 }
 
