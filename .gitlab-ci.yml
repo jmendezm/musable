@@ -3,13 +3,8 @@ stages:
   - push
 
 variables:
-  # GitLab Container Registry path
-  # This will be automatically resolved to: git.breadjs.nl/yourusername/musable
   IMAGE: $CI_REGISTRY_IMAGE
-
-# Use docker-in-docker service
-before_script:
-  - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+  DOCKER_TLS_CERTDIR: "/certs"
 
 # Build and push Musable image
 build-push-musable:
@@ -17,14 +12,15 @@ build-push-musable:
   image: docker:latest
   services:
     - docker:dind
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin git.breadjs.nl
   script:
     - echo "Building Musable image..."
     - docker build -t $IMAGE:$CI_COMMIT_SHORT_SHA .
     - docker build -t $IMAGE:latest .
-
     - echo "Pushing Musable image to GitLab registry..."
     - docker push $IMAGE:$CI_COMMIT_SHORT_SHA
-    - docker push $IMAGE:latest
+    - docker push $IMAGE:$CI_COMMIT_SHORT_SHA
   only:
     - main
     - dev
@@ -36,18 +32,16 @@ release-tag:
   image: docker:latest
   services:
     - docker:dind
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin git.breadjs.nl
   script:
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
         echo "Creating release tag for $CI_COMMIT_TAG..."
-
         docker pull $IMAGE:latest
         docker tag $IMAGE:latest $IMAGE:$CI_COMMIT_TAG
         docker push $IMAGE:$CI_COMMIT_TAG
-
         echo "Release tag created successfully!"
       fi
   only:
     - tags
-  tags:
-    - docker
