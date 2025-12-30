@@ -27,13 +27,24 @@ export const errorHandler = (
 ): void => {
   const { statusCode = 500, message } = error;
 
-  logger.error(`Error ${statusCode}: ${message}`, {
-    url: req.url,
-    method: req.method,
-    ip: req.ip,
-    userAgent: req.get('user-agent'),
-    stack: error.stack
-  });
+  // Only log stack traces for server errors (5xx)
+  // Client errors (4xx) are operational and don't need stack traces
+  if (statusCode >= 500) {
+    logger.error(`Error ${statusCode}: ${message}`, {
+      url: req.url,
+      method: req.method,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+      stack: error.stack
+    });
+  } else {
+    // For client errors (4xx), just log info without stack trace
+    logger.info(`Client Error ${statusCode}: ${message}`, {
+      url: req.url,
+      method: req.method,
+      ip: req.ip
+    });
+  }
 
   const isDevelopment = process.env.NODE_ENV === 'development';
 
@@ -41,7 +52,7 @@ export const errorHandler = (
     success: false,
     error: {
       message: statusCode === 500 && !isDevelopment ? 'Internal Server Error' : message,
-      ...(isDevelopment && { stack: error.stack }),
+      ...(isDevelopment && statusCode >= 500 && { stack: error.stack }),
       timestamp: new Date().toISOString(),
       path: req.url
     }
