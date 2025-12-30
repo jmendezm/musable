@@ -12,7 +12,8 @@ build-push-musable:
   stage: build
   image: docker:latest
   services:
-    - docker:dind
+    - name: docker:dind
+      command: ["--tls=false"]
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin git.breadjs.nl
   script:
@@ -21,7 +22,7 @@ build-push-musable:
     - docker build -t $IMAGE:latest .
     - echo "Pushing Musable image to GitLab registry..."
     - docker push $IMAGE:$CI_COMMIT_SHORT_SHA
-    - docker push $IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $IMAGE:latest
   only:
     - main
     - dev
@@ -32,7 +33,8 @@ release-tag:
   stage: push
   image: docker:latest
   services:
-    - docker:dind
+    - name: docker:dind
+      command: ["--tls=false"]
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin git.breadjs.nl
   script:
