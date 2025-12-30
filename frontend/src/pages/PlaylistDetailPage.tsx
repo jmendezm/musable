@@ -545,7 +545,7 @@ const PlaylistDetailPage: React.FC = () => {
                         <div className="flex-shrink-0 w-10 h-10 bg-gray-700 rounded overflow-hidden">
                           {song.artwork_path ? (
                             <img
-                              src={song.artwork_path}
+                              src={apiService.getArtworkUrl(song.artwork_path)}
                               alt={song.title}
                               className="w-full h-full object-cover"
                             />
@@ -616,7 +616,7 @@ const PlaylistDetailPage: React.FC = () => {
                     <div className="flex-shrink-0 relative">
                       {song.artwork_path ? (
                         <img
-                          src={song.artwork_path}
+                          src={apiService.getArtworkUrl(song.artwork_path)}
                           alt={song.album_title || 'Album artwork'}
                           className="w-12 h-12 rounded object-cover"
                         />

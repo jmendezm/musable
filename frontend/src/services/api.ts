@@ -472,8 +472,9 @@ class ApiService {
   getArtworkUrl(path: string): string {
     if (!path) return '';
 
-    const baseUrl = getBaseUrl();
-    return `${baseUrl}${path}`;
+    // Use backend URL for static files (uploads, artwork, etc)
+    const backendUrl = getApiBaseUrl().replace('/api', '');
+    return `${backendUrl}${path}`;
   }
 }
 
