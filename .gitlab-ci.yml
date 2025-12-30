@@ -6,6 +6,7 @@ variables:
   IMAGE: $CI_REGISTRY_IMAGE
   DOCKER_TLS_CERTDIR: ""
   DOCKER_HOST: tcp://docker:2375
+  DOCKER_DRIVER: overlay2
 
 # Build and push Musable image
 build-push-musable:
@@ -15,6 +16,8 @@ build-push-musable:
     - name: docker:dind
       command: ["--tls=false"]
   before_script:
+    - echo "Waiting for Docker daemon to start..."
+    - timeout 60 sh -c 'until docker info; do sleep 1; done'
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin git.breadjs.nl
   script:
     - echo "Building Musable image..."
@@ -36,6 +39,8 @@ release-tag:
     - name: docker:dind
       command: ["--tls=false"]
   before_script:
+    - echo "Waiting for Docker daemon to start..."
+    - timeout 60 sh -c 'until docker info; do sleep 1; done'
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin git.breadjs.nl
   script:
     - |
