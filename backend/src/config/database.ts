@@ -1,6 +1,7 @@
 import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
+import logger from '../utils/logger';
 
 const dbPath = process.env.DATABASE_PATH || './musable.db';
 
@@ -18,9 +19,9 @@ export class Database {
 
     this.db = new sqlite3.Database(fullPath, (err) => {
       if (err) {
-        console.error('Error opening database:', err.message);
+        logger.error('Error opening database:', err.message);
       } else {
-        console.log('Connected to SQLite database:', fullPath);
+        logger.info('Connected to SQLite database:', fullPath);
         this.db.run('PRAGMA foreign_keys = ON');
         this.db.run('PRAGMA journal_mode = WAL');
       }
@@ -108,7 +109,7 @@ export class Database {
         if (err) {
           reject(err);
         } else {
-          console.log('Database connection closed.');
+          logger.info('Database connection closed.');
           resolve();
         }
       });

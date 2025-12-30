@@ -14,6 +14,7 @@ import { seedDatabase } from './utils/seedDb';
 import logger from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
 import { RoomService } from './services/roomService';
+import morganMiddleware from './utils/morgan';
 
 import authRoutes from './routes/auth';
 import libraryRoutes from './routes/library';
@@ -120,7 +121,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-app.use(morgan('combined'));
+app.use(morganMiddleware);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -284,23 +285,23 @@ async function startServer(): Promise<void> {
 
     // Start server FIRST so it can accept connections
     server.listen(config.port, '0.0.0.0', () => {
-      logger.info(`🎵 Musable server running on port ${config.port}`);
-      logger.info(`🌍 Environment: ${config.nodeEnv}`);
-      logger.info(`📁 Upload path: ${config.uploadPath}`);
-      logger.info(`🎵 Library paths: ${config.libraryPaths.join(', ')}`);
-      logger.info(`🔗 CORS origin: ${config.corsOrigin}`);
-      logger.info(`🔌 WebSocket server enabled for real-time rooms`);
+      logger.info(`Server running on port ${config.port}`);
+      logger.info(`Environment: ${config.nodeEnv}`);
+      logger.info(`Upload path: ${config.uploadPath}`);
+      logger.info(`Library paths: ${config.libraryPaths.join(', ')}`);
+      logger.info(`CORS origin: ${config.corsOrigin}`);
+      logger.info(`WebSocket server enabled`);
     });
 
     // Load plugins AFTER server is listening (if plugin manager is available)
     if (pluginManager) {
       try {
-        logger.info('📦 Loading plugins...');
+        logger.info('Loading plugins...');
         await pluginManager.loadPlugins(pluginsDir);
 
         // Mark plugins as loaded
         pluginsLoaded = true;
-        logger.info('✅ Plugins loaded, health endpoint now active');
+        logger.info('Plugins loaded, health endpoint now active');
 
         // Start enabled plugins
         await pluginManager.startPlugins(io);
@@ -309,7 +310,7 @@ async function startServer(): Promise<void> {
         const pluginRoutes = pluginManager.getPluginRoutes();
         pluginRoutes.forEach(({ router, mount }) => {
           app.use(`/api/plugins/${mount}`, router);
-          logger.info(`✅ Registered plugin routes: /api/plugins/${mount}`);
+          logger.info(`Registered plugin routes: /api/plugins/${mount}`);
         });
 
         // Plugin info endpoint
@@ -321,13 +322,13 @@ async function startServer(): Promise<void> {
           });
         });
 
-        logger.info(`📦 Plugins loaded: ${pluginManager.getPlugins().length}`);
+        logger.info(`Plugins loaded: ${pluginManager.getPlugins().length}`);
       } catch (error) {
         logger.error('Failed to load plugins:', error);
         logger.info('Continuing without plugins...');
       }
     } else {
-      logger.info('⚠️  Plugin system not available - running without plugins');
+      logger.info('Plugin system not available - running without plugins');
       // Add plugin info endpoint that returns empty list
       app.get('/api/plugins', (req, res) => {
         res.json({

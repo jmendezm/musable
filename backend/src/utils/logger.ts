@@ -7,6 +7,35 @@ export enum LogLevel {
   DEBUG = 3
 }
 
+// ANSI color codes for terminal
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  white: '\x1b[37m',
+  gray: '\x1b[90m',
+};
+
+// Format timestamp to DD-MM-YYYY HH:MM:SS.mmm
+function formatTimestamp(date: Date): string {
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const seconds = date.getSeconds().toString().padStart(2, '0');
+  const ms = date.getMilliseconds().toString().padStart(3, '0');
+
+  return `${day}-${month}-${year} ${hours}:${minutes}:${seconds}.${ms}`;
+}
+
 class Logger {
   private level: LogLevel;
 
@@ -31,9 +60,40 @@ class Logger {
 
   private log(level: LogLevel, message: string, ...args: any[]): void {
     if (level <= this.level) {
-      const timestamp = new Date().toISOString();
+      const timestamp = formatTimestamp(new Date());
       const levelName = LogLevel[level];
-      console.log(`[${timestamp}] [${levelName}] ${message}`, ...args);
+
+      let colorMethod: any;
+      let colorCode: string;
+      let prefix: string;
+
+      switch (level) {
+        case LogLevel.ERROR:
+          colorMethod = console.error;
+          colorCode = colors.red;
+          prefix = `${colorCode}${colors.bright}[${timestamp}] [${levelName}]${colors.reset}`;
+          break;
+        case LogLevel.WARN:
+          colorMethod = console.warn;
+          colorCode = colors.yellow;
+          prefix = `${colorCode}${colors.bright}[${timestamp}] [${levelName}]${colors.reset}`;
+          break;
+        case LogLevel.INFO:
+          colorMethod = console.log;
+          colorCode = colors.cyan;
+          prefix = `${colorCode}[${timestamp}]${colors.reset} ${colors.dim}[${levelName}]${colors.reset}`;
+          break;
+        case LogLevel.DEBUG:
+          colorMethod = console.debug;
+          colorCode = colors.gray;
+          prefix = `${colorCode}[${timestamp}] [${levelName}]${colors.reset}`;
+          break;
+        default:
+          colorMethod = console.log;
+          prefix = `[${timestamp}] [${levelName}]`;
+      }
+
+      colorMethod(prefix, message, ...args);
     }
   }
 

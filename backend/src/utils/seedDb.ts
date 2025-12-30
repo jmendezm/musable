@@ -38,14 +38,14 @@ export async function seedDatabase(): Promise<void> {
       ['admin', 'admin@admin.com', passwordHash, 1]
     );
 
-    logger.info('✅ Default admin user created successfully');
-    logger.info('📧 Email: admin@admin.com');
-    logger.info('🔑 Password: admin123');
-    logger.info('⚠️  Please change the default password after first login!');
+    logger.info('Default admin user created successfully');
+    logger.info('Email: admin@admin.com');
+    logger.info('Password: admin123');
+    logger.warn('Please change the default password after first login!');
 
     // Initialize default settings
     await Settings.initializeDefaultSettings();
-    logger.info('✅ Default settings initialized');
+    logger.info('Default settings initialized');
 
   } catch (error) {
     logger.error('Failed to seed database:', error);
