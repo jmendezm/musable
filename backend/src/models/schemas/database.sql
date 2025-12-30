@@ -301,3 +301,32 @@ INSERT OR IGNORE INTO settings (key, value, description) VALUES
 ('max_file_size', '104857600', 'Maximum file size for uploads (100MB)'),
 ('supported_formats', '["mp3","flac","wav","m4a","aac","ogg"]', 'Supported audio formats'),
 ('youtube_integration', 'true', 'Enable YouTube Music integration');
+
+-- Plugins table for managing installed plugins
+CREATE TABLE IF NOT EXISTS plugins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plugin_id VARCHAR(100) NOT NULL UNIQUE, -- Unique identifier for the plugin
+    name VARCHAR(255) NOT NULL,
+    version VARCHAR(50) NOT NULL,
+    description TEXT,
+    author VARCHAR(255),
+    enabled BOOLEAN DEFAULT 1,
+    installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Plugin settings table for storing plugin-specific configuration
+CREATE TABLE IF NOT EXISTS plugin_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plugin_id VARCHAR(100) NOT NULL,
+    setting_key VARCHAR(100) NOT NULL,
+    setting_value TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (plugin_id) REFERENCES plugins(plugin_id) ON DELETE CASCADE,
+    UNIQUE(plugin_id, setting_key)
+);
+
+-- Indexes for plugins
+CREATE INDEX IF NOT EXISTS idx_plugins_plugin_id ON plugins(plugin_id);
+CREATE INDEX IF NOT EXISTS idx_plugins_enabled ON plugins(enabled);
+CREATE INDEX IF NOT EXISTS idx_plugin_settings_plugin ON plugin_settings(plugin_id);

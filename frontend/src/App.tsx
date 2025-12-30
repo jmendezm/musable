@@ -6,6 +6,7 @@ import { useFollowedPlaylistsStore } from './stores/followedPlaylistsStore';
 import { ToastProvider } from './contexts/ToastContext';
 import { searchExtensionManager } from './services/searchExtensions';
 import { frontendPluginLoader } from './services/frontendPluginLoader';
+import { apiService } from './services/api';
 
 // Layout components
 import MainLayout from './components/layout/MainLayout';
@@ -46,7 +47,7 @@ const App: React.FC = () => {
     // Load all plugins dynamically on app startup
     const loadPlugins = async () => {
       try {
-        await frontendPluginLoader.loadPlugins();
+        await frontendPluginLoader.loadPlugins(apiService);
         console.log('All plugins loaded successfully');
         setPluginsLoaded(true);
       } catch (error) {

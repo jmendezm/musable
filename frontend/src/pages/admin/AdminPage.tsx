@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { 
+import {
   Cog6ToothIcon,
   UsersIcon,
   MusicalNoteIcon,
   ClockIcon,
   ChartBarIcon,
-  DocumentTextIcon
+  DocumentTextIcon,
+  PuzzlePieceIcon
 } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 
@@ -16,8 +17,9 @@ import LibraryManagementTab from './LibraryManagementTab';
 import HistoryTab from './HistoryTab';
 import AnalyticsTab from './AnalyticsTab';
 import SystemSettingsTab from './SystemSettingsTab';
+import PluginsTab from './PluginsTab';
 
-type AdminTab = 'dashboard' | 'users' | 'library' | 'history' | 'analytics' | 'settings';
+type AdminTab = 'dashboard' | 'users' | 'library' | 'history' | 'analytics' | 'settings' | 'plugins';
 
 interface TabConfig {
   id: AdminTab;
@@ -32,6 +34,7 @@ const tabs: TabConfig[] = [
   { id: 'library', label: 'Library Management', icon: MusicalNoteIcon, component: LibraryManagementTab },
   { id: 'history', label: 'Listen History', icon: ClockIcon, component: HistoryTab },
   { id: 'analytics', label: 'Analytics', icon: DocumentTextIcon, component: AnalyticsTab },
+  { id: 'plugins', label: 'Plugins', icon: PuzzlePieceIcon, component: PluginsTab },
   { id: 'settings', label: 'System Settings', icon: Cog6ToothIcon, component: SystemSettingsTab },
 ];
 

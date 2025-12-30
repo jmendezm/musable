@@ -25,6 +25,7 @@ import streamRoutes from './routes/stream';
 import favoritesRoutes from './routes/favorites';
 import shareRoutes from './routes/share';
 import createRoomRoutes from './routes/rooms';
+import pluginsRoutes from './routes/plugins';
 
 // Models
 import SongModel from './models/Song';
@@ -32,12 +33,13 @@ import ArtistModel from './models/Artist';
 import AlbumModel from './models/Album';
 import UserModel from './models/User';
 import PlaylistModel from './models/Playlist';
+import PluginModel from './models/Plugin';
 
 // Plugin system (optional)
 let PluginManager: any = null;
-let pluginManager: any = null;
+export let pluginManager: any = null;
 try {
-  PluginManager = require('../../plugins/core/PluginManager').default;
+  PluginManager = require('../../plugins/core/dist/PluginManager').default;
 } catch (error) {
   logger.info('Plugin system not available - plugins folder not found');
 }
@@ -53,6 +55,9 @@ const io = new Server(server, {
     credentials: false
   }
 });
+
+// Make io accessible from Express app (for plugin management)
+app.set('io', io);
 
 const SQLiteStore = require('connect-sqlite3')(session);
 
@@ -153,6 +158,18 @@ app.use('/api/stream', streamRoutes);
 app.use('/api/favorites', favoritesRoutes);
 app.use('/api/share', shareRoutes);
 app.use('/api/rooms', createRoomRoutes(io));
+app.use('/api/plugins', pluginsRoutes);
+
+// Serve plugin assets (icons, etc.) statically
+const pluginsDir = path.join(__dirname, '../../plugins');
+app.use('/plugins/assets', express.static(pluginsDir, {
+  setHeaders: (res, filePath) => {
+    // Set CORS headers for plugin assets
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+  }
+}));
 
 // Initialize plugin system
 const models = {
@@ -160,14 +177,15 @@ const models = {
   Artist: ArtistModel,
   Album: AlbumModel,
   User: UserModel,
-  Playlist: PlaylistModel
+  Playlist: PlaylistModel,
+  Plugin: PluginModel
 };
 
 // Initialize plugin manager if available
-const pluginsDir = path.join(__dirname, '../../plugins');
 if (PluginManager) {
   try {
     pluginManager = new PluginManager(models, config);
+    pluginManager.setExpressApp(app); // Set Express app reference for dynamic route mounting
     logger.info('Plugin manager initialized');
   } catch (error) {
     logger.error('Failed to initialize plugin manager:', error);
@@ -303,15 +321,8 @@ async function startServer(): Promise<void> {
         pluginsLoaded = true;
         logger.info('Plugins loaded, health endpoint now active');
 
-        // Start enabled plugins
+        // Start enabled plugins (routes are now mounted dynamically by PluginManager)
         await pluginManager.startPlugins(io);
-
-        // Register plugin routes
-        const pluginRoutes = pluginManager.getPluginRoutes();
-        pluginRoutes.forEach(({ router, mount }) => {
-          app.use(`/api/plugins/${mount}`, router);
-          logger.info(`Registered plugin routes: /api/plugins/${mount}`);
-        });
 
         // Plugin info endpoint
         app.get('/api/plugins', (req, res) => {
