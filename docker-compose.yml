@@ -19,6 +19,11 @@ services:
       - PORT=3000
       - BACKEND_PORT=3001
 
+      # Frontend Configuration
+      - REACT_APP_BASE_URL=http://localhost:3000
+      - REACT_APP_API_BASE_URL=http://localhost:3001/api
+      - REACT_APP_WEBSOCKET_URL=ws://localhost:3001
+
       # Database
       - DATABASE_PATH=/app/data/musable.db
 

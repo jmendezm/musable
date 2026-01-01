@@ -1,6 +1,27 @@
+const webpack = require('webpack');
+const path = require('path');
+
 module.exports = {
   webpack: {
     configure: (webpackConfig, { env, paths }) => {
+      // Load environment variables from root .env file
+      const dotenv = require('dotenv');
+
+      const envPath = path.resolve(__dirname, '../.env');
+      dotenv.config({ path: envPath });
+
+      // Define REACT_APP_ variables in webpack
+      const reactAppVars = Object.keys(process.env)
+        .filter(key => key.startsWith('REACT_APP_'))
+        .reduce((acc, key) => {
+          acc[`process.env.${key}`] = JSON.stringify(process.env[key]);
+          return acc;
+        }, {});
+
+      webpackConfig.plugins.push(
+        new webpack.DefinePlugin(reactAppVars)
+      );
+
       return webpackConfig;
     },
   },

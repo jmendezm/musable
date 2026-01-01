@@ -1,7 +1,17 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import logger from './../utils/logger';
 
-dotenv.config();
+// Load .env from project root (one directory up from backend/)
+const envPath = path.resolve(__dirname, '../../../.env');
+logger.info(`Loading .env from: ${envPath}`);
+const result = dotenv.config({ path: envPath });
+
+if (!result.error) {
+  logger.info('Loaded .env file');
+} else {
+  logger.error('Failed to load .env file:', result.error);
+}
 
 interface Config {
   port: number;

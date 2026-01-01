@@ -1,4 +1,9 @@
-import config from '../config/config';
+// Import dotenv to ensure .env is loaded before logger initializes
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load .env from project root to ensure LOG_LEVEL is available
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 export enum LogLevel {
   ERROR = 0,
@@ -40,7 +45,10 @@ class Logger {
   private level: LogLevel;
 
   constructor() {
-    switch (config.logLevel.toLowerCase()) {
+    // Read log level directly from environment variable (no circular dependency)
+    const logLevel = process.env.LOG_LEVEL || 'info';
+
+    switch (logLevel.toLowerCase()) {
       case 'error':
         this.level = LogLevel.ERROR;
         break;

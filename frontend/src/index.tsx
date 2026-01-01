@@ -4,7 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import './index.css';
 import App from './App';
-import { loadConfig } from './config/config';
+import { getConfig } from './config/config';
+
+// Load configuration synchronously from environment variables
+const config = getConfig();
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
@@ -94,15 +97,7 @@ window.addEventListener('unhandledrejection', (event) => {
   event.preventDefault();
 });
 
-// Load configuration before rendering the app
-loadConfig()
-  .then(() => {
-    console.log('Configuration loaded successfully');
-    renderApp();
-  })
-  .catch((error) => {
-    console.warn('Failed to load configuration, using fallback:', error);
-    renderApp(); // Render with fallback config
-  });
+// Render the app immediately (config is loaded synchronously)
+renderApp();
 
 // PWA functionality removed

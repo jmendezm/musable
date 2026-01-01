@@ -3,7 +3,7 @@ import { useRoomStore, PlaybackSyncEvent, ChatMessage, Room } from '../stores/ro
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import { apiService } from './api';
-import { getWebSocketUrl, loadConfig } from '../config/config';
+import { getWebSocketUrl } from '../config/config';
 import toast from 'react-hot-toast';
 
 class RoomWebSocketService {
@@ -22,9 +22,6 @@ class RoomWebSocketService {
       }
 
       try {
-        // Ensure config is loaded
-        await loadConfig();
-        
         // Disconnect existing socket
         if (this.socket) {
           this.socket.disconnect();

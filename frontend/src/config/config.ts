@@ -4,42 +4,24 @@ interface Config {
   WEBSOCKET_URL: string;
 }
 
-let config: Config | null = null;
-
-export const loadConfig = async (): Promise<Config> => {
-  if (config) {
-    return config;
-  }
-
-  // Load config from config.json
-  const response = await fetch('/config.json');
-  const jsonConfig = await response.json();
-
-  config = {
-    BASE_URL: jsonConfig.BASE_URL,
-    API_BASE_URL: jsonConfig.API_BASE_URL,
-    WEBSOCKET_URL: jsonConfig.WEBSOCKET_URL
-  };
-
-  console.log('✅ Config loaded:', config);
-  return config;
+const config: Config = {
+  BASE_URL: process.env.REACT_APP_BASE_URL || 'http://127.0.0.1:3000',
+  API_BASE_URL: process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:3001/api',
+  WEBSOCKET_URL: process.env.REACT_APP_WEBSOCKET_URL || 'ws://127.0.0.1:3001'
 };
 
 export const getConfig = (): Config => {
-  if (!config) {
-    throw new Error('Config not loaded. Call loadConfig() first.');
-  }
   return config;
 };
 
 export const getBaseUrl = (): string => {
-  return getConfig().BASE_URL;
+  return config.BASE_URL;
 };
 
 export const getApiBaseUrl = (): string => {
-  return getConfig().API_BASE_URL;
+  return config.API_BASE_URL;
 };
 
 export const getWebSocketUrl = (): string => {
-  return getConfig().WEBSOCKET_URL;
+  return config.WEBSOCKET_URL;
 };
