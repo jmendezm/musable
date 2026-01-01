@@ -26,7 +26,7 @@ interface Config {
 }
 
 const config: Config = {
-  port: parseInt(process.env.PORT || '3001', 10),
+  port: parseInt(process.env.BACKEND_PORT || '3001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
   databasePath: process.env.DATABASE_PATH || './musable.db',
   jwtSecret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
