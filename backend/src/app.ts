@@ -63,26 +63,33 @@ app.set('io', io);
 
 const SQLiteStore = require('connect-sqlite3')(session);
 
-// Define upload directories early
-const uploadsDir = path.resolve(config.uploadPath);
-const musicDir = path.join(uploadsDir, 'music');
-const artworkDir = path.join(uploadsDir, 'artwork');
-const profilePicturesDir = path.join(uploadsDir, 'profile-pictures');
+// Create profile pictures directory for user uploads
+const profilePicturesDir = path.join(process.cwd(), 'uploads', 'profile-pictures');
+if (!fs.existsSync(profilePicturesDir)) {
+  fs.mkdirSync(profilePicturesDir, { recursive: true });
+}
 
-[uploadsDir, musicDir, artworkDir, profilePicturesDir].forEach(dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-});
+// Create artwork directory for album covers
+const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+if (!fs.existsSync(artworkDir)) {
+  fs.mkdirSync(artworkDir, { recursive: true });
+}
 
-// CORS-enabled static file serving with setHeaders callback
-app.use('/uploads', express.static(uploadsDir, {
-  setHeaders: (res, path, stat) => {
-    // Set CORS headers directly in the setHeaders callback
+// Serve profile pictures with CORS
+app.use('/uploads/profile-pictures', express.static(path.join(process.cwd(), 'uploads', 'profile-pictures'), {
+  setHeaders: (res, filePath, stat) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-    res.setHeader('Access-Control-Allow-Credentials', 'false');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
+}));
+
+// Serve album artwork with CORS
+app.use('/uploads/artwork', express.static(path.join(process.cwd(), 'uploads', 'artwork'), {
+  setHeaders: (res, filePath, stat) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   }
 }));
 
@@ -269,8 +276,10 @@ if (fs.existsSync(publicPath)) {
 
   // Serve index.html for all non-API routes (SPA support)
   app.get('*', (req, res, next) => {
-    // Skip API routes and health check
-    if (req.path.startsWith('/api') || req.path === '/health' || req.path.startsWith('/uploads')) {
+    // Skip API routes, health check, profile pictures, and artwork
+    if (req.path.startsWith('/api') || req.path === '/health' ||
+        req.path.startsWith('/uploads/profile-pictures') ||
+        req.path.startsWith('/uploads/artwork')) {
       return next();
     }
     res.sendFile(path.join(publicPath, 'index.html'));
@@ -309,8 +318,6 @@ async function startServer(): Promise<void> {
     server.listen(config.port, '0.0.0.0', () => {
       logger.info(`Server running on port ${config.port}`);
       logger.info(`Environment: ${config.nodeEnv}`);
-      logger.info(`Upload path: ${config.uploadPath}`);
-      logger.info(`Library paths: ${config.libraryPaths.join(', ')}`);
       logger.info(`CORS origin: ${config.corsOrigin}`);
       logger.info(`WebSocket server enabled`);
     });

@@ -70,11 +70,6 @@ web_modules/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variable files
-.env
-.env.*
-!.env.example
-
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
@@ -148,8 +143,6 @@ vite.config.ts.timestamp-*
 # Python tooling
 .venv/
 
-# Environment variables
-.env
 
 # code chatbots
 .cursor/
@@ -169,7 +162,6 @@ sessions/
 # Upload directories
 uploads/
 music-uploads/
-yt-downloads/
 
 # Build directories
 dist/

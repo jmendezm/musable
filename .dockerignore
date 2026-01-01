@@ -75,7 +75,6 @@ sessions.db
 # Uploads and music (will be in volumes)
 uploads/
 music/
-yt-downloads/
 data/
 
 # OS files

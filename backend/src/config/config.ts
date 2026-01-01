@@ -10,13 +10,7 @@ interface Config {
   jwtSecret: string;
   jwtExpiresIn: string;
   sessionSecret: string;
-  maxFileSize: number;
-  uploadPath: string;
-  libraryPaths: string[];
   supportedFormats: string[];
-  youtubeEnabled: boolean;
-  youtubeDownloadPath: string;
-  youtubeApiKey: string | undefined;
   adminEmail: string;
   adminPassword: string;
   rateLimitWindowMs: number;
@@ -32,13 +26,7 @@ const config: Config = {
   jwtSecret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   sessionSecret: process.env.SESSION_SECRET || 'your-super-secret-session-key',
-  maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '104857600', 10),
-  uploadPath: process.env.UPLOAD_PATH || './uploads',
-  libraryPaths: JSON.parse(process.env.LIBRARY_PATHS || '["./music"]'),
   supportedFormats: JSON.parse(process.env.SUPPORTED_FORMATS || '["mp3","flac","wav","m4a","aac","ogg"]'),
-  youtubeEnabled: process.env.YOUTUBE_ENABLED === 'true',
-  youtubeDownloadPath: process.env.YOUTUBE_DOWNLOAD_PATH || './downloads',
-  youtubeApiKey: process.env.YOUTUBE_API_KEY,
   adminEmail: process.env.ADMIN_EMAIL || 'admin@admin.com',
   adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),

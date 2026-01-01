@@ -402,7 +402,7 @@ export const usePlayerStore = create<PlayerStore>()(
           
           const howl = new Howl({
             src: [streamUrl],
-            html5: false, // IMPORTANT: Must be false for Web Audio API EQ to work
+            html5: false, // Must be false for Web Audio API EQ to work
             preload: true,
             format: ['mp3'],
             onload: () => {

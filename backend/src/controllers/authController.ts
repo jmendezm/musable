@@ -171,11 +171,11 @@ export const validateInvite = asyncHandler(async (req: Request, res: Response) =
 // Multer configuration for profile picture uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadsDir = path.join(process.cwd(), 'uploads', 'profile-pictures');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    const profilePicturesDir = path.join(process.cwd(), 'uploads', 'profile-pictures');
+    if (!fs.existsSync(profilePicturesDir)) {
+      fs.mkdirSync(profilePicturesDir, { recursive: true });
     }
-    cb(null, uploadsDir);
+    cb(null, profilePicturesDir);
   },
   filename: (req, file, cb) => {
     const userId = (req as AuthRequest).user!.id;
