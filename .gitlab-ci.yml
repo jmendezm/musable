@@ -13,7 +13,7 @@ build-push-musable:
   image: docker:latest
   services:
     - name: docker:dind
-      command: ["--tls=false"]
+      command: ["--insecure-registry=registry.git.breadjs.nl:5050"]
   before_script:
     - echo "Waiting for Docker daemon to start..."
     - timeout 60 sh -c 'until docker info; do sleep 1; done'
@@ -38,7 +38,7 @@ release-tag:
   image: docker:latest
   services:
     - name: docker:dind
-      command: ["--tls=false"]
+      command: ["--insecure-registry=registry.git.breadjs.nl:5050"]
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin registry.git.breadjs.nl:5050
   script:
