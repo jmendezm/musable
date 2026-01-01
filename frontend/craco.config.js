@@ -5,6 +5,10 @@ module.exports = {
     },
   },
   devServer: (devServerConfig, { env, paths, proxy, allowedHost }) => {
+    // Explicitly set port to 3000 to avoid conflicts with backend
+    devServerConfig.port = 3000;
+    devServerConfig.host = '0.0.0.0';
+
     // Remove deprecated middleware options
     delete devServerConfig.onBeforeSetupMiddleware;
     delete devServerConfig.onAfterSetupMiddleware;
