@@ -21,7 +21,7 @@ build-push-musable:
     # 1. Create the Docker config directory
     - mkdir -p /etc/docker
     # 2. Force the daemon to recognize your IP:Port as insecure via a config file
-    - echo "{\"insecure-registries\":[\"$INTERNAL_REGISTRY\"]}" > /etc/docker/daemon.json
+    - echo "{\"insecure-registries\":[\"192.168.1.20:5050\"]}" > /etc/docker/daemon.json
     - echo "Waiting for Docker daemon to start..."
     - timeout 60 sh -c 'until docker info; do sleep 1; done'
     # 3. Standard Login
