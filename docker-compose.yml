@@ -16,7 +16,9 @@ services:
     environment:
       # Server Configuration
       - NODE_ENV=development
+      - PORT=3000
       - BACKEND_PORT=3001
+      - REACT_APP_API_URL=http://localhost:3001/api
 
       # Database
       - DATABASE_PATH=/app/data/musable.db
