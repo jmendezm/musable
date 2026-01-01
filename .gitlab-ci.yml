@@ -6,6 +6,10 @@ variables:
   DOCKER_TLS_CERTDIR: ""
   DOCKER_HOST: tcp://docker:2375
   DOCKER_DRIVER: overlay2
+  # Define your custom registry address here so you only change it in one place
+  INTERNAL_REGISTRY: "192.168.1.20:5050"
+  # This builds the full image path using the internal IP
+  INTERNAL_IMAGE_PATH: "$INTERNAL_REGISTRY/$CI_PROJECT_PATH"
 
 # Build and push Musable image
 build-push-musable:
@@ -17,16 +21,16 @@ build-push-musable:
   before_script:
     - echo "Waiting for Docker daemon to start..."
     - timeout 60 sh -c 'until docker info; do sleep 1; done'
-    # GitLab automatically fills $CI_REGISTRY, $CI_REGISTRY_USER, and $CI_REGISTRY_PASSWORD
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin 192.168.1.20:5050
+    # Use the variable for login
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $INTERNAL_REGISTRY
   script:
     - echo "Building Musable image..."
-    # $CI_REGISTRY_IMAGE already includes your subdomain and project path
-    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
-    - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA $CI_REGISTRY_IMAGE:latest
+    # Tag using the Internal Image Path variable
+    - docker build -t $INTERNAL_IMAGE_PATH:$CI_COMMIT_SHORT_SHA .
+    - docker tag $INTERNAL_IMAGE_PATH:$CI_COMMIT_SHORT_SHA $INTERNAL_IMAGE_PATH:latest
     - echo "Pushing Musable image to GitLab registry..."
-    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-    - docker push $CI_REGISTRY_IMAGE:latest
+    - docker push $INTERNAL_IMAGE_PATH:$CI_COMMIT_SHORT_SHA
+    - docker push $INTERNAL_IMAGE_PATH:latest
   only:
     - main
     - dev
@@ -40,11 +44,11 @@ release-tag:
     - name: docker:dind
       command: ["--insecure-registry=192.168.1.20:5050"]
   before_script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin 192.168.1.20:5050
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $INTERNAL_REGISTRY
   script:
     - echo "Creating release tag for $CI_COMMIT_TAG..."
-    - docker pull $CI_REGISTRY_IMAGE:latest
-    - docker tag $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
-    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
+    - docker pull $INTERNAL_IMAGE_PATH:latest
+    - docker tag $INTERNAL_IMAGE_PATH:latest $INTERNAL_IMAGE_PATH:$CI_COMMIT_TAG
+    - docker push $INTERNAL_IMAGE_PATH:$CI_COMMIT_TAG
   only:
     - tags
