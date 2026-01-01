@@ -18,7 +18,7 @@ build-push-musable:
     - echo "Waiting for Docker daemon to start..."
     - timeout 60 sh -c 'until docker info; do sleep 1; done'
     # GitLab automatically fills $CI_REGISTRY, $CI_REGISTRY_USER, and $CI_REGISTRY_PASSWORD
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin registry.git.breadjs.nl:5050
   script:
     - echo "Building Musable image..."
     # $CI_REGISTRY_IMAGE already includes your subdomain and project path
@@ -40,8 +40,6 @@ release-tag:
     - name: docker:dind
       command: ["--tls=false"]
   before_script:
-    - echo "Waiting for Docker daemon..."
-    - timeout 60 sh -c 'until docker info; do sleep 1; done'
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin registry.git.breadjs.nl:5050
   script:
     - echo "Creating release tag for $CI_COMMIT_TAG..."
