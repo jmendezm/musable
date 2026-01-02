@@ -14,7 +14,7 @@
     "copy:frontend": "cpx \"frontend/build/**/*\" backend/public",
     "start": "cd backend && npm start",
     "prod": "npm run build && npm run start",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install && npm run install:plugins",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install && cd .. && npm run install:plugins",
     "install:plugins": "node scripts/install-plugins.js",
     "clean": "shx rm -rf backend/dist backend/public frontend/build frontend/node_modules backend/node_modules node_modules plugins/*/node_modules plugins/*/dist frontend/src/plugins"
   },
