@@ -3,16 +3,7 @@ import { XMarkIcon, PhotoIcon, MusicalNoteIcon, MagnifyingGlassIcon } from '@her
 import { Song } from '../types';
 import { apiService } from '../services/api';
 import { useToast } from '../contexts/ToastContext';
-import { imageSearchExtensionManager, SearchImage } from '../services/imageSearchExtensions';
-
-// Lazy import the ImageSearchModal component
-const ImageSearchModal = React.lazy(() => import(
-  /* webpackChunkName: "image-search-modal" */
-  /* webpackMode: "lazy" */
-  '../plugins/youtube/components/ImageSearchModal'
-).catch(() => ({
-  default: () => null // Fallback if plugin doesn't exist
-})));
+import { imageSearchExtensionManager } from '../services/imageSearchExtensions';
 
 interface EditSongModalProps {
   isOpen: boolean;
@@ -42,6 +33,7 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
+  const [ImageSearchModalComponent, setImageSearchModalComponent] = useState<React.ComponentType<any> | null>(null);
 
   const [formData, setFormData] = useState<EditSongData>({
     title: '',
@@ -73,6 +65,18 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
       }
     }
   }, [song]);
+
+  // Dynamically load ImageSearchModal from any available plugin
+  useEffect(() => {
+    // Get the modal component from any registered image search extension
+    const ModalComponent = imageSearchExtensionManager.getModalComponent();
+    if (ModalComponent) {
+      setImageSearchModalComponent(() => ModalComponent);
+      console.log('Image search modal loaded from extension');
+    } else {
+      console.log('No image search modal component available from extensions');
+    }
+  }, []);
 
   // Reset form when modal closes
   useEffect(() => {
@@ -145,8 +149,12 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
   };
 
   const handleOpenImageSearch = () => {
+    if (!ImageSearchModalComponent) {
+      showError('Image search modal is not available. Please install a plugin that provides image search functionality.');
+      return;
+    }
     if (!imageSearchExtensionManager.hasExtensions()) {
-      showError('No image search plugins available. Install a plugin like YouTube to enable this feature.');
+      showError('No image search extensions available.');
       return;
     }
     setIsImageSearchOpen(true);
@@ -431,16 +439,14 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
           </div>
         </form>
 
-        {/* Image Search Modal */}
-        {isImageSearchOpen && (
-          <React.Suspense fallback={null}>
-            <ImageSearchModal
-              isOpen={isImageSearchOpen}
-              onClose={() => setIsImageSearchOpen(false)}
-              onImageSelect={handleImageSearchSelect}
-              initialQuery={getImageSearchQuery()}
-            />
-          </React.Suspense>
+        {/* Image Search Modal - dynamically loaded if plugin is available */}
+        {isImageSearchOpen && ImageSearchModalComponent && (
+          <ImageSearchModalComponent
+            isOpen={isImageSearchOpen}
+            onClose={() => setIsImageSearchOpen(false)}
+            onImageSelect={handleImageSearchSelect}
+            initialQuery={getImageSearchQuery()}
+          />
         )}
       </div>
     </div>
