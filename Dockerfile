@@ -26,6 +26,9 @@ COPY --chown=musable:nodejs package*.json ./
 COPY --chown=musable:nodejs backend/package*.json ./backend/
 COPY --chown=musable:nodejs frontend/package*.json ./frontend/
 
+# Copy scripts folder (needed for install:plugins)
+COPY --chown=musable:nodejs scripts/ ./scripts/
+
 # Switch to non-root user BEFORE installing packages
 USER musable
 
