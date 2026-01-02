@@ -55,11 +55,6 @@ services:
       # Example (Linux/Mac): /home/user/Music:/music:ro
       - ${MUSIC_PATH:-./music}:/music:ro
 
-      # Mount a folder where you can add NEW music files
-      # Files added here will be auto-detected and scanned
-      # This folder is read-write so Musable can also download YouTube music here
-      - ${MUSIC_UPLOAD_PATH:-./music-uploads}:/music-uploads
-
       # Persistent data storage
       - musable_data:/app/data
       - musable_uploads:/app/uploads
