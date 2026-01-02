@@ -5,6 +5,7 @@ import { useFollowedAlbumsStore } from './stores/followedAlbumsStore';
 import { useFollowedPlaylistsStore } from './stores/followedPlaylistsStore';
 import { ToastProvider } from './contexts/ToastContext';
 import { searchExtensionManager } from './services/searchExtensions';
+import { imageSearchExtensionManager } from './services/imageSearchExtensions';
 import { frontendPluginLoader } from './services/frontendPluginLoader';
 import { apiService } from './services/api';
 
@@ -41,8 +42,10 @@ const App: React.FC = () => {
   const [pluginsLoaded, setPluginsLoaded] = useState(false);
 
   useEffect(() => {
-    // Expose search extension manager to window for plugins
+    // Expose extension managers and API service to window for plugins
     (window as any).searchExtensionManager = searchExtensionManager;
+    (window as any).imageSearchExtensionManager = imageSearchExtensionManager;
+    (window as any).apiService = apiService;
 
     // Load all plugins dynamically on app startup
     const loadPlugins = async () => {

@@ -188,6 +188,15 @@ export class SongModel {
     );
   }
 
+  async update(id: number, updates: Partial<CreateSongData>): Promise<Song> {
+    await this.updateSong(id, updates);
+    const song = await this.findById(id);
+    if (!song) {
+      throw new Error('Failed to update song');
+    }
+    return song;
+  }
+
   async deleteSong(id: number): Promise<void> {
     await this.db.run('DELETE FROM songs WHERE id = ?', [id]);
   }

@@ -319,8 +319,7 @@ class ApiService {
     return this.request('GET', `/admin/stats/listening${userId ? `?user=${userId}` : ''}`);
   }
 
-  async updateSong(id: number, data: FormData): Promise<ApiResponse<Song>> {
-    // Don't set Content-Type header for FormData, let the browser handle it
+  async updateSong(id: number, data: any): Promise<ApiResponse<Song>> {
     return this.request('PUT', `/admin/songs/${id}`, data);
   }
 
@@ -490,6 +489,24 @@ class ApiService {
     // Ensure path starts with / to avoid missing slash
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     return `${backendUrl}${normalizedPath}`;
+  }
+
+  // YouTube Music download endpoints
+  async downloadYTMusicSong(videoId: string): Promise<ApiResponse<{ downloadId: string; message: string }>> {
+    return this.request('POST', `/plugins/youtube/music/download/${videoId}`);
+  }
+
+  async getDownloadProgress(downloadId: string): Promise<ApiResponse<{
+    id: string;
+    status: 'downloading' | 'processing' | 'completed' | 'error';
+    progress: number;
+    error?: string;
+  }>> {
+    return this.request('GET', `/plugins/youtube/music/download/${downloadId}/progress`);
+  }
+
+  async getActiveDownloads(): Promise<ApiResponse<any[]>> {
+    return this.request('GET', `/plugins/youtube/music/downloads`);
   }
 }
 

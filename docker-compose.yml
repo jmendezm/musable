@@ -2,15 +2,12 @@ version: '3.8'
 
 services:
   musable:
-    # Replace with your actual GitLab registry path
-    # Example: git.breadjs.nl/yourusername/musable:latest
-    # Or registry.gitlab.com/yourusername/musable:latest
-    image: ${IMAGE_NAME:-git.breadjs.nl/musable/musable}:latest
+    image: registry.git.breadjs.nl/musable/musable:latest
 
     container_name: musable
     restart: unless-stopped
     ports:
-      - "3000:3000"  # Frontend dev server
+      - "3000:3000"  # Frontend server
       - "3001:3001"  # Backend API
 
     environment:

@@ -3,6 +3,16 @@ import { XMarkIcon, PhotoIcon, MusicalNoteIcon, MagnifyingGlassIcon } from '@her
 import { Song } from '../types';
 import { apiService } from '../services/api';
 import { useToast } from '../contexts/ToastContext';
+import { imageSearchExtensionManager, SearchImage } from '../services/imageSearchExtensions';
+
+// Lazy import the ImageSearchModal component
+const ImageSearchModal = React.lazy(() => import(
+  /* webpackChunkName: "image-search-modal" */
+  /* webpackMode: "lazy" */
+  '../plugins/youtube/components/ImageSearchModal'
+).catch(() => ({
+  default: () => null // Fallback if plugin doesn't exist
+})));
 
 interface EditSongModalProps {
   isOpen: boolean;
@@ -17,7 +27,8 @@ interface EditSongData {
   album_title: string;
   year: number | null;
   genre: string;
-  artwork: File | null;
+  artwork: File | Blob | string | null;
+  artworkChanged: boolean;
 }
 
 const EditSongModal: React.FC<EditSongModalProps> = ({
@@ -30,6 +41,7 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
 
   const [formData, setFormData] = useState<EditSongData>({
     title: '',
@@ -37,7 +49,8 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
     album_title: '',
     year: null,
     genre: '',
-    artwork: null
+    artwork: null,
+    artworkChanged: false
   });
 
   // Initialize form data when song changes
@@ -49,7 +62,8 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
         album_title: song.album_title || '',
         year: song.year || null,
         genre: song.genre || '',
-        artwork: null
+        artwork: null,
+        artworkChanged: false  // Reset to false when loading song
       });
       // Set preview to existing artwork if available
       if (song.artwork_path) {
@@ -69,7 +83,8 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
         album_title: '',
         year: null,
         genre: '',
-        artwork: null
+        artwork: null,
+        artworkChanged: false
       });
       setPreviewUrl(null);
       setIsLoading(false);
@@ -98,7 +113,7 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
         return;
       }
 
-      setFormData(prev => ({ ...prev, artwork: file }));
+      setFormData(prev => ({ ...prev, artwork: file, artworkChanged: true }));
 
       // Create preview URL
       const reader = new FileReader();
@@ -110,16 +125,44 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
   };
 
   const handleRemoveArtwork = () => {
-    setFormData(prev => ({ ...prev, artwork: null }));
+    setFormData(prev => ({ ...prev, artwork: null, artworkChanged: true }));
     setPreviewUrl(song?.artwork_path ? apiService.getArtworkUrl(song.artwork_path) : null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
+  const handleImageSearchSelect = async (imageBlob: Blob, imageUrl: string) => {
+    // Convert blob to File
+    const file = new File([imageBlob], 'artwork.jpg', { type: 'image/jpeg' });
+
+    setFormData(prev => ({ ...prev, artwork: file, artworkChanged: true }));
+
+    // Create preview URL from blob
+    setPreviewUrl(URL.createObjectURL(imageBlob));
+
+    showSuccess('Artwork selected from search');
+  };
+
+  const handleOpenImageSearch = () => {
+    if (!imageSearchExtensionManager.hasExtensions()) {
+      showError('No image search plugins available. Install a plugin like YouTube to enable this feature.');
+      return;
+    }
+    setIsImageSearchOpen(true);
+  };
+
+  const getImageSearchQuery = () => {
+    if (!song) return '';
+    const parts = [];
+    if (song.artist_name) parts.push(song.artist_name);
+    if (song.album_title) parts.push(song.album_title);
+    return parts.join(' ');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!song) return;
 
     // Basic validation
@@ -131,18 +174,50 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
     setIsLoading(true);
 
     try {
-      const updateData = new FormData();
-      updateData.append('title', formData.title.trim());
-      updateData.append('artist_name', formData.artist_name.trim());
-      updateData.append('album_title', formData.album_title.trim());
-      updateData.append('genre', formData.genre.trim());
-      
-      if (formData.year) {
-        updateData.append('year', formData.year.toString());
+      let artworkData: string | null | undefined = undefined;
+
+      // Only process artwork if it was explicitly changed
+      if (formData.artworkChanged) {
+        // Convert artwork File/Blob to base64 if present
+        if (formData.artwork instanceof File) {
+          artworkData = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result as string;
+              resolve(result);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(formData.artwork as File);
+          });
+        } else if (formData.artwork === null) {
+          // Explicitly remove artwork
+          artworkData = null;
+        } else if (formData.artwork && typeof formData.artwork === 'object') {
+          // Handle Blob (or File that wasn't caught by instanceof check)
+          const blob = formData.artwork as Blob;
+          artworkData = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result as string;
+              resolve(result);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
       }
 
-      if (formData.artwork) {
-        updateData.append('artwork', formData.artwork);
+      const updateData = {
+        title: formData.title.trim(),
+        artist_name: formData.artist_name.trim(),
+        album_title: formData.album_title.trim(),
+        genre: formData.genre.trim(),
+        year: formData.year || null
+      };
+
+      // Only add artwork to update data if it was changed
+      if (artworkData !== undefined) {
+        (updateData as any).artwork = artworkData;
       }
 
       const response = await apiService.updateSong(song.id, updateData);
@@ -152,8 +227,8 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
         onSongUpdated?.(response.data);
         onClose();
       } else {
-        const errorMessage = typeof response.error === 'string' 
-          ? response.error 
+        const errorMessage = typeof response.error === 'string'
+          ? response.error
           : response.error?.message || 'Failed to update song';
         showError(errorMessage);
       }
@@ -217,17 +292,18 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
                     <PhotoIcon className="w-4 h-4" />
                     Upload
                   </button>
-
-                  {/* Image search moved to plugin */}
-                  {/* <button
-                    type="button"
-                    onClick={handleOpenImageSearch}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-primary hover:bg-secondary text-white text-sm rounded-lg transition-colors"
-                    disabled={isLoading}
-                  >
-                    <MagnifyingGlassIcon className="w-4 h-4" />
-                    Search
-                  </button> */}
+                  {imageSearchExtensionManager.hasExtensions() && (
+                    <button
+                      type="button"
+                      onClick={handleOpenImageSearch}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors"
+                      disabled={isLoading}
+                      title="Search online for artwork"
+                    >
+                      <MagnifyingGlassIcon className="w-4 h-4" />
+                      Search Online
+                    </button>
+                  )}
                 </div>
                 
                 {(formData.artwork || previewUrl) && (
@@ -354,23 +430,19 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
             </button>
           </div>
         </form>
-      </div>
 
-      {/* Image Search Modal - moved to plugin */}
-      {/* <ImageSearchModal
-        isOpen={imageSearchOpen}
-        onClose={() => setImageSearchOpen(false)}
-        onImageSelect={handleImageSearchSelect}
-        initialQuery={
-          (() => {
-            const parts = [];
-            if (formData.artist_name?.trim()) parts.push(formData.artist_name.trim());
-            if (formData.title?.trim()) parts.push(formData.title.trim());
-            if (formData.album_title?.trim()) parts.push(formData.album_title.trim());
-            return parts.join(' ') || 'music artwork';
-          })()
-        }
-      /> */}
+        {/* Image Search Modal */}
+        {isImageSearchOpen && (
+          <React.Suspense fallback={null}>
+            <ImageSearchModal
+              isOpen={isImageSearchOpen}
+              onClose={() => setIsImageSearchOpen(false)}
+              onImageSelect={handleImageSearchSelect}
+              initialQuery={getImageSearchQuery()}
+            />
+          </React.Suspense>
+        )}
+      </div>
     </div>
   );
 };

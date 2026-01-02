@@ -6,11 +6,13 @@ import {
   TrashIcon,
   MagnifyingGlassIcon,
   ArrowPathIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  PencilIcon
 } from '@heroicons/react/24/outline';
 import { apiService } from '../../services/api';
 import { Song, ScanProgress } from '../../types';
 import clsx from 'clsx';
+import EditSongModal from '../../components/EditSongModal';
 
 interface LibraryPath {
   id: number;
@@ -28,7 +30,9 @@ const LibraryManagementTab: React.FC = () => {
   const [newPath, setNewPath] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
-  
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingSong, setEditingSong] = useState<Song | null>(null);
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [totalSongs, setTotalSongs] = useState(0);
@@ -192,6 +196,22 @@ const LibraryManagementTab: React.FC = () => {
       console.error('Failed to delete song:', err);
       setError(err.message || 'Failed to delete song');
     }
+  };
+
+  const handleEditSong = (song: Song) => {
+    setEditingSong(song);
+    setEditModalOpen(true);
+  };
+
+  const handleCloseEditModal = () => {
+    setEditModalOpen(false);
+    setEditingSong(null);
+  };
+
+  const handleSongUpdated = (updatedSong: Song) => {
+    setSongs(prev =>
+      prev.map(song => song.id === updatedSong.id ? updatedSong : song)
+    );
   };
 
   const handlePageChange = (page: number) => {
@@ -435,13 +455,22 @@ const LibraryManagementTab: React.FC = () => {
                       </div>
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() => handleDeleteSong(song.id!)}
-                        className="p-1 text-gray-400 hover:text-red-400 transition-colors"
-                        title="Remove from library"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => handleEditSong(song)}
+                          className="p-1 text-gray-400 hover:text-primary transition-colors"
+                          title="Edit song"
+                        >
+                          <PencilIcon className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSong(song.id!)}
+                          className="p-1 text-gray-400 hover:text-red-400 transition-colors"
+                          title="Remove from library"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -530,6 +559,14 @@ const LibraryManagementTab: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Edit Song Modal */}
+      <EditSongModal
+        isOpen={editModalOpen}
+        onClose={handleCloseEditModal}
+        song={editingSong}
+        onSongUpdated={handleSongUpdated}
+      />
     </div>
   );
 };

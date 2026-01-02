@@ -3,10 +3,14 @@ import Joi from 'joi';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import axios from 'axios';
+import sharp from 'sharp';
 import UserModel from '../models/User';
 import InviteModel from '../models/Invite';
 import ListenHistoryModel from '../models/ListenHistory';
 import SongModel from '../models/Song';
+import ArtistModel from '../models/Artist';
+import AlbumModel from '../models/Album';
 import SettingsModel from '../models/Settings';
 import libraryScanner from '../services/libraryScanner';
 import { AuthRequest } from '../middleware/auth';
@@ -270,6 +274,160 @@ export const deleteSong = asyncHandler(async (req: AuthRequest, res: Response) =
     data: { message: 'Song deleted successfully' }
   });
 });
+
+export const updateSong = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const songId = parseInt(id);
+
+  const song = await SongModel.findById(songId);
+  if (!song) {
+    throw new AppError('Song not found', 404);
+  }
+
+  // Handle artist_name to artist_id conversion
+  let updateData = { ...req.body };
+  let artworkUrl: string | null = undefined;
+
+  if (updateData.artist_name) {
+    const artistName = updateData.artist_name.trim();
+    let artist = await ArtistModel.findByName(artistName);
+
+    if (!artist) {
+      artist = await ArtistModel.create(artistName);
+    }
+
+    updateData.artist_id = artist.id;
+    delete updateData.artist_name;
+  }
+
+  // Handle album_title to album_id conversion
+  if (updateData.album_title) {
+    const albumTitle = updateData.album_title.trim();
+    const artistId = updateData.artist_id || song.artist_id;
+
+    let album = await AlbumModel.findByTitleAndArtist(albumTitle, artistId);
+
+    if (!album) {
+      const albumData: any = {
+        title: albumTitle,
+        artist_id: artistId
+      };
+
+      album = await AlbumModel.create(albumData);
+    }
+
+    updateData.album_id = album.id;
+    delete updateData.album_title;
+  }
+
+  // Handle artwork - artwork belongs to album, not song
+  if (updateData.artwork !== undefined) {
+    artworkUrl = updateData.artwork;
+    delete updateData.artwork;
+  }
+
+  // Remove any other fields that don't exist in the songs table
+  delete updateData.artwork_path;
+  delete updateData.artist_name;
+  delete updateData.album_title;
+
+  // Update the song
+  const updatedSong = await SongModel.update(songId, updateData);
+
+  // If artwork was provided, download and save it, then update the album
+  if (artworkUrl !== undefined && updatedSong.album_id) {
+    const album = await AlbumModel.findById(updatedSong.album_id);
+    if (album) {
+      if (artworkUrl === null || artworkUrl === '') {
+        // Remove artwork
+        await AlbumModel.update(album.id, { artwork_path: null });
+      } else if (artworkUrl.startsWith('data:')) {
+        // It's a base64 data URL, save it
+        const artworkPath = await saveArtworkFromBase64(album.id, artworkUrl);
+        if (artworkPath) {
+          await AlbumModel.update(album.id, { artwork_path: artworkPath });
+        }
+      } else if (artworkUrl.startsWith('http')) {
+        // It's a URL, download and save it
+        const artworkPath = await saveArtworkFromUrl(album.id, artworkUrl);
+        if (artworkPath) {
+          await AlbumModel.update(album.id, { artwork_path: artworkPath });
+        }
+      }
+    }
+  }
+
+  // Fetch the updated song with details
+  const songWithDetails = await SongModel.findWithDetails(songId);
+
+  res.json({
+    success: true,
+    data: songWithDetails
+  });
+});
+
+async function saveArtworkFromBase64(albumId: number, dataUrl: string): Promise<string | null> {
+  try {
+    // Extract the base64 data
+    const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (!matches) {
+      console.error('Invalid data URL format');
+      return null;
+    }
+
+    const extension = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+    if (!fs.existsSync(artworkDir)) {
+      fs.mkdirSync(artworkDir, { recursive: true });
+    }
+
+    const filename = `album_${albumId}.jpg`;
+    const artworkPath = path.join(artworkDir, filename);
+
+    await sharp(buffer)
+      .jpeg({ quality: 85 })
+      .resize(500, 500, { fit: 'cover' })
+      .toFile(artworkPath);
+
+    return `/uploads/artwork/${filename}`;
+  } catch (error: any) {
+    console.error('Failed to save artwork from base64:', error);
+    return null;
+  }
+}
+
+async function saveArtworkFromUrl(albumId: number, imageUrl: string): Promise<string | null> {
+  try {
+    // Download image
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 10000
+    });
+
+    const buffer = Buffer.from(response.data);
+
+    const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+    if (!fs.existsSync(artworkDir)) {
+      fs.mkdirSync(artworkDir, { recursive: true });
+    }
+
+    const filename = `album_${albumId}.jpg`;
+    const artworkPath = path.join(artworkDir, filename);
+
+    await sharp(buffer)
+      .jpeg({ quality: 85 })
+      .resize(500, 500, { fit: 'cover' })
+      .toFile(artworkPath);
+
+    return `/uploads/artwork/${filename}`;
+  } catch (error: any) {
+    console.error('Failed to save artwork from URL:', error);
+    return null;
+  }
+}
 
 export const cleanupExpiredInvites = asyncHandler(async (req: AuthRequest, res: Response) => {
   const deletedCount = await InviteModel.cleanupExpiredInvites();

@@ -29,7 +29,7 @@ const SearchPage: React.FC = () => {
   const { play, setQueue, addToQueue } = usePlayerStore();
   const { user } = useAuthStore();
   const roomStore = useRoomStore();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const {
     contextMenu,
     closeContextMenu,
@@ -53,7 +53,8 @@ const SearchPage: React.FC = () => {
     albums: [],
     extensionResults: new Map()
   });
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLocalLoading, setIsLocalLoading] = useState(false);
+  const [isLoadingExtensions, setIsLoadingExtensions] = useState(false);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingSong, setEditingSong] = useState<Song | null>(null);
@@ -72,40 +73,67 @@ const SearchPage: React.FC = () => {
     }
 
     console.log('[SearchPage] 🔍 Performing search for:', query);
-    setIsLoading(true);
+
+    // Clear extension results and set loading state immediately
+    setResults(prev => ({
+      ...prev,
+      extensionResults: new Map()
+    }));
+    setIsLoadingExtensions(true);
+
+    // Load local results first (fast)
+    setIsLocalLoading(true);
     try {
-      const [songsRes, artistsRes, albumsRes, extensionResults] = await Promise.all([
+      const [songsRes, artistsRes, albumsRes] = await Promise.all([
         apiService.getSongs({ search: query, limit: 20 }),
         apiService.getArtists(query),
-        apiService.getAlbums({ search: query }),
-        searchExtensionManager.searchAll(query)
+        apiService.getAlbums({ search: query })
       ]);
+
+      setResults(prev => ({
+        ...prev,
+        songs: songsRes.data.songs || [],
+        artists: artistsRes.data.artists || [],
+        albums: albumsRes.data.albums || []
+      }));
+    } catch (error) {
+      console.error('[SearchPage] ❌ Local search error:', error);
+      setResults(prev => ({
+        ...prev,
+        songs: [],
+        artists: [],
+        albums: []
+      }));
+    }
+    setIsLocalLoading(false);
+
+    // Load extension results independently (can be slow)
+    try {
+      const extensionResults = await searchExtensionManager.searchAll(query);
 
       console.log('[SearchPage] 📦 Extension results:', extensionResults);
       console.log('[SearchPage] 📊 Extension results entries:', Array.from(extensionResults.entries()));
 
-      setResults({
-        songs: songsRes.data.songs || [],
-        artists: artistsRes.data.artists || [],
-        albums: albumsRes.data.albums || [],
+      setResults(prev => ({
+        ...prev,
         extensionResults
-      });
+      }));
     } catch (error) {
-      console.error('[SearchPage] ❌ Search error:', error);
-      setResults({
-        songs: [],
-        artists: [],
-        albums: [],
+      console.error('[SearchPage] ❌ Extension search error:', error);
+      setResults(prev => ({
+        ...prev,
         extensionResults: new Map()
-      });
+      }));
     }
-    setIsLoading(false);
+    setIsLoadingExtensions(false);
   }, []);
 
   useEffect(() => {
     performSearch(debouncedQuery);
-    
-    // Update URL params when search query changes
+  }, [debouncedQuery, performSearch]);
+
+  useEffect(() => {
+    // Update URL params when search query or category changes
     if (debouncedQuery) {
       setSearchParams(prev => {
         const newParams = new URLSearchParams(prev);
@@ -126,7 +154,7 @@ const SearchPage: React.FC = () => {
         return newParams;
       });
     }
-  }, [debouncedQuery, selectedCategory, performSearch, setSearchParams]);
+  }, [debouncedQuery, selectedCategory]);
 
   const handlePlaySong = (song: Song, songList: Song[] = [song]) => {
     handleRoomAwarePlayback(song, songList);
@@ -315,14 +343,14 @@ const SearchPage: React.FC = () => {
       </div>
 
       {/* Loading State */}
-      {isLoading && (
+      {isLocalLoading && (
         <div className="flex justify-center py-8">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
       )}
 
       {/* Search Results */}
-      {!isLoading && searchQuery && (
+      {!isLocalLoading && searchQuery && (
         <div className="space-y-6 md:space-y-8">
           {/* Top Albums - Show smaller, more compact when available */}
           {filteredResults.albums.length > 0 && selectedCategory === 'all' && (
@@ -462,26 +490,46 @@ const SearchPage: React.FC = () => {
           )}
 
           {/* Extension Results (YouTube Music, etc) */}
-          {selectedCategory === 'all' && Array.from(results.extensionResults.entries()).map(([extensionId, extensionItems]) => {
-            if (extensionItems.length === 0) return null;
+          {selectedCategory === 'all' && (
+            <>
+              {/* Show loading state for extensions while they fetch */}
+              {isLoadingExtensions && results.extensionResults.size === 0 && (
+                <div className="flex flex-col items-center justify-center py-8 space-y-3">
+                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
 
-            const extension = searchExtensionManager.getExtension(extensionId);
-            if (!extension) return null;
+              {/* Show extension results when loaded */}
+              {Array.from(results.extensionResults.entries()).map(([extensionId, extensionItems]) => {
+                if (extensionItems.length === 0) return null;
 
-            const ExtensionComponent = extension.renderComponent;
-            if (!ExtensionComponent) return null;
+                const extension = searchExtensionManager.getExtension(extensionId);
+                if (!extension) return null;
 
-            return (
-              <div key={extensionId}>
-                <ExtensionComponent
-                  results={extensionItems}
-                  onDownloadComplete={() => {
-                    performSearch(debouncedQuery);
-                  }}
-                />
-              </div>
-            );
-          })}
+                const ExtensionComponent = extension.renderComponent;
+                if (!ExtensionComponent) return null;
+
+                return (
+                  <div key={extensionId}>
+                    <ExtensionComponent
+                      results={extensionItems}
+                      apiService={apiService}
+                      onToast={(type: 'success' | 'error', message: string) => {
+                        if (type === 'success') {
+                          showSuccess(message);
+                        } else {
+                          showError(message);
+                        }
+                      }}
+                      onDownloadComplete={() => {
+                        performSearch(debouncedQuery);
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </>
+          )}
 
           {/* Albums Section - Show when filtering specifically for albums */}
           {filteredResults.albums.length > 0 && selectedCategory === 'albums' && (
@@ -525,7 +573,7 @@ const SearchPage: React.FC = () => {
       )}
 
       {/* No Results */}
-      {!isLoading && searchQuery && filteredResults.songs.length === 0 && filteredResults.artists.length === 0 && filteredResults.albums.length === 0 && Array.from(results.extensionResults.values()).every(results => results.length === 0) && (
+      {!isLocalLoading && !isLoadingExtensions && searchQuery && filteredResults.songs.length === 0 && filteredResults.artists.length === 0 && filteredResults.albums.length === 0 && Array.from(results.extensionResults.values()).every(results => results.length === 0) && (
         <div className="text-center py-12">
           <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">No results found</h3>

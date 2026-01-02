@@ -20,7 +20,8 @@ class FrontendPluginLoader {
     console.log('[FrontendPluginLoader] 🔍 Discovering plugins...');
 
     try {
-      const pluginContext = (require as any).context('../plugins', true, /index\.ts$/);
+      // Look for both TypeScript (.ts) and compiled JavaScript (.js) plugins
+      const pluginContext = (require as any).context('../plugins', true, /index\.(ts|js)$/);
       const pluginPaths = pluginContext.keys();
 
       console.log(`[FrontendPluginLoader] 📦 Found ${pluginPaths.length} plugin modules`);

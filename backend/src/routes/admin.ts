@@ -9,6 +9,7 @@ import {
   revokeInvite,
   getAllHistory,
   getListeningStats,
+  updateSong,
   deleteSong,
   cleanupExpiredInvites,
   getUserActivity,
@@ -45,6 +46,7 @@ router.post('/invites/cleanup', cleanupExpiredInvites);
 router.get('/history', getAllHistory);
 router.get('/stats/listening', getListeningStats);
 
+router.put('/songs/:id', updateSong);
 router.delete('/songs/:id', deleteSong);
 
 router.get('/library/paths', getLibraryPaths);

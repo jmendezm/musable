@@ -48,8 +48,7 @@
     "uuid": "^9.0.1",
     "youtube-dl-exec": "^3.0.25",
     "ytdl-core": "^4.11.5",
-    "ytpl": "^2.3.0",
-    "ytsr": "^3.8.4"
+    "ytpl": "^2.3.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
