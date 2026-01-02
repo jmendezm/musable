@@ -10,7 +10,7 @@ variables:
   INTERNAL_IMAGE_PATH: "$INTERNAL_REGISTRY/$CI_PROJECT_PATH"
 
 # Build and push Musable image
-build-push-musable:
+build-musable:
   stage: build
   image: docker:latest
   services:
@@ -34,9 +34,8 @@ build-push-musable:
     - docker push $INTERNAL_IMAGE_PATH:$CI_COMMIT_SHORT_SHA
     - docker push $INTERNAL_IMAGE_PATH:latest
   only:
-    - main
     - dev
-    - tags
+    - main
 
 # Create specific release tags only when a git tag is pushed
 release-tag:
