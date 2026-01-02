@@ -43,25 +43,55 @@ function findPluginDirectories(dir) {
 }
 
 /**
- * Installs dependencies for a single plugin
+ * Installs dependencies for a single plugin directory
  * @param {string} pluginPath - Path to the plugin directory
+ * @param {string} pluginName - Name of the plugin (for logging)
+ * @param {string} suffix - Optional suffix for logging (e.g., "backend", "frontend")
  */
-function installPluginDependencies(pluginPath) {
-  const pluginName = path.basename(pluginPath);
+function installPluginDependencies(pluginPath, pluginName, suffix = '') {
+  const displayName = suffix ? `${pluginName}/${suffix}` : pluginName;
 
   try {
-    console.log(`\n📦 Installing dependencies for ${pluginName}...`);
+    console.log(`\n📦 Installing dependencies for ${displayName}...`);
     execSync('npm install', {
       cwd: pluginPath,
       stdio: 'inherit',
       env: { ...process.env }
     });
-    console.log(`✅ Successfully installed dependencies for ${pluginName}`);
-    return { success: true, plugin: pluginName };
+    console.log(`✅ Successfully installed dependencies for ${displayName}`);
+    return { success: true, plugin: displayName };
   } catch (error) {
-    console.error(`❌ Failed to install dependencies for ${pluginName}`);
-    return { success: false, plugin: pluginName, error: error.message };
+    console.error(`❌ Failed to install dependencies for ${displayName}`);
+    return { success: false, plugin: displayName, error: error.message };
   }
+}
+
+/**
+ * Installs dependencies for all parts of a plugin (root, backend, frontend)
+ * @param {string} pluginPath - Path to the plugin root directory
+ */
+function installPluginAndParts(pluginPath) {
+  const pluginName = path.basename(pluginPath);
+  const results = [];
+
+  // Install in plugin root
+  if (fs.existsSync(path.join(pluginPath, 'package.json'))) {
+    results.push(installPluginDependencies(pluginPath, pluginName));
+  }
+
+  // Install in backend subdirectory if it exists
+  const backendPath = path.join(pluginPath, 'backend');
+  if (fs.existsSync(path.join(backendPath, 'package.json'))) {
+    results.push(installPluginDependencies(backendPath, pluginName, 'backend'));
+  }
+
+  // Install in frontend subdirectory if it exists
+  const frontendPath = path.join(pluginPath, 'frontend');
+  if (fs.existsSync(path.join(frontendPath, 'package.json'))) {
+    results.push(installPluginDependencies(frontendPath, pluginName, 'frontend'));
+  }
+
+  return results;
 }
 
 /**
@@ -82,19 +112,21 @@ function main() {
 
   console.log('\n🚀 Installing plugin dependencies...\n');
 
-  const results = [];
+  const allResults = [];
   let successCount = 0;
   let failCount = 0;
 
   for (const pluginDir of pluginDirs) {
-    const result = installPluginDependencies(pluginDir);
-    results.push(result);
+    const results = installPluginAndParts(pluginDir);
+    allResults.push(...results);
 
-    if (result.success) {
-      successCount++;
-    } else {
-      failCount++;
-    }
+    results.forEach(result => {
+      if (result.success) {
+        successCount++;
+      } else {
+        failCount++;
+      }
+    });
   }
 
   // Print summary
@@ -102,12 +134,12 @@ function main() {
   console.log('📊 Installation Summary:');
   console.log(`   ✅ Successful: ${successCount}`);
   console.log(`   ❌ Failed: ${failCount}`);
-  console.log(`   📦 Total: ${pluginDirs.length}`);
+  console.log(`   📦 Total: ${allResults.length}`);
   console.log('='.repeat(50));
 
   if (failCount > 0) {
     console.log('\n❌ Some plugin installations failed:\n');
-    results
+    allResults
       .filter(r => !r.success)
       .forEach(r => console.log(`   - ${r.plugin}: ${r.error}`));
     process.exit(1);
