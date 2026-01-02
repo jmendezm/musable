@@ -17,9 +17,14 @@ import {
   addLibraryPath,
   updateLibraryPath,
   deleteLibraryPath,
+  validatePath,
   getSystemSetting,
   setSystemSetting,
   getAllSystemSettings,
+  getPathScanReports,
+  getPathScanReportDetail,
+  getLatestPathScanReport,
+  getAllPathScanReports,
   adminUploadProfilePicture,
   updateUserProfilePicture,
   deleteUserProfilePicture
@@ -53,6 +58,13 @@ router.get('/library/paths', getLibraryPaths);
 router.post('/library/paths', addLibraryPath);
 router.put('/library/paths/:id', updateLibraryPath);
 router.delete('/library/paths/:id', deleteLibraryPath);
+router.get('/library/validate-path', validatePath);
+
+// Library path scan reports
+router.get('/library/paths/:pathId/scans', getPathScanReports);
+router.get('/library/paths/:pathId/scans/latest', getLatestPathScanReport);
+router.get('/library/paths/:pathId/scans/:reportId', getPathScanReportDetail);
+router.get('/library/scans', getAllPathScanReports);
 
 router.get('/settings', getAllSystemSettings);
 router.get('/settings/:key', getSystemSetting);

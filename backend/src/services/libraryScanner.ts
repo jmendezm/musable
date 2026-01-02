@@ -11,6 +11,7 @@ import SongModel, { CreateSongData } from '../models/Song';
 import ArtistModel from '../models/Artist';
 import AlbumModel from '../models/Album';
 import SettingsModel from '../models/Settings';
+import LibraryPathScanReportModel from '../models/LibraryPathScanReport';
 import Database from '../config/database';
 
 export interface ScanProgress {
@@ -38,8 +39,10 @@ export interface ScanResult {
 export class LibraryScanner {
   private db = Database;
   private isScanning = false;
+  private shouldStop = false;  // Flag to stop scanning
   private currentScan: ScanProgress | null = null;
   private watcher: chokidar.FSWatcher | null = null;
+  private readonly CONCURRENCY = 3;  // Number of files to scan in parallel
 
   constructor() {
     this.setupFileWatcher();
@@ -112,9 +115,10 @@ export class LibraryScanner {
     }
 
     this.isScanning = true;
+    this.shouldStop = false;
 
     const result = await this.db.run(
-      `INSERT INTO scan_history (started_at, scan_path, status) 
+      `INSERT INTO scan_history (started_at, scan_path, status)
        VALUES (CURRENT_TIMESTAMP, ?, 'running')`,
       [JSON.stringify(paths)]
     );
@@ -138,87 +142,62 @@ export class LibraryScanner {
       this.updateScanStatus(scanId, 'failed', error.message);
     }).finally(() => {
       this.isScanning = false;
+      this.shouldStop = false;
       this.currentScan = null;
     });
 
     return scanId;
   }
 
+  stopScan(): void {
+    if (this.isScanning) {
+      logger.info('Stopping library scan...');
+      this.shouldStop = true;
+    }
+  }
+
+  isCurrentlyScanning(): boolean {
+    return this.isScanning;
+  }
+
   private async performScan(scanId: number, paths: string[]): Promise<void> {
-    const errors: string[] = [];
-    let filesScanned = 0;
-    let filesAdded = 0;
-    let filesUpdated = 0;
-    let totalFiles = 0;
+    let totalFilesScanned = 0;
+    let totalFilesAdded = 0;
+    let totalFilesUpdated = 0;
+    let totalErrors = 0;
+    let grandTotalFiles = 0;
 
     try {
-      // First, count all files to show accurate progress
+      logger.info('🔍 Starting library scan...');
+      logger.info(`📂 Scanning paths: ${paths.join(', ')}`);
+
+      // Scan each path individually
       for (const scanPath of paths) {
-        if (fs.existsSync(scanPath)) {
-          const audioFiles = await this.findAudioFiles(scanPath);
-          totalFiles += audioFiles.length;
+        if (this.shouldStop) {
+          logger.info('⛔ Scan stopped by user');
+          await this.updateScanStatus(scanId, 'completed');
+          return;
         }
+
+        await this.scanSinglePath(scanPath, scanId);
       }
 
-      if (this.currentScan) {
-        this.currentScan.totalFiles = totalFiles;
-      }
+      // Aggregate results from all path scans
+      const pathScanReports = await LibraryPathScanReportModel.db.query(
+        'SELECT * FROM library_path_scan_reports WHERE scan_id = ?',
+        [scanId]
+      );
 
-      for (const scanPath of paths) {
-        if (!fs.existsSync(scanPath)) {
-          const error = `Scan path does not exist: ${scanPath}`;
-          errors.push(error);
-          logger.warn(error);
-          continue;
-        }
-
-        const audioFiles = await this.findAudioFiles(scanPath);
-        logger.info(`Found ${audioFiles.length} audio files in ${scanPath}`);
-
-        for (const filePath of audioFiles) {
-          try {
-            if (this.currentScan) {
-              this.currentScan.currentFile = path.basename(filePath);
-              this.currentScan.filesScanned = filesScanned;
-              this.currentScan.filesAdded = filesAdded;
-              this.currentScan.filesUpdated = filesUpdated;
-              this.currentScan.errorsCount = errors.length;
-              this.currentScan.progress = totalFiles > 0 ? Math.round((filesScanned / totalFiles) * 100) : 0;
-            }
-
-            const existingSong = await SongModel.findByPath(filePath);
-            const fileStats = fs.statSync(filePath);
-
-            if (existingSong && existingSong.file_size === fileStats.size) {
-              filesScanned++;
-              continue;
-            }
-
-            await this.scanFile(filePath);
-
-            if (existingSong) {
-              filesUpdated++;
-            } else {
-              filesAdded++;
-            }
-
-            filesScanned++;
-
-            // Update scan results in database periodically (every 10 files)
-            if (filesScanned % 10 === 0) {
-              await this.updateScanResults(scanId, filesScanned, filesAdded, filesUpdated, errors.length);
-            }
-
-          } catch (error: any) {
-            const errorMsg = `Error processing ${filePath}: ${error.message}`;
-            errors.push(errorMsg);
-            logger.error(errorMsg);
-          }
-        }
+      for (const report of pathScanReports) {
+        totalFilesScanned += report.files_scanned;
+        totalFilesAdded += report.files_added;
+        totalFilesUpdated += report.files_updated;
+        totalErrors += report.errors_count;
+        grandTotalFiles += report.total_files;
       }
 
       // Final update with all results
-      await this.updateScanResults(scanId, filesScanned, filesAdded, filesUpdated, errors.length);
+      await this.updateScanResults(scanId, totalFilesScanned, totalFilesAdded, totalFilesUpdated, totalErrors);
       await this.updateScanStatus(scanId, 'completed');
 
       if (this.currentScan) {
@@ -227,15 +206,195 @@ export class LibraryScanner {
         this.currentScan.completedAt = new Date().toISOString();
       }
 
-      logger.info(`Scan completed: ${filesScanned} scanned, ${filesAdded} added, ${filesUpdated} updated, ${errors.length} errors`);
+      logger.info(`✅ Scan completed: ${totalFilesScanned} scanned, ${totalFilesAdded} added, ${totalFilesUpdated} updated, ${totalErrors} errors`);
 
     } catch (error: any) {
+      logger.error(`❌ Scan failed: ${error.message}`);
       await this.updateScanStatus(scanId, 'failed', error.message);
       if (this.currentScan) {
         this.currentScan.status = 'failed';
         this.currentScan.errorMessage = error.message;
       }
       throw error;
+    }
+  }
+
+  private async scanSinglePath(scanPath: string, masterScanId: number): Promise<void> {
+    const libraryPath = await SettingsModel.findByPath(scanPath);
+    if (!libraryPath) {
+      logger.warn(`⚠️  Library path not found in database: ${scanPath}`);
+      return;
+    }
+
+    if (!fs.existsSync(scanPath)) {
+      logger.warn(`⚠️  Scan path does not exist: ${scanPath}`);
+
+      // Create a failed scan report
+      const report = await LibraryPathScanReportModel.create({
+        library_path_id: libraryPath.id!,
+        scan_id: masterScanId,
+        status: 'failed',
+        started_at: new Date().toISOString()
+      });
+
+      await LibraryPathScanReportModel.markAsFailed(
+        report.id,
+        new Date().toISOString(),
+        `Path does not exist: ${scanPath}`
+      );
+
+      return;
+    }
+
+    // Create scan report for this path
+    const report = await LibraryPathScanReportModel.create({
+      library_path_id: libraryPath.id!,
+      scan_id: masterScanId,
+      status: 'running',
+      started_at: new Date().toISOString()
+    });
+
+    logger.info(`🔍 Scanning path: ${scanPath}`);
+
+    let filesScanned = 0;
+    let filesAdded = 0;
+    let filesUpdated = 0;
+    let filesSkipped = 0;
+    let errorsCount = 0;
+
+    try {
+      // Count files first
+      logger.info(`📊 Counting files in ${scanPath}...`);
+      const audioFiles = await this.findAudioFiles(scanPath);
+      const totalFiles = audioFiles.length;
+
+      await LibraryPathScanReportModel.update(report.id, { total_files: totalFiles });
+      logger.info(`  📁 Found ${totalFiles} files`);
+
+      // Process files in parallel batches
+      let processedFiles = 0;
+      for (let i = 0; i < audioFiles.length; i += this.CONCURRENCY) {
+        if (this.shouldStop) {
+          logger.info(`⛔ Scan stopped for path: ${scanPath}`);
+
+          await LibraryPathScanReportModel.updateProgress(
+            report.id,
+            filesScanned,
+            filesAdded,
+            filesUpdated,
+            filesSkipped,
+            errorsCount,
+            Math.round((processedFiles / totalFiles) * 100)
+          );
+
+          await LibraryPathScanReportModel.markAsStopped(
+            report.id,
+            new Date().toISOString()
+          );
+
+          return;
+        }
+
+        const batch = audioFiles.slice(i, i + this.CONCURRENCY);
+
+        // Process batch in parallel
+        const results = await Promise.allSettled(
+          batch.map(async (filePath) => {
+            try {
+              // Check if we should stop before processing this file
+              if (this.shouldStop) {
+                return { scanned: false, added: false, updated: false, skipped: true };
+              }
+
+              const existingSong = await SongModel.findByPath(filePath);
+              const fileStats = fs.statSync(filePath);
+
+              // Check if we should stop after getting file stats
+              if (this.shouldStop) {
+                return { scanned: false, added: false, updated: false, skipped: true };
+              }
+
+              // Skip if file hasn't changed
+              if (existingSong && existingSong.file_size === fileStats.size) {
+                return { scanned: true, added: false, updated: false, skipped: true };
+              }
+
+              // Scan the file
+              await this.scanFile(filePath);
+
+              if (existingSong) {
+                logger.debug(`  📝 Updated: ${path.basename(filePath)}`);
+                return { scanned: true, added: false, updated: true, skipped: false };
+              } else {
+                logger.debug(`  ➕ Added: ${path.basename(filePath)}`);
+                return { scanned: true, added: true, updated: false, skipped: false };
+              }
+            } catch (error: any) {
+              const errorMsg = `${error.message}`;
+              logger.error(`  ❌ Error processing ${path.basename(filePath)}: ${errorMsg}`);
+
+              // Save error to database
+              await LibraryPathScanReportModel.addError(
+                report.id,
+                filePath,
+                errorMsg,
+                error.constructor.name
+              );
+
+              return { scanned: false, added: false, updated: false, skipped: false, error: errorMsg };
+            }
+          })
+        );
+
+        // Process results
+        for (const result of results) {
+          if (result.status === 'fulfilled') {
+            const data = result.value;
+            filesScanned += data.scanned ? 1 : 0;
+            filesAdded += data.added ? 1 : 0;
+            filesUpdated += data.updated ? 1 : 0;
+            filesSkipped += data.skipped ? 1 : 0;
+            if (data.error) {
+              errorsCount += 1;
+            }
+          }
+        }
+
+        processedFiles += batch.length;
+        const progress = Math.round((processedFiles / totalFiles) * 100);
+
+        // Update report progress every 50 files
+        if (processedFiles % 50 === 0 || processedFiles === totalFiles) {
+          logger.info(`📈 ${scanPath}: ${processedFiles}/${totalFiles} (${filesAdded} added, ${filesUpdated} updated, ${errorsCount} errors)`);
+
+          await LibraryPathScanReportModel.updateProgress(
+            report.id,
+            filesScanned,
+            filesAdded,
+            filesUpdated,
+            filesSkipped,
+            errorsCount,
+            progress
+          );
+        }
+      }
+
+      // Mark report as completed
+      await LibraryPathScanReportModel.markAsCompleted(
+        report.id,
+        new Date().toISOString()
+      );
+
+      logger.info(`✅ Completed scanning ${scanPath}: ${filesScanned} scanned, ${filesAdded} added, ${filesUpdated} updated, ${errorsCount} errors`);
+
+    } catch (error: any) {
+      logger.error(`❌ Failed to scan ${scanPath}: ${error.message}`);
+
+      await LibraryPathScanReportModel.markAsFailed(
+        report.id,
+        new Date().toISOString(),
+        error.message
+      );
     }
   }
 
@@ -246,6 +405,12 @@ export class LibraryScanner {
       }
 
       const metadata = await parseFile(filePath);
+
+      // Check if we should stop after metadata extraction
+      if (this.shouldStop) {
+        return;
+      }
+
       const fileStats = fs.statSync(filePath);
 
       const artistName = metadata.common.artist || 'Unknown Artist';
@@ -331,6 +496,11 @@ export class LibraryScanner {
         const items = await readDir(currentPath);
 
         for (const item of items) {
+          // Check if we should stop
+          if (this.shouldStop) {
+            return;
+          }
+
           const itemPath = path.join(currentPath, item);
           const itemStat = await stat(itemPath);
 
@@ -398,10 +568,6 @@ export class LibraryScanner {
 
   getCurrentScan(): ScanProgress | null {
     return this.currentScan;
-  }
-
-  isCurrentlyScanning(): boolean {
-    return this.isScanning;
   }
 
   async getLibraryStats(): Promise<any> {

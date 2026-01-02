@@ -198,6 +198,10 @@ class ApiService {
     return this.request('POST', '/library/scan', { paths });
   }
 
+  async stopLibraryScan(): Promise<ApiResponse<{ message: string }>> {
+    return this.request('POST', '/library/scan/stop');
+  }
+
   async getScanStatus(): Promise<ApiResponse<{ currentScan: ScanProgress | null; history: any[]; isScanning: boolean }>> {
     return this.request('GET', '/library/scan/status');
   }

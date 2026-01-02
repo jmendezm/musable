@@ -12,6 +12,7 @@ import SongModel from '../models/Song';
 import ArtistModel from '../models/Artist';
 import AlbumModel from '../models/Album';
 import SettingsModel from '../models/Settings';
+import LibraryPathScanReportModel from '../models/LibraryPathScanReport';
 import libraryScanner from '../services/libraryScanner';
 import { AuthRequest } from '../middleware/auth';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
@@ -528,13 +529,209 @@ export const deleteLibraryPath = asyncHandler(async (req: AuthRequest, res: Resp
   const pathId = parseInt(id);
 
   await SettingsModel.deleteLibraryPath(pathId);
-  
+
   // Refresh the file watcher with updated paths
   await libraryScanner.refreshFileWatcher();
-  
+
   res.json({
     success: true,
     message: 'Library path deleted successfully'
+  });
+});
+
+export const validatePath = asyncHandler(async (req: Request, res: Response) => {
+  const { path: searchPath } = req.query;
+
+  if (searchPath === undefined || typeof searchPath !== 'string') {
+    throw new AppError('Path parameter is required', 400);
+  }
+
+  const platform = process.platform;
+  const isWindows = platform === 'win32';
+
+  // Empty path or just "/" - return root directories or drive letters
+  if (!searchPath.trim() || searchPath === '/') {
+    let directories: string[] = [];
+
+    if (isWindows) {
+      // List all available drive letters on Windows
+      for (let i = 65; i <= 90; i++) {
+        const driveLetter = String.fromCharCode(i);
+        const drivePath = driveLetter + ':\\';
+        if (fs.existsSync(drivePath)) {
+          directories.push(drivePath);
+        }
+      }
+    } else {
+      // On Linux/Unix, list root directories
+      try {
+        const entries = fs.readdirSync('/', { withFileTypes: true });
+        directories = entries
+          .filter(dirent => dirent.isDirectory())
+          .map(dirent => '/' + dirent.name)
+          .sort()
+          .slice(0, 50);
+      } catch (err) {
+        console.error('Error listing root:', err);
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        valid: false,
+        path: searchPath || '',
+        expandedPath: searchPath || '/',
+        exists: false,
+        directories,
+        isRoot: true
+      }
+    });
+  }
+
+  // Expand home directory if present
+  let expandedPath = searchPath;
+  if (searchPath.startsWith('~/')) {
+    const os = require('os');
+    const homeDir = os.homedir();
+    expandedPath = path.join(homeDir, searchPath.substring(2));
+  } else if (searchPath === '~') {
+    const os = require('os');
+    expandedPath = os.homedir();
+  }
+
+  // Resolve relative paths
+  if (searchPath.startsWith('./') || searchPath.startsWith('../')) {
+    expandedPath = path.resolve(expandedPath);
+  }
+
+  // Check if path exists
+  const exists = fs.existsSync(expandedPath);
+
+  if (!exists) {
+    // For Windows drive letters, if it doesn't exist, still try to list available drives
+    if (isWindows && /^[A-Za-z]:$/.test(searchPath)) {
+      try {
+        // On Windows, list available drive letters
+        const drives: string[] = [];
+        for (let i = 65; i <= 90; i++) {
+          const driveLetter = String.fromCharCode(i);
+          const drivePath = driveLetter + ':\\';
+          if (fs.existsSync(drivePath)) {
+            drives.push(drivePath);
+          }
+        }
+        return res.json({
+          success: true,
+          data: {
+            valid: false,
+            path: searchPath,
+            expandedPath,
+            exists: false,
+            directories: drives
+          }
+        });
+      } catch (err) {
+        console.error('Error listing drives:', err);
+      }
+    }
+
+    // If path doesn't exist, try to get parent directory and search for partial matches
+    let parentDir = path.dirname(expandedPath);
+    const searchPrefix = path.basename(expandedPath);
+
+    // If parent directory exists, list and filter directories
+    if (parentDir && fs.existsSync(parentDir)) {
+      try {
+        const entries = fs.readdirSync(parentDir, { withFileTypes: true });
+        const directories = entries
+          .filter(dirent => {
+            // Only include directories that match the search prefix
+            if (!dirent.isDirectory()) return false;
+            if (!searchPrefix) return true;
+
+            const name = dirent.name.toLowerCase();
+            const prefix = searchPrefix.toLowerCase();
+
+            // Match if directory starts with prefix or contains it
+            return name.startsWith(prefix) || name.includes(prefix);
+          })
+          .map(dirent => {
+            const fullPath = path.join(parentDir, dirent.name);
+            // Return in the same format as input (relative or absolute)
+            return searchPath.startsWith('./') || searchPath.startsWith('../')
+              ? path.relative(process.cwd(), fullPath)
+              : fullPath;
+          })
+          .sort()
+          .slice(0, 50); // Limit to 50 results for performance
+
+        return res.json({
+          success: true,
+          data: {
+            valid: false,
+            path: searchPath,
+            expandedPath,
+            exists: false,
+            directories,
+            partialMatch: true
+          }
+        });
+      } catch (err) {
+        console.error('Error listing parent directory:', err);
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        valid: false,
+        path: searchPath,
+        expandedPath,
+        exists: false,
+        directories: []
+      }
+    });
+  }
+
+  // Check if it's a directory
+  const stats = fs.statSync(expandedPath);
+  const isDirectory = stats.isDirectory();
+
+  let directories: string[] = [];
+
+  if (isDirectory) {
+    try {
+      // List directories in the path
+      const entries = fs.readdirSync(expandedPath, { withFileTypes: true });
+      directories = entries
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => {
+          const fullPath = path.join(expandedPath, dirent.name);
+          // Return relative path if input was relative, absolute otherwise
+          return searchPath.startsWith('./') || searchPath.startsWith('../')
+            ? path.relative(process.cwd(), fullPath)
+            : fullPath;
+        })
+        .sort()
+        .slice(0, 50); // Limit to 50 results
+    } catch (err) {
+      // Permission denied or other error - just return empty directories
+      console.error('Error listing directories:', err);
+    }
+  }
+
+  return res.json({
+    success: true,
+    data: {
+      valid: true,
+      path: searchPath,
+      expandedPath,
+      exists: true,
+      isDirectory,
+      directories,
+      readable: true
+    }
   });
 });
 
@@ -546,6 +743,67 @@ export const getSystemSetting = asyncHandler(async (req: AuthRequest, res: Respo
   res.json({
     success: true,
     data: { key, value }
+  });
+});
+
+// Library path scan reports
+export const getPathScanReports = asyncHandler(async (req: Request, res: Response) => {
+  const { pathId } = req.params;
+  const libraryPathId = parseInt(pathId);
+
+  const reports = await LibraryPathScanReportModel.findByLibraryPathId(libraryPathId, 50);
+
+  res.json({
+    success: true,
+    data: { reports }
+  });
+});
+
+export const getPathScanReportDetail = asyncHandler(async (req: Request, res: Response) => {
+  const { reportId } = req.params;
+  const scanReportId = parseInt(reportId);
+
+  const report = await LibraryPathScanReportModel.findByIdWithErrors(scanReportId);
+
+  if (!report) {
+    throw new AppError('Scan report not found', 404);
+  }
+
+  res.json({
+    success: true,
+    data: { report }
+  });
+});
+
+export const getLatestPathScanReport = asyncHandler(async (req: Request, res: Response) => {
+  const { pathId } = req.params;
+  const libraryPathId = parseInt(pathId);
+
+  const report = await LibraryPathScanReportModel.getLatestByLibraryPathId(libraryPathId);
+
+  res.json({
+    success: true,
+    data: { report }
+  });
+});
+
+export const getAllPathScanReports = asyncHandler(async (req: Request, res: Response) => {
+  const { limit = 100 } = req.query;
+
+  // Get all reports across all paths with library path details
+  const reports = await LibraryPathScanReportModel.db.query(`
+    SELECT
+      lpsr.*,
+      lp.path as library_path
+    FROM library_path_scan_reports lpsr
+    LEFT JOIN library_paths lp ON lpsr.library_path_id = lp.id
+    ORDER BY lpsr.started_at DESC
+    LIMIT ?
+  `, [parseInt(limit as string)]);
+
+  res.json({
+    success: true,
+    data: { reports }
   });
 });
 

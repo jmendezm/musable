@@ -91,6 +91,14 @@ class SettingsModel {
     }
   }
 
+  async findByPath(path: string): Promise<LibraryPath | null> {
+    const libraryPath = await this.db.get<LibraryPath>(
+      'SELECT * FROM library_paths WHERE path = ?',
+      [path]
+    );
+    return libraryPath || null;
+  }
+
   async getActivePaths(): Promise<string[]> {
     const paths = await this.db.query<LibraryPath>(
       'SELECT path FROM library_paths WHERE is_active = 1'

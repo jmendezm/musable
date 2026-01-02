@@ -11,6 +11,7 @@ import {
   getGenres,
   getLibraryStats,
   startLibraryScan,
+  stopLibraryScan,
   getScanStatus,
   followAlbum,
   unfollowAlbum,
@@ -40,6 +41,7 @@ router.get('/genres', getGenres);
 router.get('/stats', getLibraryStats);
 
 router.post('/scan', authenticateToken, requireAdmin, startLibraryScan);
+router.post('/scan/stop', authenticateToken, requireAdmin, stopLibraryScan);
 router.get('/scan/status', getScanStatus);
 
 // Album follow endpoints

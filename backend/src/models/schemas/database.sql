@@ -330,3 +330,50 @@ CREATE TABLE IF NOT EXISTS plugin_settings (
 CREATE INDEX IF NOT EXISTS idx_plugins_plugin_id ON plugins(plugin_id);
 CREATE INDEX IF NOT EXISTS idx_plugins_enabled ON plugins(enabled);
 CREATE INDEX IF NOT EXISTS idx_plugin_settings_plugin ON plugin_settings(plugin_id);
+
+-- Library path scan reports table
+-- Tracks scan history and errors for each library path
+CREATE TABLE IF NOT EXISTS library_path_scan_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  library_path_id INTEGER NOT NULL,
+  scan_id INTEGER,
+  status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed', 'stopped')),
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  files_scanned INTEGER DEFAULT 0,
+  files_added INTEGER DEFAULT 0,
+  files_updated INTEGER DEFAULT 0,
+  files_skipped INTEGER DEFAULT 0,
+  errors_count INTEGER DEFAULT 0,
+  error_message TEXT,
+  progress INTEGER DEFAULT 0,
+  total_files INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+  updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+  FOREIGN KEY (library_path_id) REFERENCES library_paths(id) ON DELETE CASCADE
+);
+
+-- Scan errors table
+-- Stores detailed error information for each failed file
+CREATE TABLE IF NOT EXISTS library_path_scan_errors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  scan_report_id INTEGER NOT NULL,
+  file_path TEXT NOT NULL,
+  error_message TEXT NOT NULL,
+  error_type TEXT,
+  created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+  FOREIGN KEY (scan_report_id) REFERENCES library_path_scan_reports(id) ON DELETE CASCADE
+);
+
+-- Indexes for library path scan reports
+CREATE INDEX IF NOT EXISTS idx_library_path_scan_reports_path_id
+  ON library_path_scan_reports(library_path_id);
+
+CREATE INDEX IF NOT EXISTS idx_library_path_scan_reports_started_at
+  ON library_path_scan_reports(started_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_library_path_scan_reports_scan_id
+  ON library_path_scan_reports(scan_id);
+
+CREATE INDEX IF NOT EXISTS idx_library_path_scan_errors_report_id
+  ON library_path_scan_errors(scan_report_id);

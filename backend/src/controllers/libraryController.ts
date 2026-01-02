@@ -7,6 +7,8 @@ import SettingsModel from '../models/Settings';
 import libraryScanner from '../services/libraryScanner';
 import { AuthRequest } from '../middleware/auth';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export const getAllSongs = asyncHandler(async (req: Request, res: Response) => {
   const { search, artist, album, genre, limit = 50, offset = 0 } = req.query;
@@ -215,6 +217,25 @@ export const getScanStatus = asyncHandler(async (req: Request, res: Response) =>
   });
 });
 
+export const stopLibraryScan = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user?.is_admin) {
+    throw new AppError('Admin access required', 403);
+  }
+
+  if (!libraryScanner.isCurrentlyScanning()) {
+    throw new AppError('No scan in progress', 409);
+  }
+
+  libraryScanner.stopScan();
+
+  res.json({
+    success: true,
+    data: {
+      message: 'Library scan stop requested'
+    }
+  });
+});
+
 // Album Follow endpoints
 export const followAlbum = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
@@ -301,5 +322,83 @@ export const getAlbumFollowStatus = asyncHandler(async (req: AuthRequest, res: R
   res.json({
     success: true,
     data: { isFollowing }
+  });
+});
+
+// Path validation and autocomplete
+export const validatePath = asyncHandler(async (req: Request, res: Response) => {
+  const { path: searchPath } = req.query;
+
+  if (!searchPath || typeof searchPath !== 'string') {
+    throw new AppError('Path parameter is required', 400);
+  }
+
+  // Expand home directory if present
+  let expandedPath = searchPath;
+  if (searchPath.startsWith('~/')) {
+    const homeDir = require('os').homedir();
+    expandedPath = path.join(homeDir, searchPath.substring(2));
+  } else if (searchPath === '~') {
+    expandedPath = require('os').homedir();
+  }
+
+  // Resolve relative paths
+  if (searchPath.startsWith('./') || searchPath.startsWith('../')) {
+    expandedPath = path.resolve(expandedPath);
+  }
+
+  // Check if path exists
+  const exists = fs.existsSync(expandedPath);
+
+  if (!exists) {
+    return res.json({
+      success: true,
+      data: {
+        valid: false,
+        path: searchPath,
+        expandedPath,
+        exists: false,
+        directories: []
+      }
+    });
+  }
+
+  // Check if it's a directory
+  const stats = fs.statSync(expandedPath);
+  const isDirectory = stats.isDirectory();
+
+  let directories: string[] = [];
+
+  if (isDirectory) {
+    try {
+      // List directories in the path
+      const entries = fs.readdirSync(expandedPath, { withFileTypes: true });
+      directories = entries
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => {
+          const fullPath = path.join(expandedPath, dirent.name);
+          // Return relative path if input was relative, absolute otherwise
+          return searchPath.startsWith('./') || searchPath.startsWith('../')
+            ? path.relative(process.cwd(), fullPath)
+            : fullPath;
+        })
+        .sort();
+    } catch (err) {
+      // Permission denied or other error - just return empty directories
+      console.error('Error listing directories:', err);
+    }
+  }
+
+  return res.json({
+    success: true,
+    data: {
+      valid: true,
+      path: searchPath,
+      expandedPath,
+      exists: true,
+      isDirectory,
+      directories,
+      readable: true
+    }
   });
 });

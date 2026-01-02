@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   MusicalNoteIcon,
   FolderIcon,
@@ -7,12 +7,17 @@ import {
   MagnifyingGlassIcon,
   ArrowPathIcon,
   CheckCircleIcon,
-  PencilIcon
+  PencilIcon,
+  XCircleIcon,
+  DocumentTextIcon,
+  ClockIcon,
+  XCircleIcon as XCircleIconSolid
 } from '@heroicons/react/24/outline';
 import { apiService } from '../../services/api';
 import { Song, ScanProgress } from '../../types';
 import clsx from 'clsx';
 import EditSongModal from '../../components/EditSongModal';
+import ScanReportModal from '../../components/ScanReportModal';
 
 interface LibraryPath {
   id: number;
@@ -20,6 +25,16 @@ interface LibraryPath {
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
+  latest_scan?: {
+    id: number;
+    status: 'running' | 'completed' | 'failed' | 'stopped';
+    started_at: string;
+    files_scanned: number;
+    files_added: number;
+    files_updated: number;
+    errors_count: number;
+    progress: number;
+  };
 }
 
 const LibraryManagementTab: React.FC = () => {
@@ -32,6 +47,35 @@ const LibraryManagementTab: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingSong, setEditingSong] = useState<Song | null>(null);
+  const [scanReportModalOpen, setScanReportModalOpen] = useState(false);
+  const [selectedPathForReport, setSelectedPathForReport] = useState<{ id: number; path: string } | null>(null);
+
+  // New states for path selector
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [pathError, setPathError] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([]);
+  const [isValidPath, setIsValidPath] = useState<boolean | null>(null);
+  const [debouncedPath, setDebouncedPath] = useState('');
+  const [focusedSuggestionIndex, setFocusedSuggestionIndex] = useState(-1);
+  const [isShowingRoot, setIsShowingRoot] = useState(false);
+  const [inputHasFocus, setInputHasFocus] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const autocompleteTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to focused item
+  useEffect(() => {
+    if (focusedSuggestionIndex >= 0 && dropdownRef.current) {
+      const scrollContainer = dropdownRef.current.querySelector('.overflow-y-auto');
+      if (scrollContainer) {
+        const items = scrollContainer.querySelectorAll('button');
+        if (items[focusedSuggestionIndex]) {
+          items[focusedSuggestionIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }
+    }
+  }, [focusedSuggestionIndex]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -39,10 +83,102 @@ const LibraryManagementTab: React.FC = () => {
   const [loadingSongs, setLoadingSongs] = useState(false);
   const songsPerPage = 50;
 
+  // Validate path and get autocomplete
+  const validateAndAutocompletePath = async (path: string) => {
+    // Don't reset validation state for empty paths
+    if (path.length > 0) {
+      setIsValidPath(null);
+    }
+
+    try {
+      const response = await apiService.request('GET', `/admin/library/validate-path?path=${encodeURIComponent(path)}`) as {
+        data: {
+          valid: boolean;
+          exists: boolean;
+          directories: string[];
+          isRoot?: boolean;
+        }
+      };
+      const data = response.data;
+
+      // Set isShowingRoot flag
+      setIsShowingRoot(data.isRoot || false);
+
+      if (data.valid) {
+        setIsValidPath(true);
+        setPathError(null);
+        // Show autocomplete if there are directories
+        if (data.directories && data.directories.length > 0) {
+          setAutocompleteSuggestions(data.directories);
+          setShowSuggestions(true);
+        } else {
+          setAutocompleteSuggestions([]);
+        }
+      } else {
+        setIsValidPath(false);
+        // Still show autocomplete for parent directory or root
+        if (data.directories && data.directories.length > 0) {
+          setAutocompleteSuggestions(data.directories);
+          setShowSuggestions(true);
+        } else {
+          setAutocompleteSuggestions([]);
+        }
+      }
+    } catch (err) {
+      console.error('Path validation failed:', err);
+      setIsValidPath(false);
+      setAutocompleteSuggestions([]);
+      setIsShowingRoot(false);
+    }
+  };
+
+  // Debounced validation
+  useEffect(() => {
+    if (autocompleteTimeoutRef.current) {
+      clearTimeout(autocompleteTimeoutRef.current);
+    }
+
+    autocompleteTimeoutRef.current = setTimeout(() => {
+      // Empty path with focus - show root/drives
+      if (newPath.length === 0 && inputHasFocus) {
+        validateAndAutocompletePath('');
+        setFocusedSuggestionIndex(-1);
+      }
+      // Trigger validation for any path with at least 1 character
+      else if (newPath.length > 0) {
+        validateAndAutocompletePath(newPath);
+        setFocusedSuggestionIndex(-1); // Reset focused index when new results come in
+      }
+    }, 150); // Reduced from 300ms to 150ms for faster response
+
+    return () => {
+      if (autocompleteTimeoutRef.current) {
+        clearTimeout(autocompleteTimeoutRef.current);
+      }
+    };
+  }, [newPath, inputHasFocus]);
+
   useEffect(() => {
     fetchLibraryData();
     fetchScanStatus();
-    
+
+    // Close dropdown when clicking outside
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showSuggestions && !target.closest('.suggestions-dropdown') && !target.closest('input')) {
+        setShowSuggestions(false);
+        setAutocompleteSuggestions([]);
+        setFocusedSuggestionIndex(-1);
+        setIsShowingRoot(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => {
       if (scanStatus?.status === 'running') {
         fetchScanStatus();
@@ -78,7 +214,27 @@ const LibraryManagementTab: React.FC = () => {
       setLoading(true);
       setError(null);
       const pathsResponse = await apiService.getLibraryPaths();
-      setLibraryPaths(pathsResponse.data.paths);
+      const paths = pathsResponse.data.paths;
+
+      // Fetch latest scan report for each path
+      const pathsWithScans = await Promise.all(
+        paths.map(async (path: LibraryPath) => {
+          try {
+            const scanResponse = await apiService.request('GET', `/admin/library/paths/${path.id}/scans/latest`) as {
+              data: { report: LibraryPath['latest_scan'] | null }
+            };
+            return {
+              ...path,
+              latest_scan: scanResponse.data.report || undefined
+            };
+          } catch (err) {
+            // If no scan report exists, just return the path without latest_scan
+            return { ...path, latest_scan: undefined };
+          }
+        })
+      );
+
+      setLibraryPaths(pathsWithScans);
       await fetchSongs();
     } catch (err: any) {
       console.error('Failed to fetch library data:', err);
@@ -112,13 +268,14 @@ const LibraryManagementTab: React.FC = () => {
     try {
       const response = await apiService.getScanStatus();
       const newScanStatus = response.data.currentScan;
-      
+
       // Check if scan just completed
       if (scanStatus?.status === 'running' && (!newScanStatus || newScanStatus.status !== 'running')) {
-        // Scan completed, refresh songs list
+        // Scan completed, refresh songs list and library paths (for updated scan reports)
         await fetchSongs(currentPage, searchQuery);
+        await fetchLibraryData();
       }
-      
+
       setScanStatus(newScanStatus);
     } catch (err: any) {
       console.error('Failed to fetch scan status:', err);
@@ -139,20 +296,99 @@ const LibraryManagementTab: React.FC = () => {
     }
   };
 
+  const handleStopScan = async () => {
+    try {
+      await apiService.stopLibraryScan();
+      await fetchScanStatus();
+    } catch (err: any) {
+      console.error('Failed to stop library scan:', err);
+      setError(err.message || 'Failed to stop library scan');
+    }
+  };
+
   const handleAddPath = async () => {
     if (newPath.trim()) {
       try {
-        await apiService.addLibraryPath(newPath.trim());
+        setIsValidating(true);
+        setPathError(null);
+
+        // Normalize path: replace multiple spaces with single space, then trim
+        const normalizedPath = newPath.trim().replace(/\s{2,}/g, ' ');
+
+        await apiService.addLibraryPath(normalizedPath);
         setNewPath('');
+        setShowSuggestions(false);
+        // Reset validation state
+        setIsValidPath(null);
+        setPathError(null);
         // Only refresh library paths, not songs
         const pathsResponse = await apiService.getLibraryPaths();
         setLibraryPaths(pathsResponse.data.paths);
         setError(null);
       } catch (err: any) {
         console.error('Failed to add library path:', err);
-        setError(err.message || 'Failed to add library path');
+        const errorMsg = err.response?.data?.error?.message || err.message || 'Failed to add library path';
+        setPathError(errorMsg);
+        setError(errorMsg);
+      } finally {
+        setIsValidating(false);
       }
     }
+  };
+
+  const handleSelectAutocomplete = (path: string) => {
+    setNewPath(path);
+    setShowSuggestions(false);
+    setAutocompleteSuggestions([]);
+    setFocusedSuggestionIndex(-1);
+    setIsShowingRoot(false);
+    setIsValidPath(true);
+    setPathError(null);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (autocompleteSuggestions.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setFocusedSuggestionIndex(prev => {
+          const newIndex = prev < autocompleteSuggestions.length - 1 ? prev + 1 : prev;
+          return newIndex;
+        });
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setFocusedSuggestionIndex(prev => {
+          const newIndex = prev > 0 ? prev - 1 : -1;
+          return newIndex;
+        });
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (focusedSuggestionIndex >= 0 && autocompleteSuggestions[focusedSuggestionIndex]) {
+          handleSelectAutocomplete(autocompleteSuggestions[focusedSuggestionIndex]);
+        } else if (isValidPath === true) {
+          handleAddPath();
+        }
+        break;
+      case 'Escape':
+        setShowSuggestions(false);
+        setAutocompleteSuggestions([]);
+        setFocusedSuggestionIndex(-1);
+        break;
+    }
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    setInputHasFocus(false);
+    // Delay hiding dropdown to allow clicking on suggestions
+    setTimeout(() => {
+      setShowSuggestions(false);
+      setAutocompleteSuggestions([]);
+      setFocusedSuggestionIndex(-1);
+      setIsShowingRoot(false);
+    }, 200);
   };
 
   const handleRemovePath = async (id: number) => {
@@ -252,38 +488,154 @@ const LibraryManagementTab: React.FC = () => {
             <FolderIcon className="w-5 h-5 mr-2" />
             Library Paths
           </h3>
-          <button
-            onClick={() => handleStartScan()}
-            disabled={scanStatus?.status === 'running'}
-            className={clsx(
-              'flex items-center px-4 py-2 rounded-lg transition-colors',
-              scanStatus?.status === 'running'
-                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                : 'bg-primary text-white hover:bg-primary/90'
+          <div className="flex gap-2">
+            {scanStatus?.status === 'running' ? (
+              <button
+                onClick={() => handleStopScan()}
+                className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                <XCircleIcon className="w-4 h-4 mr-2" />
+                Stop Scan
+              </button>
+            ) : (
+              <button
+                onClick={() => handleStartScan()}
+                className="flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                <ArrowPathIcon className="w-4 h-4 mr-2" />
+                Scan Library
+              </button>
             )}
-          >
-            <ArrowPathIcon className={clsx('w-4 h-4 mr-2', scanStatus?.status === 'running' && 'animate-spin')} />
-            {scanStatus?.status === 'running' ? 'Scanning...' : 'Scan Library'}
-          </button>
+          </div>
         </div>
 
         {/* Add new path */}
-        <div className="mb-4 flex gap-3">
-          <input
-            type="text"
-            value={newPath}
-            onChange={(e) => setNewPath(e.target.value)}
-            placeholder="Enter library path (e.g., /home/user/Music)"
-            className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
-            onKeyPress={(e) => e.key === 'Enter' && handleAddPath()}
-          />
-          <button
-            onClick={handleAddPath}
-            disabled={!newPath.trim()}
-            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <PlusIcon className="w-4 h-4" />
-          </button>
+        <div className="mb-4 space-y-3">
+          {/* Input row */}
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={newPath}
+                onChange={(e) => {
+                  // Prevent multiple spaces that might come from autocorrect
+                  const normalizedValue = e.target.value.replace(/\s{2,}/g, ' ');
+                  setNewPath(normalizedValue);
+                  setPathError(null);
+                  setIsValidPath(null);
+                }}
+                onFocus={() => {
+                  setInputHasFocus(true);
+                  setShowSuggestions(true);
+                  // Always trigger autocomplete on focus to show root/drives if empty
+                  if (newPath.length > 0) {
+                    validateAndAutocompletePath(newPath);
+                  } else {
+                    // Show root directories or drive letters when empty
+                    validateAndAutocompletePath('');
+                  }
+                }}
+                onBlur={handleBlur}
+                onKeyDown={handleKeyDown}
+                placeholder="Type a path (e.g., /home/user/Music or C:\Music)"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck="false"
+                className={clsx(
+                  "w-full px-3 py-2 pr-10 bg-gray-700 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 transition-colors",
+                  pathError ? "border-red-500 focus:ring-red-500" : isValidPath === true ? "border-green-500 focus:ring-green-500" : isValidPath === false ? "border-red-500 focus:ring-red-500" : "border-gray-600 focus:ring-primary"
+                )}
+              />
+              {/* Validation indicator */}
+              {isValidPath === true && !isValidating && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <CheckCircleIcon className="w-5 h-5 text-green-500" />
+                </div>
+              )}
+              {isValidPath === false && !isValidating && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <span className="text-red-500 text-xl">✕</span>
+                </div>
+              )}
+              {isValidating && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                </div>
+              )}
+            </div>
+
+            {/* Add button */}
+            <button
+              onClick={handleAddPath}
+              disabled={!newPath.trim() || isValidating || isValidPath === false}
+              className={clsx(
+                "px-4 py-2 bg-primary text-white rounded-lg transition-colors",
+                (!newPath.trim() || isValidating || isValidPath === false) && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              {isValidating ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              ) : (
+                <PlusIcon className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+
+          {/* Autocomplete dropdown */}
+          {showSuggestions && autocompleteSuggestions.length > 0 && (
+            <div className="relative" ref={dropdownRef}>
+              <div className="absolute top-full left-0 mt-1 w-full bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
+                <div className="p-2 max-h-80 overflow-y-auto suggestions-dropdown">
+                  <p className="text-xs text-gray-400 px-2 py-1 font-medium">
+                    {isShowingRoot ? (
+                      <>
+                        {navigator.platform.toLowerCase().includes('win') ? 'AVAILABLE DRIVES' : 'ROOT DIRECTORIES'}
+                      </>
+                    ) : (
+                      'DIRECTORIES'
+                    )}
+                  </p>
+                  {autocompleteSuggestions.map((path, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleSelectAutocomplete(path)}
+                      onMouseEnter={() => setFocusedSuggestionIndex(index)}
+                      className={clsx(
+                        "w-full text-left px-3 py-2 text-sm rounded-lg transition-colors flex items-center gap-2",
+                        focusedSuggestionIndex === index
+                          ? "bg-primary text-white"
+                          : "text-gray-300 hover:bg-gray-700"
+                      )}
+                    >
+                      <FolderIcon className="w-4 h-4" />
+                      <span className="truncate">{path}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Validation status message */}
+          {isValidPath === true && (
+            <div className="text-green-400 text-sm flex items-center gap-2">
+              <CheckCircleIcon className="w-4 h-4" />
+              <span>✓ Valid directory path</span>
+            </div>
+          )}
+
+          {/* Path error message */}
+          {pathError && (
+            <div className="text-red-400 text-sm flex items-center gap-2">
+              <span>⚠️ {pathError}</span>
+            </div>
+          )}
+
+          {/* Help text */}
+          <p className="text-gray-400 text-xs">
+            💡 Click the input to see available drives/root directories. Start typing to autocomplete. Use arrow keys to navigate, Enter to select.
+          </p>
         </div>
 
         {/* Scan Progress */}
@@ -292,42 +644,42 @@ const LibraryManagementTab: React.FC = () => {
             <div className="flex items-center mb-3">
               <ArrowPathIcon className="w-5 h-5 text-yellow-400 animate-spin mr-2" />
               <span className="text-yellow-400 font-medium">Scanning Library...</span>
-              {scanStatus.progress !== undefined && (
+              {scanStatus.progress !== undefined && scanStatus.progress > 0 && (
                 <span className="ml-auto text-yellow-400 font-semibold">
                   {scanStatus.progress}%
                 </span>
               )}
             </div>
             <div className="w-full bg-gray-700 rounded-full h-3 mb-3">
-              <div 
-                className="bg-yellow-400 h-3 rounded-full transition-all duration-500 ease-in-out" 
-                style={{ 
+              <div
+                className="bg-yellow-400 h-3 rounded-full transition-all duration-500 ease-in-out"
+                style={{
                   width: `${scanStatus.progress || 0}%`,
-                  minWidth: scanStatus.progress && scanStatus.progress > 0 ? '8px' : '0'
+                  minWidth: (scanStatus.progress ?? 0) > 0 ? '8px' : '0px'
                 }}
               ></div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div className="text-center">
-                <div className="text-gray-300 font-medium">{scanStatus.filesScanned}</div>
+                <div className="text-gray-300 font-medium">{scanStatus.filesScanned ?? 0}</div>
                 <div className="text-gray-400 text-xs">Scanned</div>
               </div>
               <div className="text-center">
-                <div className="text-green-400 font-medium">{scanStatus.filesAdded}</div>
+                <div className="text-green-400 font-medium">{scanStatus.filesAdded ?? 0}</div>
                 <div className="text-gray-400 text-xs">Added</div>
               </div>
               <div className="text-center">
-                <div className="text-blue-400 font-medium">{scanStatus.filesUpdated}</div>
+                <div className="text-blue-400 font-medium">{scanStatus.filesUpdated ?? 0}</div>
                 <div className="text-gray-400 text-xs">Updated</div>
               </div>
               <div className="text-center">
-                <div className="text-red-400 font-medium">{scanStatus.errorsCount}</div>
+                <div className="text-red-400 font-medium">{scanStatus.errorsCount ?? 0}</div>
                 <div className="text-gray-400 text-xs">Errors</div>
               </div>
             </div>
-            {scanStatus.totalFiles && (
+            {(scanStatus.totalFiles ?? 0) > 0 && (
               <p className="text-gray-400 text-xs mt-2 text-center">
-                Processing {scanStatus.filesScanned} of {scanStatus.totalFiles} files
+                Processing {scanStatus.filesScanned ?? 0} of {scanStatus.totalFiles} files
               </p>
             )}
             {scanStatus.currentFile && (
@@ -339,37 +691,127 @@ const LibraryManagementTab: React.FC = () => {
         )}
 
         {/* Paths list */}
-        <div className="space-y-2">
+        <div className="space-y-3">
           {libraryPaths.map((path) => (
-            <div key={path.id} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
-              <div className="flex items-center flex-1">
-                <input
-                  type="checkbox"
-                  checked={path.is_active}
-                  onChange={() => handleTogglePath(path.id)}
-                  className="w-4 h-4 text-primary bg-gray-600 border-gray-500 rounded focus:ring-primary focus:ring-2"
-                />
-                <div className="ml-3 flex-1">
-                  <p className={clsx(
-                    'font-medium',
-                    path.is_active ? 'text-white' : 'text-gray-400'
-                  )}>
-                    {path.path}
-                  </p>
-                  {path.updated_at && (
-                    <p className="text-gray-400 text-sm">
-                      Last updated: {new Date(path.updated_at).toLocaleString()}
+            <div key={path.id} className="bg-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center flex-1 min-w-0">
+                  <input
+                    type="checkbox"
+                    checked={path.is_active}
+                    onChange={() => handleTogglePath(path.id)}
+                    className="w-4 h-4 text-primary bg-gray-600 border-gray-500 rounded focus:ring-primary focus:ring-2"
+                  />
+                  <div className="ml-3 flex-1 min-w-0">
+                    <p className={clsx(
+                      'font-medium truncate',
+                      path.is_active ? 'text-white' : 'text-gray-400'
+                    )}>
+                      {path.path}
                     </p>
-                  )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 ml-3">
+                  <button
+                    onClick={() => {
+                      setSelectedPathForReport({ id: path.id, path: path.path });
+                      setScanReportModalOpen(true);
+                    }}
+                    className="p-2 text-gray-400 hover:text-blue-400 transition-colors"
+                    title="View scan reports"
+                  >
+                    <DocumentTextIcon className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleRemovePath(path.id)}
+                    className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                    title="Remove path"
+                  >
+                    <TrashIcon className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={() => handleRemovePath(path.id)}
-                className="p-2 text-gray-400 hover:text-red-400 transition-colors"
-                title="Remove path"
-              >
-                <TrashIcon className="w-4 h-4" />
-              </button>
+
+              {/* Latest Scan Info */}
+              {path.latest_scan ? (
+                <div className="bg-gray-800 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      {path.latest_scan.status === 'completed' && (
+                        <CheckCircleIcon className="w-4 h-4 text-green-400" />
+                      )}
+                      {path.latest_scan.status === 'failed' && (
+                        <XCircleIconSolid className="w-4 h-4 text-red-400" />
+                      )}
+                      {path.latest_scan.status === 'stopped' && (
+                        <ClockIcon className="w-4 h-4 text-yellow-400" />
+                      )}
+                      {path.latest_scan.status === 'running' && (
+                        <ClockIcon className="w-4 h-4 text-blue-400 animate-spin" />
+                      )}
+                      <span className="text-gray-300 text-sm font-medium capitalize">
+                        {path.latest_scan.status}
+                      </span>
+                      <span className="text-gray-500 text-xs">
+                        {new Date(path.latest_scan.started_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {path.latest_scan.status === 'running' && (
+                      <span className="text-blue-400 text-sm font-medium">
+                        {path.latest_scan.progress}%
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Progress bar for running scans */}
+                  {path.latest_scan.status === 'running' && (
+                    <div className="w-full bg-gray-600 rounded-full h-1.5 mb-2">
+                      <div
+                        className="bg-blue-400 h-1.5 rounded-full transition-all duration-300"
+                        style={{ width: `${path.latest_scan.progress}%` }}
+                      ></div>
+                    </div>
+                  )}
+
+                  {/* Scan statistics */}
+                  <div className="grid grid-cols-4 gap-2 text-xs">
+                    <div>
+                      <div className="text-gray-300 font-medium">{path.latest_scan.files_scanned}</div>
+                      <div className="text-gray-500">Scanned</div>
+                    </div>
+                    <div>
+                      <div className="text-green-400 font-medium">{path.latest_scan.files_added}</div>
+                      <div className="text-gray-500">Added</div>
+                    </div>
+                    <div>
+                      <div className="text-blue-400 font-medium">{path.latest_scan.files_updated}</div>
+                      <div className="text-gray-500">Updated</div>
+                    </div>
+                    <div>
+                      <div className={clsx(
+                        'font-medium',
+                        path.latest_scan.errors_count > 0 ? 'text-red-400' : 'text-gray-300'
+                      )}>
+                        {path.latest_scan.errors_count}
+                      </div>
+                      <div className="text-gray-500">Errors</div>
+                    </div>
+                  </div>
+
+                  {path.latest_scan.errors_count > 0 && (
+                    <div className="mt-2 p-2 bg-red-900/20 border border-red-500/30 rounded">
+                      <div className="flex items-center gap-1 text-red-400 text-xs">
+                        <XCircleIconSolid className="w-3 h-3" />
+                        <span>{path.latest_scan.errors_count} error{path.latest_scan.errors_count > 1 ? 's' : ''} during last scan</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-gray-800 rounded-lg p-3 text-center">
+                  <p className="text-gray-500 text-sm">No scans yet</p>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -567,6 +1009,19 @@ const LibraryManagementTab: React.FC = () => {
         song={editingSong}
         onSongUpdated={handleSongUpdated}
       />
+
+      {/* Scan Report Modal */}
+      {selectedPathForReport && (
+        <ScanReportModal
+          isOpen={scanReportModalOpen}
+          onClose={() => {
+            setScanReportModalOpen(false);
+            setSelectedPathForReport(null);
+          }}
+          pathId={selectedPathForReport.id}
+          pathName={selectedPathForReport.path}
+        />
+      )}
     </div>
   );
 };
