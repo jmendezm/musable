@@ -13,6 +13,7 @@
     "build:plugins": "node scripts/build-plugins.js",
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && npm run build",
+    "build:fullstack": "cd backend && npm run build && cd ../frontend && npm run build",
     "copy:frontend": "cpx \"frontend/build/**/*\" backend/public",
     "db:init": "cd backend && node dist/utils/initDb.js",
     "start": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue.bold,green.bold\" \"npm run start:backend\" \"npm run start:frontend\"",
