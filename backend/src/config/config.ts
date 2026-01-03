@@ -12,7 +12,8 @@ if (!result.error) {
 } else {
   // Only log as ERROR if it's not a simple "file not found" error
   // Missing .env is fine - we'll use default values
-  if (result.error.code === 'ENOENT') {
+  const error = result.error as NodeJS.ErrnoException;
+  if (error.code === 'ENOENT') {
     logger.info('.env file not found (this is OK - using default values)');
   } else {
     logger.error('Failed to load .env file:', result.error);
