@@ -7,7 +7,9 @@ const router = Router();
 // Get current version and check for updates
 router.get('/check', authenticateToken, async (req: any, res): Promise<void> => {
   try {
-    const updateInfo = await updateService.checkForUpdates();
+    // Allow force refresh via query parameter
+    const forceCheck = req.query.force === 'true';
+    const updateInfo = await updateService.checkForUpdates(forceCheck);
 
     if (!updateInfo) {
       res.status(500).json({
@@ -22,7 +24,6 @@ router.get('/check', authenticateToken, async (req: any, res): Promise<void> => 
       data: updateInfo
     });
   } catch (error) {
-    console.error('Error checking for updates:', error);
     res.status(500).json({
       success: false,
       error: { message: 'Failed to check for updates' }
@@ -44,7 +45,6 @@ router.get('/releases', authenticateToken, async (req: any, res): Promise<void> 
       }
     });
   } catch (error) {
-    console.error('Error fetching releases:', error);
     res.status(500).json({
       success: false,
       error: { message: 'Failed to fetch releases' }

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
+import logger from '../utils/logger';
 
 interface GitLabRelease {
   name: string;
@@ -30,6 +31,9 @@ class UpdateService {
   private gitLabUrl: string;
   private projectId: string;
   private currentVersion: string;
+  private cachedUpdateInfo: UpdateInfo | null = null;
+  private lastCheckTime: number = 0;
+  private readonly CHECK_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
 
   constructor() {
     // GitLab instance URL
@@ -37,6 +41,11 @@ class UpdateService {
     // Project path in URL-encoded format
     this.projectId = encodeURIComponent('musable/musable');
     this.currentVersion = this.getCurrentVersion();
+
+    // Do initial check when service is created
+    this.checkForUpdates().catch(() => {
+      // Silently fail on initial check, don't log error
+    });
   }
 
   private getCurrentVersion(): string {
@@ -47,7 +56,7 @@ class UpdateService {
         return packageJson.version || '0.0.0';
       }
     } catch (error) {
-      console.error('Error reading package.json:', error);
+      logger.error('Error reading package.json');
     }
     return '0.0.0';
   }
@@ -67,7 +76,14 @@ class UpdateService {
     return 0;  // versions are equal
   }
 
-  async checkForUpdates(): Promise<UpdateInfo | null> {
+  async checkForUpdates(forceCheck: boolean = false): Promise<UpdateInfo | null> {
+    const now = Date.now();
+
+    // Return cached result if available and not forcing check
+    if (!forceCheck && this.cachedUpdateInfo && (now - this.lastCheckTime) < this.CHECK_INTERVAL) {
+      return this.cachedUpdateInfo;
+    }
+
     try {
       // Fetch latest release from GitLab
       const releasesUrl = `${this.gitLabUrl}/api/v4/projects/${this.projectId}/releases/permalink/latest`;
@@ -83,7 +99,7 @@ class UpdateService {
 
       const updateAvailable = this.compareVersions(this.currentVersion, latestVersion) < 0;
 
-      return {
+      const updateInfo: UpdateInfo = {
         currentVersion: this.currentVersion,
         latestVersion,
         updateAvailable,
@@ -92,9 +108,26 @@ class UpdateService {
         gitLabUrl: this.gitLabUrl,
         publishedAt: release.released_at
       };
-    } catch (error) {
-      console.error('Error checking for updates:', error);
-      return null;
+
+      // Cache the result
+      this.cachedUpdateInfo = updateInfo;
+      this.lastCheckTime = now;
+
+      if (updateAvailable) {
+        logger.info(`Update available: ${this.currentVersion} → ${latestVersion}`);
+      }
+
+      return updateInfo;
+    } catch (error: any) {
+      // Only log a simple message, not the full error stack
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        logger.warn('Update check timed out (network unavailable)');
+      } else {
+        logger.warn('Failed to check for updates');
+      }
+
+      // Return cached result if available, even if expired
+      return this.cachedUpdateInfo;
     }
   }
 
@@ -109,11 +142,17 @@ class UpdateService {
       });
 
       return response.data;
-    } catch (error) {
-      console.error('Error fetching releases:', error);
+    } catch (error: any) {
+      // Only log a simple message
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        logger.warn('Fetching releases timed out (network unavailable)');
+      } else {
+        logger.warn('Failed to fetch releases');
+      }
       return [];
     }
   }
 }
 
 export default new UpdateService();
+

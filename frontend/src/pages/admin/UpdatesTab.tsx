@@ -39,9 +39,10 @@ const UpdatesTab: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const { showSuccess, showError } = useToast();
 
-  const fetchUpdateInfo = async () => {
+  const fetchUpdateInfo = async (forceCheck: boolean = false) => {
     try {
-      const response = await apiService.request('GET', '/updates/check') as any;
+      const forceParam = forceCheck ? '?force=true' : '';
+      const response = await apiService.request('GET', `/updates/check${forceParam}`) as any;
       setUpdateInfo(response.data);
     } catch (err: any) {
       console.error('Failed to fetch update info:', err);
@@ -73,7 +74,7 @@ const UpdatesTab: React.FC = () => {
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
-      await Promise.all([fetchUpdateInfo(), fetchReleases()]);
+      await Promise.all([fetchUpdateInfo(true), fetchReleases()]);
       showSuccess('Update information refreshed');
     } catch (err: any) {
       showError(err.message || 'Failed to refresh');
