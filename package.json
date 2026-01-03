@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue.bold,green.bold\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm start",
+    "dev:frontend": "cd frontend && npm run dev",
     "start:backend": "cd backend && npm start",
     "start:frontend": "cd frontend && npm start",
     "build": "npm run build:plugins && npm run build:frontend && npm run copy:frontend && npm run build:backend",
