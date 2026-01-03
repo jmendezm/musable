@@ -7,6 +7,7 @@ variables:
   DOCKER_HOST: tcp://docker:2375
   DOCKER_DRIVER: overlay2
   INTERNAL_REGISTRY: "192.168.1.20:5050"
+  INTERNAL_IMAGE_BASE: "$INTERNAL_REGISTRY/$CI_PROJECT_PATH"
   INTERNAL_IMAGE_PATH: "$INTERNAL_REGISTRY/$CI_PROJECT_PATH"
 
 # Build and push Musable image
@@ -24,10 +25,7 @@ build-musable:
         IMAGE_NAME: "$INTERNAL_IMAGE_BASE"
     - if: $CI_COMMIT_BRANCH == "dev"
       variables:
-        # This creates a sub-repository named 'dev' in the UI
-        # Or you can use "$INTERNAL_IMAGE_BASE-dev" if you prefer that naming
-        IMAGE_NAME: "$INTERNAL_IMAGE_BASE/dev"
-        
+        IMAGE_NAME: "$INTERNAL_IMAGE_BASE-dev"
   before_script:
     # 1. Create the Docker config directory
     - mkdir -p /etc/docker
@@ -38,12 +36,13 @@ build-musable:
     # 3. Standard Login
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $INTERNAL_REGISTRY
   script:
-    - echo "Building Musable image..."
-    - docker build -t $INTERNAL_IMAGE_PATH:$CI_COMMIT_SHORT_SHA .
-    - docker tag $INTERNAL_IMAGE_PATH:$CI_COMMIT_SHORT_SHA $INTERNAL_IMAGE_PATH:latest
+    - echo "Building Musable image for branch $CI_COMMIT_BRANCH..."
+    - echo "Using IMAGE_NAME: $IMAGE_NAME"
+    - docker build -t $IMAGE_NAME:$CI_COMMIT_SHORT_SHA .
+    - docker tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA $IMAGE_NAME:latest
     - echo "Pushing Musable image to GitLab registry..."
-    - docker push $INTERNAL_IMAGE_PATH:$CI_COMMIT_SHORT_SHA
-    - docker push $INTERNAL_IMAGE_PATH:latest
+    - docker push $IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+    - docker push $IMAGE_NAME:latest
 
 # Create specific release tags only when a git tag is pushed
 release-tag:
