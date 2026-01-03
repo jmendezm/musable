@@ -20,11 +20,32 @@ class FrontendPluginLoader {
     console.log('[FrontendPluginLoader] 🔍 Discovering plugins...');
 
     try {
-      // Look for both TypeScript (.ts) and compiled JavaScript (.js) plugins
-      const pluginContext = (require as any).context('../plugins', true, /index\.(ts|js)$/);
-      const pluginPaths = pluginContext.keys();
+      let pluginContext: any;
+      let pluginPaths: string[] = [];
+
+      // Try to load plugins context - fail gracefully if plugins directory doesn't exist
+      try {
+        // Look for both TypeScript (.ts) and compiled JavaScript (.js) plugins
+        pluginContext = (require as any).context('../plugins', true, /index\.(ts|js)$/);
+        pluginPaths = pluginContext.keys();
+      } catch (contextError: any) {
+        // Plugins directory doesn't exist or no plugins found - this is normal for base installation
+        if (contextError.code === 'MODULE_NOT_FOUND' || contextError.message.includes('Cannot resolve')) {
+          console.log('[FrontendPluginLoader] ℹ️  No plugins directory found (this is normal for base installation)');
+          this.isLoaded = true;
+          return;
+        }
+        throw contextError; // Re-throw if it's a different error
+      }
 
       console.log(`[FrontendPluginLoader] 📦 Found ${pluginPaths.length} plugin modules`);
+
+      // If no plugins found, just return
+      if (pluginPaths.length === 0) {
+        console.log('[FrontendPluginLoader] ℹ️  No plugins available');
+        this.isLoaded = true;
+        return;
+      }
 
       // Fetch enabled plugins from backend first
       let enabledPluginIds = new Set<string>();

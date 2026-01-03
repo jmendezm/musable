@@ -1,0 +1,3 @@
+# This directory is for frontend plugins
+# The base installation does not include any plugins
+# Plugins can be added here without modifying core code
