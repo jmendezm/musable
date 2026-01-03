@@ -359,18 +359,18 @@ const SearchPage: React.FC = () => {
                     className="bg-gray-800/50 p-2 md:p-3 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer group border border-gray-700 hover:border-primary/50"
                     onClick={() => handleAlbumClick(album.id)}
                   >
-                    <div className="w-full aspect-square rounded-lg overflow-hidden bg-gray-700 mb-2 shadow-lg">
-                      {album.artwork_path ? (
-                        <img
-                          src={apiService.getArtworkUrl(album.artwork_path)}
-                          alt={album.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
+                    <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-2 shadow-lg" style={{ paddingBottom: '100%' }}>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        {album.artwork_path ? (
+                          <img
+                            src={apiService.getArtworkUrl(album.artwork_path)}
+                            alt={album.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
                           <MusicalNoteIcon className="w-6 h-6 text-gray-400" />
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                     <h3 className="text-white text-sm font-medium truncate">{album.title}</h3>
                     <p className="text-gray-400 text-xs truncate">{album.artist_name}</p>
@@ -538,18 +538,18 @@ const SearchPage: React.FC = () => {
                     className="bg-gray-800/50 p-4 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer group"
                     onClick={() => handleAlbumClick(album.id)}
                   >
-                    <div className="w-full aspect-square rounded-lg overflow-hidden bg-gray-700 mb-3">
-                      {album.artwork_path ? (
-                        <img
-                          src={apiService.getArtworkUrl(album.artwork_path)}
-                          alt={album.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
+                    <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-3" style={{ paddingBottom: '100%' }}>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        {album.artwork_path ? (
+                          <img
+                            src={apiService.getArtworkUrl(album.artwork_path)}
+                            alt={album.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
                           <MusicalNoteIcon className="w-8 h-8 text-gray-400" />
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                     <h3 className="text-white font-medium truncate">{album.title}</h3>
                     <p className="text-gray-400 text-sm truncate">{album.artist_name}</p>

@@ -329,21 +329,23 @@ const HomePage: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
             {recentAlbums.map((album) => (
-              <div 
-                key={album.id} 
+              <div
+                key={album.id}
                 className="bg-gray-800 p-4 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer"
               >
-                {album.artwork_path ? (
-                  <img
-                    src={apiService.getArtworkUrl(album.artwork_path)}
-                    alt={album.title}
-                    className="w-full aspect-square object-cover rounded-lg mb-3"
-                  />
-                ) : (
-                  <div className="w-full aspect-square bg-gray-700 rounded-lg mb-3 flex items-center justify-center">
-                    <MusicalNoteIcon className="w-8 h-8 text-gray-500" />
+                <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-3" style={{ paddingBottom: '100%' }}>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    {album.artwork_path ? (
+                      <img
+                        src={apiService.getArtworkUrl(album.artwork_path)}
+                        alt={album.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <MusicalNoteIcon className="w-8 h-8 text-gray-500" />
+                    )}
                   </div>
-                )}
+                </div>
                 <h3 className="text-white font-medium text-sm truncate">{album.title}</h3>
                 <p className="text-gray-400 text-xs truncate">{album.artist_name}</p>
               </div>

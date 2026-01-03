@@ -201,18 +201,18 @@ const LibraryPage: React.FC = () => {
               onClick={() => navigate(`/album/${album.id}`)}
               className="bg-gray-800 rounded-lg p-4 hover:bg-gray-700 transition-colors cursor-pointer hover-lift"
             >
-              <div className="aspect-square mb-3 bg-gray-700 rounded-md overflow-hidden">
-                {album.artwork_path ? (
-                  <img
-                    src={album.artwork_path}
-                    alt={album.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
+              <div className="relative mb-3 bg-gray-700 rounded-md overflow-hidden" style={{ paddingBottom: '100%' }}>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {album.artwork_path ? (
+                    <img
+                      src={apiService.getArtworkUrl(album.artwork_path)}
+                      alt={album.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
                     <MusicalNoteIcon className="w-12 h-12 text-gray-500" />
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
               <h3 className="text-white font-medium text-sm mb-1 truncate">{album.title}</h3>
               <p className="text-gray-400 text-xs truncate">{album.artist_name}</p>
@@ -289,17 +289,15 @@ const LibraryPage: React.FC = () => {
                 onTouchEnd={handleTouchEnd}
                 onTouchMove={handleTouchMove}
               >
-                <div className="w-12 h-12 bg-gray-700 rounded-md overflow-hidden flex-shrink-0 mr-3">
+                <div className="w-12 h-12 bg-gray-700 rounded-md overflow-hidden flex-shrink-0 mr-3 relative flex items-center justify-center">
                   {song.artwork_path ? (
                     <img
-                      src={song.artwork_path}
+                      src={apiService.getArtworkUrl(song.artwork_path)}
                       alt={song.title}
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <MusicalNoteIcon className="w-6 h-6 text-gray-500" />
-                    </div>
+                    <MusicalNoteIcon className="w-6 h-6 text-gray-500" />
                   )}
                 </div>
 
