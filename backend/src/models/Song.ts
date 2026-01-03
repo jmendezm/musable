@@ -201,6 +201,11 @@ export class SongModel {
     await this.db.run('DELETE FROM songs WHERE id = ?', [id]);
   }
 
+  async deleteAllSongs(): Promise<number> {
+    const result = await this.db.run('DELETE FROM songs');
+    return result.changes;
+  }
+
   async getSongCount(): Promise<number> {
     const result = await this.db.get<{ count: number }>(
       'SELECT COUNT(*) as count FROM songs'

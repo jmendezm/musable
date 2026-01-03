@@ -28,7 +28,8 @@ import {
   deleteScanReport,
   adminUploadProfilePicture,
   updateUserProfilePicture,
-  deleteUserProfilePicture
+  deleteUserProfilePicture,
+  clearAllSongsAndRescan
 } from '../controllers/adminController';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 
@@ -60,6 +61,7 @@ router.post('/library/paths', addLibraryPath);
 router.put('/library/paths/:id', updateLibraryPath);
 router.delete('/library/paths/:id', deleteLibraryPath);
 router.get('/library/validate-path', validatePath);
+router.post('/library/rescan-all', clearAllSongsAndRescan);
 
 // Library path scan reports
 router.get('/library/paths/:pathId/scans', getPathScanReports);

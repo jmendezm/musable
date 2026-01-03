@@ -945,7 +945,7 @@ export const updateUserProfilePicture = asyncHandler(async (req: AuthRequest, re
 
 export const deleteUserProfilePicture = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { userId } = req.params;
-  
+
   const numericUserId = parseInt(userId, 10);
   if (isNaN(numericUserId)) {
     throw new AppError('Invalid user ID', 400);
@@ -979,3 +979,26 @@ export const deleteUserProfilePicture = asyncHandler(async (req: AuthRequest, re
   });
 });
 
+export const clearAllSongsAndRescan = asyncHandler(async (req: AuthRequest, res: Response) => {
+  // Check if a scan is currently running
+  const scannerService = getScannerWorkerService();
+  const isScanning = scannerService.isCurrentlyScanning();
+
+  if (isScanning) {
+    throw new AppError('A scan is already in progress. Please wait for it to complete.', 400);
+  }
+
+  // Delete all songs
+  const deletedCount = await SongModel.deleteAllSongs();
+
+  // Start a fresh scan of all library paths
+  await scannerService.startScan();
+
+  res.json({
+    success: true,
+    data: {
+      message: `Deleted ${deletedCount} songs and started fresh scan`,
+      deletedCount
+    }
+  });
+});

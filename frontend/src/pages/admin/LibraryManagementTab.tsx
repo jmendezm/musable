@@ -58,6 +58,7 @@ const LibraryManagementTab: React.FC = () => {
   const [reportToDelete, setReportToDelete] = useState<{ id: number; path: string } | null>(null);
   const [deleteSongDialogOpen, setDeleteSongDialogOpen] = useState(false);
   const [songToDelete, setSongToDelete] = useState<Song | null>(null);
+  const [rescanAllDialogOpen, setRescanAllDialogOpen] = useState(false);
 
   // New states for path selector
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -318,6 +319,21 @@ const LibraryManagementTab: React.FC = () => {
     }
   };
 
+  const handleRescanAllLibraries = async () => {
+    try {
+      const response = await apiService.rescanAllLibraries();
+      showSuccess(response.data.message);
+      setRescanAllDialogOpen(false);
+      await fetchScanStatus();
+      // Refresh library overview
+      await fetchLibraryData();
+      await fetchSongs(currentPage, searchQuery);
+    } catch (err: any) {
+      console.error('Failed to rescan all libraries:', err);
+      showError(err.message || 'Failed to rescan all libraries');
+    }
+  };
+
   const handleAddPath = async () => {
     if (newPath.trim()) {
       try {
@@ -537,13 +553,23 @@ const LibraryManagementTab: React.FC = () => {
                 Stop Scan
               </button>
             ) : (
-              <button
-                onClick={() => handleStartScan()}
-                className="flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
-              >
-                <ArrowPathIcon className="w-4 h-4 mr-2" />
-                Scan Library
-              </button>
+              <>
+                <button
+                  onClick={() => handleStartScan()}
+                  className="flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                >
+                  <ArrowPathIcon className="w-4 h-4 mr-2" />
+                  Scan Library
+                </button>
+                <button
+                  onClick={() => setRescanAllDialogOpen(true)}
+                  className="flex items-center px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                  title="This will delete all songs from the database and rescan all library paths"
+                >
+                  <ArrowPathIcon className="w-4 h-4 mr-2" />
+                  Rescan All Libraries
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -1142,6 +1168,36 @@ const LibraryManagementTab: React.FC = () => {
           )
         }
         confirmText="Delete Song"
+        cancelText="Cancel"
+        type="danger"
+      />
+
+      {/* Rescan All Libraries Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={rescanAllDialogOpen}
+        onClose={() => setRescanAllDialogOpen(false)}
+        onConfirm={handleRescanAllLibraries}
+        title="Rescan All Libraries"
+        message={
+          <div>
+            <p className="mb-3">Are you sure you want to rescan all libraries?</p>
+            <p className="text-sm text-gray-400 mb-2">
+              This will:
+            </p>
+            <ul className="text-sm text-gray-400 list-disc list-inside mb-3 space-y-1">
+              <li>Delete ALL songs from the database</li>
+              <li>Clear all scan history</li>
+              <li>Perform a fresh scan of all library paths</li>
+            </ul>
+            <p className="text-yellow-400 text-sm mb-2">
+              Your music files will NOT be deleted.
+            </p>
+            <p className="text-red-400 text-sm">
+              This action cannot be undone and may take a while depending on your library size.
+            </p>
+          </div>
+        }
+        confirmText="Rescan All Libraries"
         cancelText="Cancel"
         type="danger"
       />

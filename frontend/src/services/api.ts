@@ -206,6 +206,10 @@ class ApiService {
     return this.request('GET', '/library/scan/status');
   }
 
+  async rescanAllLibraries(): Promise<ApiResponse<{ message: string; deletedCount: number }>> {
+    return this.request('POST', '/admin/library/rescan-all');
+  }
+
   // Playlist endpoints
   async createPlaylist(data: CreatePlaylistData): Promise<ApiResponse<{ playlist: Playlist }>> {
     return this.request('POST', '/playlists', data);
