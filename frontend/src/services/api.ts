@@ -318,6 +318,10 @@ class ApiService {
     return this.request('POST', '/admin/invites/cleanup');
   }
 
+  async resetAllUserData(): Promise<ApiResponse<any>> {
+    return this.request('POST', '/admin/reset-all-data');
+  }
+
   async getAllHistory(params?: { limit?: number; offset?: number; user?: number }): Promise<ApiResponse<{ history: ListenHistory[] }>> {
     const queryString = new URLSearchParams(params as any).toString();
     return this.request('GET', `/admin/history${queryString ? `?${queryString}` : ''}`);

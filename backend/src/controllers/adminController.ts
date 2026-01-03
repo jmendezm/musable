@@ -1002,3 +1002,57 @@ export const clearAllSongsAndRescan = asyncHandler(async (req: AuthRequest, res:
     }
   });
 });
+
+export const resetAllUserData = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const currentUserId = req.user!.id;
+  const isAdmin = req.user!.is_admin;
+
+  if (!isAdmin) {
+    throw new AppError('Only admins can reset user data', 403);
+  }
+
+  // Import models
+  const UserModel = (await import('../models/User')).default;
+  const PlaylistModel = (await import('../models/Playlist')).default;
+  const ListenHistoryModel = (await import('../models/ListenHistory')).default;
+  const PlaylistFollowsModel = (await import('../models/PlaylistFollows')).default;
+  const db = Database.getInstance();
+
+  try {
+    await db.exec('BEGIN TRANSACTION');
+
+    // Delete all users except the current admin
+    const deletedUsers = await db.run(
+      'DELETE FROM users WHERE id != ? AND is_admin = 0',
+      [currentUserId]
+    );
+
+    // Delete all playlists (they will be recreated by users)
+    const deletedPlaylists = await db.run('DELETE FROM playlists');
+
+    // Clear listen history
+    const deletedHistory = await db.run('DELETE FROM listen_history');
+
+    // Clear playlist follows
+    const deletedFollows = await db.run('DELETE FROM playlist_follows');
+
+    await db.exec('COMMIT');
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Successfully reset all user data',
+        stats: {
+          deletedUsers: deletedUsers.changes,
+          deletedPlaylists: deletedPlaylists.changes,
+          deletedHistory: deletedHistory.changes,
+          deletedFollows: deletedFollows.changes
+        }
+      }
+    });
+  } catch (error) {
+    await db.exec('ROLLBACK');
+    throw new AppError('Failed to reset user data', 500);
+  }
+});
+

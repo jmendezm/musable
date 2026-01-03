@@ -11,6 +11,7 @@ import {
   TrashIcon
 } from '@heroicons/react/24/outline';
 import { apiService } from '../../services/api';
+import { useToast } from '../../contexts/ToastContext';
 import clsx from 'clsx';
 
 interface SystemSettings {
@@ -56,9 +57,14 @@ const SystemSettingsTab: React.FC = () => {
   const [systemStatus, setSystemStatus] = useState<SystemStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [cleaningInvites, setCleaningInvites] = useState(false);
+  const [resettingData, setResettingData] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'general' | 'library' | 'security' | 'maintenance'>('general');
   const [scanStatus, setScanStatus] = useState<any>(null);
+  const { showSuccess, showError } = useToast();
 
   useEffect(() => {
     fetchSystemSettings();
@@ -174,24 +180,76 @@ const SystemSettingsTab: React.FC = () => {
 
   const handleSaveSettings = async () => {
     if (!settings) return;
-    
+
     try {
       setSaving(true);
       setError(null);
-      
+      setSuccessMessage(null);
+
       // Save the public sharing setting (the only real setting we're managing)
       await apiService.setSystemSetting('public_sharing_enabled', settings.securitySettings.publicSharingEnabled);
-      
+
       // TODO: Add other settings when backend supports them
-      
+
       // Refresh settings to confirm save
       await fetchSystemSettings();
-      
+
+      setSuccessMessage('Settings saved successfully');
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       console.error('Failed to save settings:', err);
       setError(err.message || 'Failed to save settings');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCleanupInvites = async () => {
+    try {
+      setCleaningInvites(true);
+      setError(null);
+      setSuccessMessage(null);
+
+      const response = await apiService.cleanupExpiredInvites();
+
+      if (response.success) {
+        // Parse the deleted count from the message or use default
+        const message = response.data?.message || 'Expired invites cleaned up successfully';
+        showSuccess(message);
+        setSuccessMessage(message);
+        setTimeout(() => setSuccessMessage(null), 3000);
+      }
+    } catch (err: any) {
+      console.error('Failed to cleanup invites:', err);
+      showError(err.message || 'Failed to cleanup expired invites');
+      setError(err.message || 'Failed to cleanup expired invites');
+    } finally {
+      setCleaningInvites(false);
+    }
+  };
+
+  const handleResetAllData = async () => {
+    try {
+      setResettingData(true);
+      setError(null);
+      setSuccessMessage(null);
+      setShowResetConfirm(false);
+
+      const response = await apiService.resetAllUserData();
+
+      if (response.success) {
+        const stats = response.data?.stats;
+        const message = response.data?.message || 'All user data reset successfully';
+        showSuccess(message);
+        setSuccessMessage(`${message} (${stats?.deletedUsers || 0} users, ${stats?.deletedPlaylists || 0} playlists deleted)`);
+        setTimeout(() => setSuccessMessage(null), 5000);
+      }
+    } catch (err: any) {
+      console.error('Failed to reset user data:', err);
+      showError(err.message || 'Failed to reset user data');
+      setError(err.message || 'Failed to reset user data');
+    } finally {
+      setResettingData(false);
     }
   };
 
@@ -228,6 +286,12 @@ const SystemSettingsTab: React.FC = () => {
       {error && (
         <div className="bg-red-900/20 border border-red-500 rounded-lg p-4">
           <p className="text-red-400">{error}</p>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="bg-green-900/20 border border-green-500 rounded-lg p-4">
+          <p className="text-green-400">{successMessage}</p>
         </div>
       )}
 
@@ -562,34 +626,15 @@ const SystemSettingsTab: React.FC = () => {
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-white font-medium">Clean Up Expired Invites</p>
-                            <p className="text-gray-400 text-sm">Remove expired invitation tokens</p>
+                            <p className="text-gray-400 text-sm">Remove expired invitation tokens from database</p>
                           </div>
-                          <button className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">
+                          <button
+                            onClick={handleCleanupInvites}
+                            disabled={cleaningInvites}
+                            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                          >
+                            {cleaningInvites && <ArrowPathIcon className="w-4 h-4 mr-2 animate-spin" />}
                             Run Now
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="bg-gray-700 rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-white font-medium">Optimize Database</p>
-                            <p className="text-gray-400 text-sm">Vacuum and optimize database performance</p>
-                          </div>
-                          <button className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">
-                            Optimize
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="bg-gray-700 rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-white font-medium">Clear Old Sessions</p>
-                            <p className="text-gray-400 text-sm">Remove expired user sessions</p>
-                          </div>
-                          <button className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">
-                            Clear
                           </button>
                         </div>
                       </div>
@@ -601,31 +646,63 @@ const SystemSettingsTab: React.FC = () => {
                               <ExclamationTriangleIcon className="w-4 h-4 mr-2" />
                               Reset All User Data
                             </p>
-                            <p className="text-gray-400 text-sm">This will permanently delete all user accounts and data</p>
+                            <p className="text-gray-400 text-sm">This will permanently delete all users, playlists, history, and follows</p>
                           </div>
-                          <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                          <button
+                            onClick={() => setShowResetConfirm(true)}
+                            disabled={resettingData}
+                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                          >
+                            {resettingData && <ArrowPathIcon className="w-4 h-4 mr-2 animate-spin" />}
                             Reset
                           </button>
                         </div>
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
 
-                  <div>
-                    <h4 className="text-lg font-medium text-white mb-4">Monitoring</h4>
-                    <div className="space-y-4">
-                      <div className="bg-gray-700 rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-white font-medium">Clear Application Logs</p>
-                            <p className="text-gray-400 text-sm">Remove old log files to free space</p>
-                          </div>
-                          <button className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors flex items-center">
-                            <TrashIcon className="w-4 h-4 mr-2" />
-                            Clear Logs
-                          </button>
-                        </div>
-                      </div>
+              {/* Reset Confirmation Dialog */}
+              {showResetConfirm && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
+                    <h3 className="text-xl font-bold text-white mb-4 flex items-center">
+                      <ExclamationTriangleIcon className="w-6 h-6 text-red-500 mr-2" />
+                      Confirm Reset
+                    </h3>
+                    <div className="space-y-4 text-gray-300 mb-6">
+                      <p className="font-semibold text-red-400">⚠️ WARNING: This action cannot be undone!</p>
+                      <p>This will permanently delete:</p>
+                      <ul className="list-disc list-inside space-y-1 text-sm">
+                        <li>All user accounts except yours</li>
+                        <li>All playlists (both yours and other users')</li>
+                        <li>All listen history</li>
+                        <li>All playlist follows</li>
+                      </ul>
+                      <p className="text-sm">The following will be preserved:</p>
+                      <ul className="list-disc list-inside space-y-1 text-sm">
+                        <li>All songs and library data</li>
+                        <li>Scan history and reports</li>
+                        <li>Your admin account</li>
+                      </ul>
+                    </div>
+                    <div className="flex justify-end gap-3">
+                      <button
+                        onClick={() => setShowResetConfirm(false)}
+                        disabled={resettingData}
+                        className="px-4 py-2 text-gray-300 border border-gray-600 rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleResetAllData}
+                        disabled={resettingData}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center"
+                      >
+                        {resettingData && <ArrowPathIcon className="w-4 h-4 mr-2 animate-spin" />}
+                        Confirm Reset
+                      </button>
                     </div>
                   </div>
                 </div>

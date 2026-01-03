@@ -29,7 +29,8 @@ import {
   adminUploadProfilePicture,
   updateUserProfilePicture,
   deleteUserProfilePicture,
-  clearAllSongsAndRescan
+  clearAllSongsAndRescan,
+  resetAllUserData
 } from '../controllers/adminController';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 
@@ -62,6 +63,9 @@ router.put('/library/paths/:id', updateLibraryPath);
 router.delete('/library/paths/:id', deleteLibraryPath);
 router.get('/library/validate-path', validatePath);
 router.post('/library/rescan-all', clearAllSongsAndRescan);
+
+// Data reset
+router.post('/reset-all-data', resetAllUserData);
 
 // Library path scan reports
 router.get('/library/paths/:pathId/scans', getPathScanReports);
