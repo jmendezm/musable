@@ -176,6 +176,33 @@ const LIMITER_THRESHOLD_KEY = 'musable-limiter-threshold';
 const LIMITER_RELEASE_KEY = 'musable-limiter-release';
 const CUSTOM_PRESETS_KEY = 'musable-custom-presets';
 
+// Helper function to track song duration before changing songs
+const trackSongBeforeChange = (howl: Howl | null, song: Song | null) => {
+  if (!howl || !song) {
+    return;
+  }
+
+  // Don't track if the song ended naturally (already tracked in onend)
+  if ((howl as any)._endedNaturally) {
+    return;
+  }
+
+  try {
+    const playedDuration = howl.seek() as number;
+    const totalDuration = howl.duration();
+    const completed = playedDuration / totalDuration > 0.8; // 80% completion threshold
+
+    // Always track all plays (admin panel will show "Skipped" for < 5 seconds)
+    apiService.trackPlay({
+      songId: song.id,
+      durationPlayed: Math.floor(playedDuration),
+      completed
+    }).catch(err => console.error('Error tracking song:', err));
+  } catch (error) {
+    console.error('Error tracking song duration:', error);
+  }
+};
+
 // EQ frequency bands (Hz)
 const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
@@ -368,6 +395,11 @@ export const usePlayerStore = create<PlayerStore>()(
       play: (song) => {
         const state = get();
 
+        // Track the previous song if we're changing songs
+        if (state.currentSong && song.id !== state.currentSong.id && state.howl) {
+          trackSongBeforeChange(state.howl, state.currentSong);
+        }
+
         // If a new song is provided, update current song and queue, OR if no howl exists
         if (song && (song.id !== state.currentSong?.id || !state.howl)) {
           if (state.howl) {
@@ -397,7 +429,11 @@ export const usePlayerStore = create<PlayerStore>()(
             html5: false, // Must be false for Web Audio API EQ to work
             preload: true,
             format: ['mp3'],
+
             onload: () => {
+              // Reset the ended naturally flag for new Howl instance
+              (howl as any)._endedNaturally = false;
+
               set({
                 isLoading: false,
                 duration: howl.duration(),
@@ -407,8 +443,6 @@ export const usePlayerStore = create<PlayerStore>()(
             onplay: () => {
               set({ isPlaying: true });
               updateMediaSession(song, true);
-              // Track play in analytics
-              apiService.trackPlay({ songId: song.id }).catch(console.error);
             },
             onpause: () => {
               set({ isPlaying: false });
@@ -416,17 +450,22 @@ export const usePlayerStore = create<PlayerStore>()(
             },
             onend: () => {
               const currentState = get();
-              const playedDuration = howl.seek() as number;
               const totalDuration = howl.duration();
-              const completed = playedDuration / totalDuration > 0.8; // 80% completion threshold
-              
+              // When onend fires, the song played to completion, so use full duration
+              const playedDuration = totalDuration;
+              const completed = true; // Song ended naturally, so it's complete
+
               // Track completion
-              apiService.trackPlay({ 
-                songId: song.id, 
+              apiService.trackPlay({
+                songId: song.id,
                 durationPlayed: Math.floor(playedDuration),
-                completed 
+                completed
               }).catch(console.error);
-              
+
+              // Mark that this song ended naturally (not skipped)
+              // This prevents trackSongBeforeChange from tracking again
+              (howl as any)._endedNaturally = true;
+
               // Auto-advance to next song
               if (currentState.repeatMode === 'one') {
                 howl.seek(0);
@@ -844,12 +883,18 @@ export const usePlayerStore = create<PlayerStore>()(
       // Queue management
       setQueue: (songs, startIndex = 0) => {
         const state = get();
-        
+
+        // Track the current song before unloading (if changing songs)
+        const newSong = songs[startIndex];
+        if (state.howl && state.currentSong && newSong && state.currentSong.id !== newSong.id) {
+          trackSongBeforeChange(state.howl, state.currentSong);
+        }
+
         // Stop current playback
         if (state.howl) {
           state.howl.unload();
         }
-        
+
         set({
           queue: songs,
           currentIndex: Math.max(0, Math.min(startIndex, songs.length - 1)),
