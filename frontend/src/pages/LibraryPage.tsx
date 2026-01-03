@@ -24,9 +24,12 @@ import {
   ClockIcon,
   HomeIcon,
   XMarkIcon,
-  Bars3Icon
+  Bars3Icon,
+  CheckIcon,
+  PlusIcon,
+  ListBulletIcon
 } from '@heroicons/react/24/outline';
-import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
+import { HeartIcon as HeartIconSolid, CheckIcon as CheckIconSolid } from '@heroicons/react/24/solid';
 
 interface FolderNode {
   name: string;
@@ -57,6 +60,10 @@ const LibraryPage: React.FC = () => {
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [addToPlaylistModalOpen, setAddToPlaylistModalOpen] = useState(false);
   const [selectedSongForPlaylist, setSelectedSongForPlaylist] = useState<Song | null>(null);
+  const [selectedSongs, setSelectedSongs] = useState<Set<number>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [createPlaylistModalOpen, setCreatePlaylistModalOpen] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
   const { setDisablePadding } = useLayoutContext();
 
   // Navigation state
@@ -385,6 +392,98 @@ const LibraryPage: React.FC = () => {
     setSelectedSongForPlaylist(null);
   };
 
+  // Multi-select handlers
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    setSelectedSongs(new Set());
+  };
+
+  const toggleSongSelection = (songId: number) => {
+    setSelectedSongs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(songId)) {
+        newSet.delete(songId);
+      } else {
+        newSet.add(songId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedSongs.size === paginatedSongs.length) {
+      setSelectedSongs(new Set());
+    } else {
+      setSelectedSongs(new Set(paginatedSongs.map(s => s.id)));
+    }
+  };
+
+  const handleCreatePlaylist = async () => {
+    if (!newPlaylistName.trim()) {
+      showError('Please enter a playlist name');
+      return;
+    }
+
+    if (selectedSongs.size === 0) {
+      showError('Please select at least one song');
+      return;
+    }
+
+    try {
+      // Create the playlist
+      const response = await apiService.createPlaylist({
+        name: newPlaylistName.trim(),
+        is_public: false
+      });
+      const playlist = response.data.playlist;
+
+      // Add all selected songs to the playlist
+      const songIds = Array.from(selectedSongs);
+      let addedCount = 0;
+
+      for (const songId of songIds) {
+        try {
+          await apiService.addSongToPlaylist(playlist.id, songId);
+          addedCount++;
+        } catch (err) {
+          console.error(`Failed to add song ${songId} to playlist:`, err);
+        }
+      }
+
+      showSuccess(`Playlist "${newPlaylistName}" created with ${addedCount} songs`);
+      setNewPlaylistName('');
+      setCreatePlaylistModalOpen(false);
+      setSelectedSongs(new Set());
+      setSelectionMode(false);
+    } catch (err) {
+      console.error('Failed to create playlist:', err);
+      showError('Failed to create playlist. Please try again.');
+    }
+  };
+
+  const handleAddSelectedToPlaylist = async (playlistId: number) => {
+    try {
+      let addedCount = 0;
+      const songIds = Array.from(selectedSongs);
+
+      for (const songId of songIds) {
+        try {
+          await apiService.addSongToPlaylist(playlistId, songId);
+          addedCount++;
+        } catch (err) {
+          console.error(`Failed to add song ${songId} to playlist:`, err);
+        }
+      }
+
+      showSuccess(`Added ${addedCount} song${addedCount !== 1 ? 's' : ''} to playlist`);
+      setSelectedSongs(new Set());
+      setAddToPlaylistModalOpen(false);
+    } catch (err) {
+      console.error('Failed to add songs to playlist:', err);
+      showError('Failed to add songs to playlist. Please try again.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -554,6 +653,61 @@ const LibraryPage: React.FC = () => {
           />
         </div>
 
+        {/* Selection Mode Toggle & Bulk Actions */}
+        <div className="flex items-center justify-between flex-shrink-0">
+          <button
+            onClick={toggleSelectionMode}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm font-medium ${
+              selectionMode
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+            }`}
+          >
+            {selectionMode ? (
+              <>
+                <XMarkIcon className="w-4 h-4" />
+                <span>Cancel Selection</span>
+              </>
+            ) : (
+              <>
+                <CheckIcon className="w-4 h-4" />
+                <span>Select Songs</span>
+              </>
+            )}
+          </button>
+
+          {selectionMode && selectedSongs.size > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-400">
+                {selectedSongs.size} song{selectedSongs.size !== 1 ? 's' : ''} selected
+              </span>
+              <button
+                onClick={toggleSelectAll}
+                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors text-sm"
+              >
+                {selectedSongs.size === paginatedSongs.length ? 'Deselect All' : 'Select All'}
+              </button>
+              <button
+                onClick={() => setCreatePlaylistModalOpen(true)}
+                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+              >
+                <PlusIcon className="w-4 h-4" />
+                <span>Create Playlist</span>
+              </button>
+              <button
+                onClick={() => {
+                  setAddToPlaylistModalOpen(true);
+                  setSelectedSongForPlaylist(null);
+                }}
+                className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors text-sm"
+              >
+                <ListBulletIcon className="w-4 h-4" />
+                <span>Add to Playlist</span>
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Songs List */}
         <div className="bg-gray-800 rounded-lg overflow-hidden flex flex-col flex-1 min-h-0">
           <div className="flex-1 overflow-y-auto min-h-0" style={{ maxHeight: 'calc(100vh - 280px)' }}>
@@ -566,22 +720,55 @@ const LibraryPage: React.FC = () => {
               </div>
             ) : (
               <div>
-                {paginatedSongs.map((song) => (
-                  <div
-                    key={song.id}
-                    data-song-context-menu
-                    onClick={(e) => handleClick(e, () => handlePlaySong(song, paginatedSongs))}
-                    onContextMenu={(e) => handleContextMenu(e, song)}
-                    onTouchStart={(e) => handleTouchStart(e, song)}
-                    onTouchEnd={handleTouchEnd}
-                    onTouchMove={handleTouchMove}
-                    className={`flex items-center p-3 lg:p-4 hover:bg-gray-700 transition-colors border-b border-gray-800 last:border-b-0 cursor-pointer group ${
-                      currentSong?.id === song.id
-                        ? 'bg-blue-500 bg-opacity-20 border border-blue-500 border-opacity-50'
-                        : ''
-                    }`}
-                  >
-                    <div className="w-10 h-10 lg:w-12 lg:h-12 bg-gray-700 rounded-md overflow-hidden flex-shrink-0 mr-3 lg:mr-4 relative flex items-center justify-center">
+                {paginatedSongs.map((song) => {
+                  const isSelected = selectedSongs.has(song.id);
+                  return (
+                    <div
+                      key={song.id}
+                      data-song-context-menu
+                      onClick={(e) => {
+                        if (selectionMode) {
+                          toggleSongSelection(song.id);
+                        } else {
+                          handleClick(e, () => handlePlaySong(song, paginatedSongs));
+                        }
+                      }}
+                      onContextMenu={(e) => handleContextMenu(e, song)}
+                      onTouchStart={(e) => handleTouchStart(e, song)}
+                      onTouchEnd={handleTouchEnd}
+                      onTouchMove={handleTouchMove}
+                      className={`flex items-center p-3 lg:p-4 hover:bg-gray-700 transition-colors border-b border-gray-800 last:border-b-0 group ${
+                        currentSong?.id === song.id
+                          ? 'bg-blue-500 bg-opacity-20 border border-blue-500 border-opacity-50'
+                          : ''
+                      } ${
+                        isSelected
+                          ? 'bg-blue-600 bg-opacity-20'
+                          : ''
+                      }`}
+                    >
+                      {/* Selection Checkbox */}
+                      {selectionMode && (
+                        <div className="w-8 h-8 flex-shrink-0 mr-2 flex items-center justify-center">
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSongSelection(song.id);
+                            }}
+                            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                              isSelected
+                                ? 'bg-blue-600 border-blue-600'
+                                : 'border-gray-500 hover:border-blue-500'
+                            }`}
+                          >
+                            {isSelected && (
+                              <CheckIconSolid className="w-3 h-3 text-white" />
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="w-10 h-10 lg:w-12 lg:h-12 bg-gray-700 rounded-md overflow-hidden flex-shrink-0 mr-3 lg:mr-4 relative flex items-center justify-center">
                       {song.artwork_path ? (
                         <img
                           src={apiService.getArtworkUrl(song.artwork_path)}
@@ -624,7 +811,8 @@ const LibraryPage: React.FC = () => {
                       </span>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -686,6 +874,53 @@ const LibraryPage: React.FC = () => {
         onClose={handleCloseAddToPlaylistModal}
         song={selectedSongForPlaylist}
       />
+
+      {/* Create Playlist Modal */}
+      {createPlaylistModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+            <h2 className="text-xl font-bold text-white mb-4">Create New Playlist</h2>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Playlist Name
+              </label>
+              <input
+                type="text"
+                value={newPlaylistName}
+                onChange={(e) => setNewPlaylistName(e.target.value)}
+                placeholder="My Awesome Playlist"
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
+                autoFocus
+              />
+            </div>
+
+            <div className="mb-6">
+              <p className="text-sm text-gray-400">
+                {selectedSongs.size} song{selectedSongs.size !== 1 ? 's' : ''} will be added to this playlist
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  setCreatePlaylistModalOpen(false);
+                  setNewPlaylistName('');
+                }}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreatePlaylist}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              >
+                Create Playlist
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
