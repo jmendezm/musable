@@ -13,7 +13,7 @@ import ArtistModel from '../models/Artist';
 import AlbumModel from '../models/Album';
 import SettingsModel from '../models/Settings';
 import LibraryPathScanReportModel from '../models/LibraryPathScanReport';
-import libraryScanner from '../services/libraryScanner';
+import scannerWorkerService from '../services/scannerWorkerService';
 import { AuthRequest } from '../middleware/auth';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
 
@@ -37,7 +37,7 @@ const updateLibraryPathSchema = Joi.object({
 });
 
 export const getDashboardStats = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const libraryStats = await libraryScanner.getLibraryStats();
+  const libraryStats = await scannerWorkerService.getLibraryStats();
   const listeningStats = await ListenHistoryModel.getListeningStats();
   
   const userCount = await UserModel.getAllUsers().then(users => users.length);
@@ -488,10 +488,10 @@ export const addLibraryPath = asyncHandler(async (req: AuthRequest, res: Respons
 
   try {
     const newPath = await SettingsModel.addLibraryPath(path);
-    
+
     // Refresh the file watcher with updated paths
-    await libraryScanner.refreshFileWatcher();
-    
+    await scannerWorkerService.refreshFileWatcher();
+
     res.status(201).json({
       success: true,
       data: { path: newPath }
@@ -514,10 +514,10 @@ export const updateLibraryPath = asyncHandler(async (req: AuthRequest, res: Resp
   }
 
   const updatedPath = await SettingsModel.updateLibraryPath(pathId, value);
-  
+
   // Refresh the file watcher with updated paths
-  await libraryScanner.refreshFileWatcher();
-  
+  await scannerWorkerService.refreshFileWatcher();
+
   res.json({
     success: true,
     data: { path: updatedPath }
@@ -531,7 +531,7 @@ export const deleteLibraryPath = asyncHandler(async (req: AuthRequest, res: Resp
   await SettingsModel.deleteLibraryPath(pathId);
 
   // Refresh the file watcher with updated paths
-  await libraryScanner.refreshFileWatcher();
+  await scannerWorkerService.refreshFileWatcher();
 
   res.json({
     success: true,

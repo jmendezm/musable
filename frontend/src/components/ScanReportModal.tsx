@@ -200,7 +200,7 @@ const ScanReportModal: React.FC<ScanReportModalProps> = ({
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-4 gap-3 text-sm">
+                      <div className="grid grid-cols-5 gap-3 text-sm">
                         <div>
                           <div className="text-gray-300 font-medium">{report.files_scanned}</div>
                           <div className="text-gray-400 text-xs">Scanned</div>
@@ -212,6 +212,10 @@ const ScanReportModal: React.FC<ScanReportModalProps> = ({
                         <div>
                           <div className="text-blue-400 font-medium">{report.files_updated}</div>
                           <div className="text-gray-400 text-xs">Updated</div>
+                        </div>
+                        <div>
+                          <div className="text-yellow-400 font-medium">{report.files_skipped}</div>
+                          <div className="text-gray-400 text-xs">Skipped</div>
                         </div>
                         <div>
                           <div className={clsx(
@@ -271,7 +275,7 @@ const ScanReportModal: React.FC<ScanReportModalProps> = ({
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-4 gap-3 text-sm border-t border-gray-600 pt-4">
+                        <div className="grid grid-cols-5 gap-3 text-sm border-t border-gray-600 pt-4">
                           <div>
                             <div className="text-gray-300 font-medium text-lg">{selectedReport.files_scanned}</div>
                             <div className="text-gray-400 text-xs">Scanned</div>
@@ -283,6 +287,10 @@ const ScanReportModal: React.FC<ScanReportModalProps> = ({
                           <div>
                             <div className="text-blue-400 font-medium text-lg">{selectedReport.files_updated}</div>
                             <div className="text-gray-400 text-xs">Updated</div>
+                          </div>
+                          <div>
+                            <div className="text-yellow-400 font-medium text-lg">{selectedReport.files_skipped}</div>
+                            <div className="text-gray-400 text-xs">Skipped</div>
                           </div>
                           <div>
                             <div className={clsx(

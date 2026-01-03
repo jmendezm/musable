@@ -247,6 +247,7 @@ export interface ScanProgress {
   filesScanned: number;
   filesAdded: number;
   filesUpdated: number;
+  filesSkipped: number;
   errorsCount: number;
   startedAt: string;
   completedAt?: string;

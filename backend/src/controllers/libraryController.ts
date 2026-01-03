@@ -4,7 +4,7 @@ import ArtistModel from '../models/Artist';
 import AlbumModel from '../models/Album';
 import AlbumFollowsModel from '../models/AlbumFollows';
 import SettingsModel from '../models/Settings';
-import libraryScanner from '../services/libraryScanner';
+import scannerWorkerService from '../services/scannerWorkerService';
 import { AuthRequest } from '../middleware/auth';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
 import * as fs from 'fs';
@@ -166,7 +166,7 @@ export const getGenres = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const getLibraryStats = asyncHandler(async (req: Request, res: Response) => {
-  const stats = await libraryScanner.getLibraryStats();
+  const stats = await scannerWorkerService.getLibraryStats();
 
   res.json({
     success: true,
@@ -181,7 +181,7 @@ export const startLibraryScan = asyncHandler(async (req: AuthRequest, res: Respo
 
   const { paths } = req.body;
 
-  if (libraryScanner.isCurrentlyScanning()) {
+  if (scannerWorkerService.isCurrentlyScanning()) {
     throw new AppError('Library scan already in progress', 409);
   }
 
@@ -192,7 +192,7 @@ export const startLibraryScan = asyncHandler(async (req: AuthRequest, res: Respo
     throw new AppError('No library paths configured. Please add at least one library path in System Settings before scanning.', 400);
   }
 
-  const scanId = await libraryScanner.startScan(paths);
+  const scanId = await scannerWorkerService.startScan(paths);
 
   res.json({
     success: true,
@@ -204,15 +204,15 @@ export const startLibraryScan = asyncHandler(async (req: AuthRequest, res: Respo
 });
 
 export const getScanStatus = asyncHandler(async (req: Request, res: Response) => {
-  const currentScan = libraryScanner.getCurrentScan();
-  const scanHistory = await libraryScanner.getScanHistory();
+  const currentScan = scannerWorkerService.getCurrentScan();
+  const scanHistory = await scannerWorkerService.getScanHistory();
 
   res.json({
     success: true,
     data: {
       currentScan,
       history: scanHistory,
-      isScanning: libraryScanner.isCurrentlyScanning()
+      isScanning: scannerWorkerService.isCurrentlyScanning()
     }
   });
 });
@@ -222,11 +222,11 @@ export const stopLibraryScan = asyncHandler(async (req: AuthRequest, res: Respon
     throw new AppError('Admin access required', 403);
   }
 
-  if (!libraryScanner.isCurrentlyScanning()) {
+  if (!scannerWorkerService.isCurrentlyScanning()) {
     throw new AppError('No scan in progress', 409);
   }
 
-  libraryScanner.stopScan();
+  scannerWorkerService.stopScan();
 
   res.json({
     success: true,

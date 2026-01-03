@@ -32,6 +32,7 @@ interface LibraryPath {
     files_scanned: number;
     files_added: number;
     files_updated: number;
+    files_skipped: number;
     errors_count: number;
     progress: number;
   };
@@ -394,9 +395,8 @@ const LibraryManagementTab: React.FC = () => {
   const handleRemovePath = async (id: number) => {
     try {
       await apiService.deleteLibraryPath(id);
-      // Only refresh library paths, not songs
-      const pathsResponse = await apiService.getLibraryPaths();
-      setLibraryPaths(pathsResponse.data.paths);
+      // Use fetchLibraryData to properly refresh paths with scan stats
+      await fetchLibraryData();
       setError(null);
     } catch (err: any) {
       console.error('Failed to delete library path:', err);
@@ -409,9 +409,8 @@ const LibraryManagementTab: React.FC = () => {
       const path = libraryPaths.find(p => p.id === id);
       if (path) {
         await apiService.updateLibraryPath(id, { is_active: !path.is_active });
-        // Only refresh library paths, not songs
-        const pathsResponse = await apiService.getLibraryPaths();
-        setLibraryPaths(pathsResponse.data.paths);
+        // Use fetchLibraryData to properly refresh paths with scan stats
+        await fetchLibraryData();
         setError(null);
       }
     } catch (err: any) {
@@ -659,7 +658,7 @@ const LibraryManagementTab: React.FC = () => {
                 }}
               ></div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
               <div className="text-center">
                 <div className="text-gray-300 font-medium">{scanStatus.filesScanned ?? 0}</div>
                 <div className="text-gray-400 text-xs">Scanned</div>
@@ -671,6 +670,10 @@ const LibraryManagementTab: React.FC = () => {
               <div className="text-center">
                 <div className="text-blue-400 font-medium">{scanStatus.filesUpdated ?? 0}</div>
                 <div className="text-gray-400 text-xs">Updated</div>
+              </div>
+              <div className="text-center">
+                <div className="text-yellow-400 font-medium">{scanStatus.filesSkipped ?? 0}</div>
+                <div className="text-gray-400 text-xs">Skipped</div>
               </div>
               <div className="text-center">
                 <div className="text-red-400 font-medium">{scanStatus.errorsCount ?? 0}</div>
@@ -721,6 +724,19 @@ const LibraryManagementTab: React.FC = () => {
                     title="View scan reports"
                   >
                     <DocumentTextIcon className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleStartScan([path.path])}
+                    disabled={scanStatus?.status === 'running' || !path.is_active}
+                    className={clsx(
+                      'p-2 transition-colors',
+                      (scanStatus?.status === 'running' || !path.is_active)
+                        ? 'text-gray-600 cursor-not-allowed'
+                        : 'text-gray-400 hover:text-green-400'
+                    )}
+                    title="Scan this path"
+                  >
+                    <ArrowPathIcon className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleRemovePath(path.id)}
@@ -774,7 +790,7 @@ const LibraryManagementTab: React.FC = () => {
                   )}
 
                   {/* Scan statistics */}
-                  <div className="grid grid-cols-4 gap-2 text-xs">
+                  <div className="grid grid-cols-5 gap-2 text-xs">
                     <div>
                       <div className="text-gray-300 font-medium">{path.latest_scan.files_scanned}</div>
                       <div className="text-gray-500">Scanned</div>
@@ -788,10 +804,11 @@ const LibraryManagementTab: React.FC = () => {
                       <div className="text-gray-500">Updated</div>
                     </div>
                     <div>
-                      <div className={clsx(
-                        'font-medium',
-                        path.latest_scan.errors_count > 0 ? 'text-red-400' : 'text-gray-300'
-                      )}>
+                      <div className="text-yellow-400 font-medium">{path.latest_scan.files_skipped ?? 0}</div>
+                      <div className="text-gray-500">Skipped</div>
+                    </div>
+                    <div>
+                      <div className="font-medium text-red-400">
                         {path.latest_scan.errors_count}
                       </div>
                       <div className="text-gray-500">Errors</div>
