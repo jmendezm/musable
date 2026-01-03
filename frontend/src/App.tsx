@@ -51,7 +51,6 @@ const App: React.FC = () => {
     const loadPlugins = async () => {
       try {
         await frontendPluginLoader.loadPlugins(apiService);
-        console.log('All plugins loaded successfully');
         setPluginsLoaded(true);
       } catch (error) {
         console.error('Error loading plugins:', error);

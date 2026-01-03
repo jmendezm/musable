@@ -384,11 +384,10 @@ export const usePlayerStore = create<PlayerStore>()(
             isLoading: true,
             currentTime: 0,
           });
-          
+
           // Create new Howl instance
           const streamUrl = apiService.getStreamUrl(song.id);
-          console.log('🎵 Creating Howl instance with stream URL:', streamUrl);
-          
+
           // Detect if we're on mobile to use native volume controls
           const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
                           window.innerWidth <= 768;

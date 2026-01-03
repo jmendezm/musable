@@ -26,12 +26,10 @@ class ImageSearchExtensionManager {
 
   register(extension: ImageSearchExtension) {
     this.extensions.set(extension.id, extension);
-    console.log(`[ImageSearchExtensionManager] Registered image search extension: ${extension.id} (${extension.name})`);
   }
 
   unregister(extensionId: string) {
     this.extensions.delete(extensionId);
-    console.log(`[ImageSearchExtensionManager] Unregistered image search extension: ${extensionId}`);
   }
 
   getExtensions(): ImageSearchExtension[] {
