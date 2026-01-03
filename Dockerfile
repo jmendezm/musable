@@ -38,12 +38,22 @@ RUN npm run install:all && npm cache clean --force
 # Copy rest of the application
 COPY --chown=musable:nodejs . .
 
-# Expose ports (3001 for backend, 3000 for frontend dev server)
-EXPOSE 3001 3000
+# Copy and make entrypoint executable
+COPY --chown=musable:nodejs docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh
+
+# Environment variable to force rebuild (can be set in docker-compose or Unraid)
+ENV FORCE_REBUILD=false
+
+# Expose ports (3001 for backend)
+EXPOSE 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:3001/health || exit 1
 
-# Start the application in development mode
-CMD ["npm", "run", "dev"]
+# Use entrypoint script for smart rebuild detection
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+
+# Start the application in production mode (entrypoint handles build checks)
+CMD ["node", "dist/app.js"]

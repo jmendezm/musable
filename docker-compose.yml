@@ -16,6 +16,10 @@ services:
       - PORT=3000
       - BACKEND_PORT=3001
 
+      # Force rebuild on startup (set to 'true' to force reinstall and rebuild)
+      # Only set to true if you need to force a rebuild, otherwise leave as 'false'
+      - FORCE_REBUILD=${FORCE_REBUILD:-false}
+
       # Frontend Configuration
       - REACT_APP_BASE_URL=http://localhost:3000
       - REACT_APP_API_BASE_URL=http://localhost:3001/api
