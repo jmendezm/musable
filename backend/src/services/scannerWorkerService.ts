@@ -25,7 +25,8 @@ class ScannerWorkerService {
   private isWorkerReady: boolean = false;
 
   constructor() {
-    this.initializeWorker();
+    // Worker will initialize when first scan is triggered
+    logger.info('[ScannerWorkerService] Worker ready (will initialize on first scan)');
   }
 
   private initializeWorker(): void {
@@ -155,6 +156,19 @@ class ScannerWorkerService {
   }
 
   async startScan(paths?: string[]): Promise<number> {
+    // Initialize worker on first scan if not already initialized
+    if (!this.worker) {
+      logger.info('[ScannerWorkerService] Initializing worker on first scan...');
+      this.initializeWorker();
+
+      // Wait for worker to be ready
+      const waited = await this.waitForWorkerReady(10000);
+      if (!waited) {
+        throw new Error('Worker failed to initialize within timeout period');
+      }
+      logger.info('[ScannerWorkerService] Worker initialized successfully');
+    }
+
     if (!this.worker) {
       throw new Error('Scanner worker not available');
     }
@@ -352,5 +366,18 @@ class ScannerWorkerService {
   }
 }
 
-// Export singleton instance
-export default new ScannerWorkerService();
+// Lazy singleton - only initialize when first used
+let instance: ScannerWorkerService | null = null;
+
+function getInstance(): ScannerWorkerService {
+  if (!instance) {
+    instance = new ScannerWorkerService();
+  }
+  return instance;
+}
+
+// Export the getter function as default
+export default getInstance;
+
+// Also export the class for type checking
+export { ScannerWorkerService };

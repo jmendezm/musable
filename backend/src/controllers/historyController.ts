@@ -64,9 +64,9 @@ export const getRecentlyPlayed = asyncHandler(async (req: AuthRequest, res: Resp
   const songs = recentHistoryData.map(item => ({
     id: item.song_id,
     title: item.song_title,
-    artist_id: 0, // We don't have this in the history query, but it's not used in the frontend
+    artist_id: item.artist_id,
     artist_name: item.artist_name,
-    album_id: 0, // We don't have this in the history query, but it's not used in the frontend
+    album_id: item.album_id,
     album_title: item.album_title,
     file_path: '', // We don't expose file paths to frontend
     duration: item.song_duration,

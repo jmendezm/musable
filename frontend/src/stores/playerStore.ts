@@ -366,15 +366,8 @@ export const usePlayerStore = create<PlayerStore>()(
 
       // Playback controls
       play: (song) => {
-        console.log('🎵 PLAYER STORE: play() method called with song:', song?.id, song?.title);
         const state = get();
-        console.log('🎵 PLAYER STORE: current state:', {
-          currentSong: state.currentSong?.id || null,
-          queue: state.queue.length,
-          howl: !!state.howl,
-          isPlaying: state.isPlaying
-        });
-        
+
         // If a new song is provided, update current song and queue, OR if no howl exists
         if (song && (song.id !== state.currentSong?.id || !state.howl)) {
           if (state.howl) {

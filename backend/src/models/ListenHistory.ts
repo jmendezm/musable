@@ -12,7 +12,9 @@ export interface ListenHistory {
 export interface ListenHistoryWithDetails extends ListenHistory {
   username: string;
   song_title: string;
+  artist_id: number;
   artist_name: string;
+  album_id?: number;
   album_title?: string;
   song_duration?: number;
   artwork_path?: string;
@@ -98,7 +100,9 @@ export class ListenHistoryModel {
         lh.*,
         u.username,
         s.title as song_title,
+        s.artist_id,
         a.name as artist_name,
+        s.album_id,
         al.title as album_title,
         s.duration as song_duration,
         al.artwork_path

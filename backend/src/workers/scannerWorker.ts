@@ -1,5 +1,4 @@
 import { parentPort } from 'worker_threads';
-import chokidar from 'chokidar';
 import * as path from 'path';
 import * as fs from 'fs';
 import { parseFile } from 'music-metadata';
@@ -47,7 +46,6 @@ interface ScanFileResult {
   skipped: boolean;
 }
 
-let libraryWatcher: chokidar.FSWatcher | null = null;
 let isScanning = false;
 let shouldStop = false;
 let currentScanId: number | null = null;
@@ -55,10 +53,6 @@ let currentScanId: number | null = null;
 // Track artwork errors to avoid spamming logs
 let artworkErrors = 0;
 let maxArtworkErrorLogs = 5; // Only log first 5 artwork errors in detail
-
-// Track file watcher errors to avoid spamming logs
-let fileWatcherErrors = 0;
-let maxFileWatcherErrorLogs = 10; // Only log first 10 file watcher errors
 
 // Worker-specific database connection
 let workerDb: sqlite3.Database | null = null;
@@ -623,84 +617,6 @@ function sendMessage(message: WorkerResponse): void {
   }
 }
 
-// Setup file watcher for new files
-async function setupFileWatcher() {
-  try {
-    const paths = await Database.query(
-      'SELECT path FROM library_paths WHERE is_active = 1'
-    );
-
-    if (!paths || paths.length === 0) {
-      return;
-    }
-
-    const watchPaths = paths.map((p: any) => p.path);
-
-    libraryWatcher = chokidar.watch(watchPaths, {
-      ignored: /(^|[\/\\])\../,
-      persistent: true,
-      ignoreInitial: true,
-      usePolling: true, // Use polling for network drives (Samba/SMB)
-      interval: 1000, // Check for changes every second
-      binaryInterval: 1000,
-      awaitWriteFinish: {
-        stabilityThreshold: 2000,
-        pollInterval: 100
-      },
-      depth: 99, // Still watch deeply, but polling reduces file descriptor usage
-      alwaysStat: false,
-      atomic: false,
-      ignorePermissionErrors: true, // Don't crash on permission errors
-      followSymlinks: false // Don't follow symlinks to reduce file descriptor usage
-    });
-
-    libraryWatcher
-      .on('add', (filePath: string) => {
-        if (isSupportedAudioFile(filePath)) {
-          console.log(`[Worker] New audio file detected: ${filePath}`);
-          scanFile(filePath).catch((error: any) => {
-            console.error(`[Worker] Error scanning new file ${filePath}:`, error);
-          });
-        }
-      })
-      .on('unlink', (filePath: string) => {
-        Database.query('SELECT * FROM songs WHERE file_path = ?', [filePath])
-          .then((songs: any[]) => {
-            if (songs && songs.length > 0) {
-              return Database.run('DELETE FROM songs WHERE id = ?', [songs[0].id]);
-            }
-            return null;
-          })
-          .then(() => {
-            console.log(`[Worker] Removed deleted file from library: ${filePath}`);
-          })
-          .catch((error: any) => {
-            console.error(`[Worker] Error removing deleted file ${filePath}:`, error);
-          });
-      })
-      .on('error', (error: any) => {
-        fileWatcherErrors++;
-
-        // Only log detailed error for first few instances to avoid log spam
-        if (fileWatcherErrors <= maxFileWatcherErrorLogs) {
-          console.error('[Worker] File watcher error:', error.message);
-
-          // Provide helpful context for common errors
-          if (error.code === 'EMFILE') {
-            console.error('[Worker] Note: Too many open files. This can happen with large libraries on network drives (Samba/SMB).');
-            console.error('[Worker] The file watcher will continue functioning, but may miss some file changes.');
-            console.error('[Worker] Consider using local file storage in production for better performance.');
-          }
-        } else if (fileWatcherErrors === maxFileWatcherErrorLogs + 1) {
-          // Log once when we hit the limit to let user know we're suppressing further logs
-          console.error(`[Worker] Additional file watcher errors detected (total: ${fileWatcherErrors}). Suppressing further file watcher error logs to avoid spam.`);
-        }
-      });
-  } catch (error) {
-    console.error('[Worker] Failed to setup file watcher:', error);
-  }
-}
-
 // Handle messages from main thread
 if (parentPort) {
   parentPort.on('message', async (message: ScanRequest) => {
@@ -741,10 +657,14 @@ let keepAliveInterval: NodeJS.Timeout | null = null;
 
 initializeWorker()
   .then(() => {
-    return setupFileWatcher();
+    // File watcher disabled - it's causing performance issues with large libraries over Samba
+    // If needed, you can enable it by uncommenting the next line:
+    // return setupFileWatcher();
+    console.log('[Worker] File watcher disabled (not needed for scanning)');
+    return Promise.resolve();
   })
   .then(() => {
-    console.log('[Worker] Worker fully initialized and ready');
+    console.log('[Worker] Worker fully initialized and ready (without file watcher)');
     sendMessage({
       type: 'scanProgress',
       data: { status: 'ready' }
@@ -761,9 +681,6 @@ initializeWorker()
     process.on('exit', () => {
       if (keepAliveInterval) {
         clearInterval(keepAliveInterval);
-      }
-      if (libraryWatcher) {
-        libraryWatcher.close();
       }
     });
   })

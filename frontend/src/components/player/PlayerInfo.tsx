@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { HeartIcon } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
 import { usePlayerStore } from '../../stores/playerStore';
 import apiService from '../../services/api';
 
 const PlayerInfo: React.FC = () => {
+  const navigate = useNavigate();
   const { currentSong } = usePlayerStore();
   const [isLiked, setIsLiked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -64,14 +66,36 @@ const PlayerInfo: React.FC = () => {
         <p className="text-white font-medium text-sm truncate">
           {currentSong ? currentSong.title : 'No song playing'}
         </p>
-        <p className="text-gray-400 text-xs truncate">
+        <p className="text-gray-400 text-xs truncate flex items-center">
           {currentSong ? (
             <>
-              {currentSong.artist_name}
-              {currentSong.album_title && (
+              {currentSong.artist_id > 0 ? (
+                <button
+                  onClick={() => navigate(`/artist/${currentSong.artist_id}`)}
+                  className="hover:text-primary transition-colors truncate"
+                  title={`View artist: ${currentSong.artist_name}`}
+                >
+                  {currentSong.artist_name}
+                </button>
+              ) : (
+                <span className="truncate">{currentSong.artist_name}</span>
+              )}
+              {currentSong.album_id && currentSong.album_id > 0 && currentSong.album_title && (
                 <>
-                  <span className="mx-1">•</span>
-                  {currentSong.album_title}
+                  <span className="mx-1 flex-shrink-0">•</span>
+                  <button
+                    onClick={() => navigate(`/album/${currentSong.album_id}`)}
+                    className="hover:text-primary transition-colors truncate"
+                    title={`View album: ${currentSong.album_title}`}
+                  >
+                    {currentSong.album_title}
+                  </button>
+                </>
+              )}
+              {!currentSong.album_id && currentSong.album_title && (
+                <>
+                  <span className="mx-1 flex-shrink-0">•</span>
+                  <span className="truncate">{currentSong.album_title}</span>
                 </>
               )}
             </>

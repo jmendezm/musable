@@ -4,7 +4,11 @@ import ArtistModel from '../models/Artist';
 import AlbumModel from '../models/Album';
 import AlbumFollowsModel from '../models/AlbumFollows';
 import SettingsModel from '../models/Settings';
-import scannerWorkerService from '../services/scannerWorkerService';
+import getScannerWorkerService from '../services/scannerWorkerService';
+
+// Get the singleton instance (lazy initialization)
+const scannerWorkerService = getScannerWorkerService();
+
 import { AuthRequest } from '../middleware/auth';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
 import * as fs from 'fs';
