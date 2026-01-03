@@ -7,7 +7,6 @@ variables:
   DOCKER_HOST: tcp://docker:2375
   DOCKER_DRIVER: overlay2
   INTERNAL_REGISTRY: "192.168.1.20:5050"
-  INTERNAL_IMAGE_BASE: "$INTERNAL_REGISTRY/$CI_PROJECT_PATH"
   INTERNAL_IMAGE_PATH: "$INTERNAL_REGISTRY/$CI_PROJECT_PATH"
 
 # Build and push Musable image
@@ -18,14 +17,13 @@ build-musable:
     - name: docker:dind
       # We keep this as a backup, but the daemon.json below is the primary fix
       command: ["--insecure-registry=192.168.1.20:5050"]
-
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
       variables:
-        IMAGE_NAME: "$INTERNAL_IMAGE_BASE"
+        IMAGE_NAME: "latest"
     - if: $CI_COMMIT_BRANCH == "dev"
       variables:
-        IMAGE_NAME: "$INTERNAL_IMAGE_BASE-dev"
+        IMAGE_NAME: "latest-dev"
   before_script:
     # 1. Create the Docker config directory
     - mkdir -p /etc/docker
@@ -36,12 +34,15 @@ build-musable:
     # 3. Standard Login
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $INTERNAL_REGISTRY
   script:
-    - echo "Building Musable image for branch $CI_COMMIT_BRANCH..."
-    - docker build -t $IMAGE_NAME:$CI_COMMIT_SHORT_SHA .
-    - docker tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA $IMAGE_NAME:latest
+    - echo "Building Musable image..."
+    - docker build -t $INTERNAL_IMAGE_PATH:$CI_COMMIT_SHORT_SHA .
+    - docker tag $INTERNAL_IMAGE_PATH:$CI_COMMIT_SHORT_SHA $INTERNAL_IMAGE_PATH:$IMAGE_NAME
     - echo "Pushing Musable image to GitLab registry..."
-    - docker push $IMAGE_NAME:$CI_COMMIT_SHORT_SHA
-    - docker push $IMAGE_NAME:latest
+    - docker push $INTERNAL_IMAGE_PATH:$CI_COMMIT_SHORT_SHA
+    - docker push $INTERNAL_IMAGE_PATH:$IMAGE_NAME
+  only:
+    - dev
+    - main
 
 # Create specific release tags only when a git tag is pushed
 release-tag:
