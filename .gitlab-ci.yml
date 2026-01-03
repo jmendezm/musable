@@ -27,7 +27,7 @@ build-musable:
       variables:
         # This creates a separate registry named 'musable-dev'
         IMAGE_NAME: "$INTERNAL_IMAGE_BASE-dev"
-        
+
   before_script:
     # 1. Create the Docker config directory
     - mkdir -p /etc/docker
