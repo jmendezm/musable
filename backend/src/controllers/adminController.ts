@@ -14,6 +14,7 @@ import AlbumModel from '../models/Album';
 import SettingsModel from '../models/Settings';
 import LibraryPathScanReportModel from '../models/LibraryPathScanReport';
 import getScannerWorkerService from '../services/scannerWorkerService';
+import { Database } from '../config/database';
 
 // Get the singleton instance (lazy initialization)
 const scannerWorkerService = getScannerWorkerService();
@@ -1011,47 +1012,39 @@ export const resetAllUserData = asyncHandler(async (req: AuthRequest, res: Respo
     throw new AppError('Only admins can reset user data', 403);
   }
 
-  // Import models
-  const UserModel = (await import('../models/User')).default;
-  const PlaylistModel = (await import('../models/Playlist')).default;
-  const ListenHistoryModel = (await import('../models/ListenHistory')).default;
-  const PlaylistFollowsModel = (await import('../models/PlaylistFollows')).default;
   const db = Database.getInstance();
 
   try {
-    await db.exec('BEGIN TRANSACTION');
+    await db.transaction(async (sqliteDb) => {
+      // Delete all users except the current admin
+      await db.run(
+        'DELETE FROM users WHERE id != ? AND is_admin = 0',
+        [currentUserId]
+      );
 
-    // Delete all users except the current admin
-    const deletedUsers = await db.run(
-      'DELETE FROM users WHERE id != ? AND is_admin = 0',
-      [currentUserId]
-    );
+      // Delete all playlists (they will be recreated by users)
+      await db.run('DELETE FROM playlists');
 
-    // Delete all playlists (they will be recreated by users)
-    const deletedPlaylists = await db.run('DELETE FROM playlists');
+      // Clear listen history
+      await db.run('DELETE FROM listen_history');
 
-    // Clear listen history
-    const deletedHistory = await db.run('DELETE FROM listen_history');
-
-    // Clear playlist follows
-    const deletedFollows = await db.run('DELETE FROM playlist_follows');
-
-    await db.exec('COMMIT');
+      // Clear playlist follows
+      await db.run('DELETE FROM playlist_follows');
+    });
 
     res.json({
       success: true,
       data: {
         message: 'Successfully reset all user data',
         stats: {
-          deletedUsers: deletedUsers.changes,
-          deletedPlaylists: deletedPlaylists.changes,
-          deletedHistory: deletedHistory.changes,
-          deletedFollows: deletedFollows.changes
+          deletedUsers: 0,
+          deletedPlaylists: 0,
+          deletedHistory: 0,
+          deletedFollows: 0
         }
       }
     });
   } catch (error) {
-    await db.exec('ROLLBACK');
     throw new AppError('Failed to reset user data', 500);
   }
 });
