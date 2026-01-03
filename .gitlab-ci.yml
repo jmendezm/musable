@@ -40,9 +40,6 @@ build-musable:
     - echo "Pushing Musable image to GitLab registry..."
     - docker push $INTERNAL_IMAGE_PATH:$CI_COMMIT_SHORT_SHA
     - docker push $INTERNAL_IMAGE_PATH:$IMAGE_NAME
-  only:
-    - dev
-    - main
 
 # Create specific release tags only when a git tag is pushed
 release-tag:
