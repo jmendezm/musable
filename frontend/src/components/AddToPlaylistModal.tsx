@@ -21,15 +21,20 @@ interface AddToPlaylistModalProps {
   isOpen: boolean;
   onClose: () => void;
   song: Song | null;
+  songs?: Song[]; // Optional array of songs for bulk adding
 }
 
-const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose, song }) => {
+const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose, song, songs }) => {
   const [playlists, setPlaylists] = useState<PlaylistWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const { showSuccess, showError } = useToast();
+
+  // Determine which songs to add
+  const songsToAdd = songs && songs.length > 0 ? songs : (song ? [song] : []);
+  const isBulkAdd = songsToAdd.length > 1;
 
   useEffect(() => {
     if (isOpen) {
@@ -56,26 +61,39 @@ const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose
   };
 
   const handleAddToPlaylist = async (playlist: PlaylistWithDetails) => {
-    if (!song) return;
+    if (songsToAdd.length === 0) return;
 
     try {
-      const response = await apiService.addSongToPlaylist(playlist.id, song.id);
-      if (response.success) {
-        showSuccess(`Added "${song.title}" to "${playlist.name}"`);
+      let addedCount = 0;
+
+      // Add each song to the playlist
+      for (const song of songsToAdd) {
+        try {
+          await apiService.addSongToPlaylist(playlist.id, song.id);
+          addedCount++;
+        } catch (err: any) {
+          console.error(`Failed to add song ${song.id} to playlist:`, err);
+        }
+      }
+
+      if (addedCount > 0) {
+        if (isBulkAdd) {
+          showSuccess(`Added ${addedCount} song${addedCount !== 1 ? 's' : ''} to "${playlist.name}"`);
+        } else {
+          showSuccess(`Added "${songsToAdd[0].title}" to "${playlist.name}"`);
+        }
         onClose();
+      } else {
+        showError('Failed to add songs to playlist');
       }
     } catch (error: any) {
       console.error('Failed to add song to playlist:', error);
-      if (error.message?.includes('already exists')) {
-        showError(`"${song.title}" is already in "${playlist.name}"`);
-      } else {
-        showError('Failed to add song to playlist');
-      }
+      showError('Failed to add song to playlist');
     }
   };
 
   const handleCreateAndAdd = async () => {
-    if (!song || !newPlaylistName.trim()) return;
+    if (songsToAdd.length === 0 || !newPlaylistName.trim()) return;
 
     try {
       // Create the playlist
@@ -87,11 +105,24 @@ const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose
 
       if (createResponse.success && createResponse.data) {
         const newPlaylist = createResponse.data.playlist;
-        
-        // Add the song to the new playlist
-        const addResponse = await apiService.addSongToPlaylist(newPlaylist.id, song.id);
-        if (addResponse.success) {
-          showSuccess(`Created "${newPlaylistName}" and added "${song.title}"`);
+
+        // Add all songs to the new playlist
+        let addedCount = 0;
+        for (const song of songsToAdd) {
+          try {
+            await apiService.addSongToPlaylist(newPlaylist.id, song.id);
+            addedCount++;
+          } catch (err) {
+            console.error(`Failed to add song ${song.id} to playlist:`, err);
+          }
+        }
+
+        if (addedCount > 0) {
+          if (isBulkAdd) {
+            showSuccess(`Created "${newPlaylistName}" and added ${addedCount} songs`);
+          } else {
+            showSuccess(`Created "${newPlaylistName}" and added "${songsToAdd[0].title}"`);
+          }
           onClose();
         }
       }
@@ -105,17 +136,19 @@ const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose
     playlist.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (!isOpen || !song) return null;
+  if (!isOpen || songsToAdd.length === 0) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div 
+      <div
         className="bg-gray-800 rounded-lg w-full max-w-md max-h-[32rem] flex flex-col shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
-          <h2 className="text-lg font-semibold text-white">Add to Playlist</h2>
+          <h2 className="text-lg font-semibold text-white">
+            {isBulkAdd ? `Add ${songsToAdd.length} Songs to Playlist` : 'Add to Playlist'}
+          </h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors"
@@ -126,23 +159,35 @@ const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose
 
         {/* Song info */}
         <div className="px-4 py-3 border-b border-gray-700">
-          <div className="flex items-center gap-3">
-            {song.artwork_path ? (
-              <img
-                src={apiService.getArtworkUrl(song.artwork_path)}
-                alt={song.album_title || 'Album artwork'}
-                className="w-10 h-10 rounded object-cover"
-              />
-            ) : (
+          {isBulkAdd ? (
+            <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-primary/20 rounded flex items-center justify-center">
                 <MusicalNoteIcon className="w-5 h-5 text-primary" />
               </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate">{song.title}</p>
-              <p className="text-gray-400 text-xs truncate">{song.artist_name}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-medium truncate">{songsToAdd.length} songs selected</p>
+                <p className="text-gray-400 text-xs truncate">Click to add all to a playlist</p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              {songsToAdd[0].artwork_path ? (
+                <img
+                  src={apiService.getArtworkUrl(songsToAdd[0].artwork_path)}
+                  alt={songsToAdd[0].album_title || 'Album artwork'}
+                  className="w-10 h-10 rounded object-cover"
+                />
+              ) : (
+                <div className="w-10 h-10 bg-primary/20 rounded flex items-center justify-center">
+                  <MusicalNoteIcon className="w-5 h-5 text-primary" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-medium truncate">{songsToAdd[0].title}</p>
+                <p className="text-gray-400 text-xs truncate">{songsToAdd[0].artist_name}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Search */}

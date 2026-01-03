@@ -63,7 +63,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           
           {/* Page content */}
           <main className={`flex-1 ${disablePadding ? 'overflow-hidden' : 'overflow-auto'} bg-gradient-to-b from-gray-900 to-black p-6 pb-8 ${disablePadding ? 'md:p-0' : 'md:pb-6'}`}>
-            <div className={`max-w-screen-2xl mx-auto ${disablePadding ? 'h-full' : ''}`}>
+            <div className={`${disablePadding ? '' : 'max-w-screen-2xl'} mx-auto ${disablePadding ? 'h-full' : ''}`}>
               {children}
             </div>
           </main>

@@ -61,6 +61,7 @@ const LibraryPage: React.FC = () => {
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [addToPlaylistModalOpen, setAddToPlaylistModalOpen] = useState(false);
   const [selectedSongForPlaylist, setSelectedSongForPlaylist] = useState<Song | null>(null);
+  const [bulkAddSongs, setBulkAddSongs] = useState<Song[]>([]);
   const [selectedSongs, setSelectedSongs] = useState<Set<number>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [createPlaylistModalOpen, setCreatePlaylistModalOpen] = useState(false);
@@ -392,6 +393,7 @@ const LibraryPage: React.FC = () => {
   const handleCloseAddToPlaylistModal = () => {
     setAddToPlaylistModalOpen(false);
     setSelectedSongForPlaylist(null);
+    setBulkAddSongs([]);
   };
 
   // Multi-select handlers
@@ -702,7 +704,11 @@ const LibraryPage: React.FC = () => {
               <button
                 onClick={() => {
                   setAddToPlaylistModalOpen(true);
+                  // Pass selected songs for bulk add
+                  const selectedSongsData = allSongs.filter(s => selectedSongs.has(s.id));
                   setSelectedSongForPlaylist(null);
+                  // Store selected songs in a different state for bulk add
+                  setBulkAddSongs(selectedSongsData);
                 }}
                 className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors text-sm"
               >
@@ -878,6 +884,7 @@ const LibraryPage: React.FC = () => {
         isOpen={addToPlaylistModalOpen}
         onClose={handleCloseAddToPlaylistModal}
         song={selectedSongForPlaylist}
+        songs={bulkAddSongs}
       />
 
       {/* Create Playlist Modal */}
