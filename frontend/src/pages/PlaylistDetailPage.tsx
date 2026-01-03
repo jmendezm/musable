@@ -6,6 +6,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import { useRoomStore } from '../stores/roomStore';
 import { useFollowedPlaylistsStore } from '../stores/followedPlaylistsStore';
+import { useUserPlaylistsStore } from '../stores/userPlaylistsStore';
 import { handleRoomAwarePlayback } from '../utils/roomPlayback';
 import { useContextMenu } from '../hooks/useContextMenu';
 import ContextMenu from '../components/ContextMenu';
@@ -52,6 +53,7 @@ const PlaylistDetailPage: React.FC = () => {
   const roomStore = useRoomStore();
   const { showSuccess, showError } = useToast();
   const { isFollowing, toggleFollow, loadFollowedPlaylists } = useFollowedPlaylistsStore();
+  const { removePlaylist: removeUserPlaylist, updatePlaylist: updateUserPlaylist } = useUserPlaylistsStore();
   const {
     contextMenu,
     closeContextMenu,
@@ -233,10 +235,14 @@ const PlaylistDetailPage: React.FC = () => {
 
   const handleDeletePlaylist = async () => {
     if (!playlist) return;
-    
+
     if (window.confirm(`Are you sure you want to delete "${playlist.name}"? This action cannot be undone.`)) {
       try {
         await apiService.deletePlaylist(playlist.id);
+
+        // Remove from store to update sidebar
+        removeUserPlaylist(playlist.id);
+
         showSuccess('Playlist deleted');
         navigate('/playlists');
       } catch (error) {
@@ -712,6 +718,10 @@ const PlaylistDetailPage: React.FC = () => {
         playlist={playlist}
         onPlaylistUpdated={(updatedPlaylist) => {
           setPlaylist(updatedPlaylist);
+
+          // Update store to refresh sidebar
+          updateUserPlaylist(updatedPlaylist);
+
           fetchPlaylistData(); // Refresh to get updated data
         }}
       />

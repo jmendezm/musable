@@ -19,6 +19,7 @@ import { apiService } from '../services/api';
 import { Playlist, Album } from '../types';
 import { useFollowedPlaylistsStore } from '../stores/followedPlaylistsStore';
 import { useFollowedAlbumsStore } from '../stores/followedAlbumsStore';
+import { useUserPlaylistsStore } from '../stores/userPlaylistsStore';
 import toast from 'react-hot-toast';
 
 interface PlaylistWithDetails extends Playlist {
@@ -141,7 +142,8 @@ const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({ isOpen, onClose, 
     if (playlist) {
       setName(playlist.name);
       setDescription(playlist.description || '');
-      setIsPublic(playlist.is_public);
+      // Ensure is_public is a boolean (SQLite returns 0/1 as numbers)
+      setIsPublic(Boolean(playlist.is_public));
     }
   }, [playlist]);
 
@@ -231,6 +233,7 @@ const PlaylistsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'my' | 'public' | 'all' | 'followed'>('all');
   const { followedPlaylists, loadFollowedPlaylists } = useFollowedPlaylistsStore();
   const { followedAlbums, loadFollowedAlbums } = useFollowedAlbumsStore();
+  const { addPlaylist: addUserPlaylist, removePlaylist: removeUserPlaylist, updatePlaylist: updateUserPlaylist } = useUserPlaylistsStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingPlaylist, setEditingPlaylist] = useState<PlaylistWithDetails | null>(null);
@@ -315,6 +318,11 @@ const PlaylistsPage: React.FC = () => {
     try {
       const response = await apiService.createPlaylist(data);
       if (response.success) {
+        const newPlaylist = response.data.playlist;
+
+        // Add to store to update sidebar
+        addUserPlaylist(newPlaylist);
+
         toast.success('Playlist created successfully');
         setIsCreateModalOpen(false);
         loadPlaylists();
@@ -331,6 +339,10 @@ const PlaylistsPage: React.FC = () => {
     try {
       const response = await apiService.updatePlaylist(editingPlaylist.id, data);
       if (response.success) {
+        // Update store to refresh sidebar
+        const updatedPlaylist = { ...editingPlaylist, ...data };
+        updateUserPlaylist(updatedPlaylist);
+
         toast.success('Playlist updated successfully');
         setIsEditModalOpen(false);
         setEditingPlaylist(null);
@@ -350,6 +362,9 @@ const PlaylistsPage: React.FC = () => {
     try {
       const response = await apiService.deletePlaylist(playlist.id);
       if (response.success) {
+        // Remove from store to update sidebar
+        removeUserPlaylist(playlist.id);
+
         toast.success('Playlist deleted successfully');
         loadPlaylists();
       }

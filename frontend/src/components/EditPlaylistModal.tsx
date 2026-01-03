@@ -27,7 +27,8 @@ const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({
     if (playlist) {
       setName(playlist.name);
       setDescription(playlist.description || '');
-      setIsPublic(playlist.is_public);
+      // Ensure is_public is a boolean (SQLite returns 0/1 as numbers)
+      setIsPublic(Boolean(playlist.is_public));
     }
   }, [playlist]);
 

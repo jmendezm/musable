@@ -5,6 +5,7 @@ import apiService from '../services/api';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import { useRoomStore } from '../stores/roomStore';
+import { useUserPlaylistsStore } from '../stores/userPlaylistsStore';
 import { handleRoomAwarePlayback } from '../utils/roomPlayback';
 import { useContextMenu } from '../hooks/useContextMenu';
 import ContextMenu from '../components/ContextMenu';
@@ -79,6 +80,7 @@ const LibraryPage: React.FC = () => {
 
   const { play, setQueue, currentSong, addToQueue } = usePlayerStore();
   const { user } = useAuthStore();
+  const { addPlaylist: addUserPlaylist } = useUserPlaylistsStore();
   const { showSuccess, showError } = useToast();
   const {
     contextMenu,
@@ -436,6 +438,9 @@ const LibraryPage: React.FC = () => {
         is_public: false
       });
       const playlist = response.data.playlist;
+
+      // Add to store to update sidebar
+      addUserPlaylist(playlist);
 
       // Add all selected songs to the playlist
       const songIds = Array.from(selectedSongs);

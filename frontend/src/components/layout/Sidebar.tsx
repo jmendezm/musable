@@ -27,6 +27,7 @@ import {
 import { useAuthStore } from '../../stores/authStore';
 import { useFollowedAlbumsStore } from '../../stores/followedAlbumsStore';
 import { useFollowedPlaylistsStore } from '../../stores/followedPlaylistsStore';
+import { useUserPlaylistsStore } from '../../stores/userPlaylistsStore';
 import { apiService } from '../../services/api';
 import { Playlist } from '../../types';
 import clsx from 'clsx';
@@ -73,8 +74,8 @@ const Sidebar: React.FC = () => {
   const { user } = useAuthStore();
   const { followedAlbums } = useFollowedAlbumsStore();
   const { followedPlaylists } = useFollowedPlaylistsStore();
+  const { userPlaylists, isLoading, loadUserPlaylists } = useUserPlaylistsStore();
   const navigate = useNavigate();
-  const [userPlaylists, setUserPlaylists] = useState<Playlist[]>([]);
   const [expandedSections, setExpandedSections] = useState({
     userPlaylists: false,
     followedPlaylists: false,
@@ -85,18 +86,7 @@ const Sidebar: React.FC = () => {
     if (user) {
       loadUserPlaylists();
     }
-  }, [user]);
-
-  const loadUserPlaylists = async () => {
-    try {
-      const response = await apiService.getUserPlaylists();
-      if (response.success && response.data) {
-        setUserPlaylists(response.data.playlists || []);
-      }
-    } catch (error) {
-      console.error('Failed to load user playlists:', error);
-    }
-  };
+  }, [user, loadUserPlaylists]);
 
   const handleCreatePlaylist = () => {
     // TODO: Open create playlist modal
