@@ -361,13 +361,19 @@ const UserManagementTab: React.FC = () => {
                       <div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center mr-3 overflow-hidden">
                         {user.profile_picture ? (
                           <img
-                            src={`${getApiBaseUrl().replace('/api', '')}${user.profile_picture}`}
+                            src={`${getApiBaseUrl().replace('/api', '')}${user.profile_picture.startsWith('/') ? '' : '/'}${user.profile_picture}`}
                             alt={user.username}
                             className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                              const fallback = (e.target as HTMLImageElement).parentElement?.querySelector('.fallback-icon');
+                              if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                            }}
                           />
-                        ) : (
+                        ) : null}
+                        <div className={`fallback-icon ${user.profile_picture ? 'hidden' : ''} w-full h-full flex items-center justify-center`}>
                           <UserIcon className="w-4 h-4 text-primary" />
-                        )}
+                        </div>
                       </div>
                       <div>
                         <p className="text-white font-medium">{user.username}</p>

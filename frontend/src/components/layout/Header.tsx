@@ -164,17 +164,30 @@ const Header: React.FC = () => {
             </p>
           </div>
           
-          {user?.profile_picture ? (
-            <img
-              src={`${getApiBaseUrl().replace('/api', '')}${user.profile_picture}`}
-              alt={`${user.username}'s profile`}
-              className="w-8 h-8 rounded-full object-cover border border-gray-600"
-            />
-          ) : (
-            <div className="w-8 h-8 bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center">
-              <UserCircleIcon className="w-6 h-6 text-white" />
-            </div>
-          )}
+          <div className="relative w-8 h-8">
+            {user?.profile_picture ? (
+              <>
+                <img
+                  src={`${getApiBaseUrl().replace('/api', '')}${user.profile_picture.startsWith('/') ? '' : '/'}${user.profile_picture}`}
+                  alt={`${user.username}'s profile`}
+                  className="w-8 h-8 rounded-full object-cover border border-gray-600"
+                  onError={(e) => {
+                    // If image fails to load, hide it and show fallback
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    const fallback = (e.target as HTMLImageElement).parentElement?.querySelector('.fallback-icon');
+                    if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                  }}
+                />
+                <div className="fallback-icon hidden w-8 h-8 bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center absolute top-0 left-0">
+                  <UserCircleIcon className="w-6 h-6 text-white" />
+                </div>
+              </>
+            ) : (
+              <div className="w-8 h-8 bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center">
+                <UserCircleIcon className="w-6 h-6 text-white" />
+              </div>
+            )}
+          </div>
         </button>
 
         {/* Dropdown menu */}
