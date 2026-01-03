@@ -262,6 +262,11 @@ const LibraryPage: React.FC = () => {
     handleRoomAwarePlayback(song, songList);
   };
 
+  const handlePlayAll = (songs: Song[]) => {
+    if (songs.length === 0) return;
+    handleRoomAwarePlayback(songs[0], songs);
+  };
+
   const toggleFolderExpanded = (folderPath: string) => {
     setExpandedFolders(prev => {
       const newSet = new Set(prev);
@@ -661,45 +666,63 @@ const LibraryPage: React.FC = () => {
         </div>
 
         {/* Selection Mode Toggle & Bulk Actions */}
-        <div className="flex items-center justify-between flex-shrink-0">
-          <button
-            onClick={toggleSelectionMode}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm font-medium ${
-              selectionMode
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-            }`}
-          >
-            {selectionMode ? (
-              <>
-                <XMarkIcon className="w-4 h-4" />
-                <span>Cancel Selection</span>
-              </>
-            ) : (
-              <>
-                <CheckIcon className="w-4 h-4" />
-                <span>Select Songs</span>
-              </>
+        <div className="flex items-center justify-between flex-shrink-0 gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={toggleSelectionMode}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm font-medium ${
+                selectionMode
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              {selectionMode ? (
+                <>
+                  <XMarkIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">Cancel Selection</span>
+                  <span className="sm:hidden">Cancel</span>
+                </>
+              ) : (
+                <>
+                  <CheckIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">Select Songs</span>
+                  <span className="sm:hidden">Select</span>
+                </>
+              )}
+            </button>
+
+            {!selectionMode && filteredSongs.length > 0 && (
+              <button
+                onClick={() => handlePlayAll(filteredSongs)}
+                className="flex items-center gap-2 px-3 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors text-sm font-medium"
+              >
+                <PlayIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Play All</span>
+                <span className="sm:hidden">Play All ({filteredSongs.length})</span>
+              </button>
             )}
-          </button>
+          </div>
 
           {selectionMode && selectedSongs.size > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-400">
-                {selectedSongs.size} song{selectedSongs.size !== 1 ? 's' : ''} selected
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-gray-400 whitespace-nowrap">
+                <span className="hidden sm:inline">{selectedSongs.size} song{selectedSongs.size !== 1 ? 's' : ''} selected</span>
+                <span className="sm:hidden">{selectedSongs.size}</span>
               </span>
               <button
                 onClick={toggleSelectAll}
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors text-sm"
+                className="px-2 sm:px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors text-xs sm:text-sm whitespace-nowrap"
               >
-                {selectedSongs.size === paginatedSongs.length ? 'Deselect All' : 'Select All'}
+                <span className="hidden sm:inline">{selectedSongs.size === paginatedSongs.length ? 'Deselect All' : 'Select All'}</span>
+                <span className="sm:hidden">{selectedSongs.size === paginatedSongs.length ? 'Deselect' : 'Select All'}</span>
               </button>
               <button
                 onClick={() => setCreatePlaylistModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-xs sm:text-sm whitespace-nowrap"
               >
                 <PlusIcon className="w-4 h-4" />
-                <span>Create Playlist</span>
+                <span className="hidden sm:inline">Create Playlist</span>
+                <span className="sm:hidden">Create</span>
               </button>
               <button
                 onClick={() => {
@@ -710,10 +733,11 @@ const LibraryPage: React.FC = () => {
                   // Store selected songs in a different state for bulk add
                   setBulkAddSongs(selectedSongsData);
                 }}
-                className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors text-sm"
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors text-xs sm:text-sm whitespace-nowrap"
               >
                 <ListBulletIcon className="w-4 h-4" />
-                <span>Add to Playlist</span>
+                <span className="hidden sm:inline">Add to Playlist</span>
+                <span className="sm:hidden">Add</span>
               </button>
             </div>
           )}
