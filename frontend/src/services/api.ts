@@ -370,11 +370,17 @@ class ApiService {
 
   // Sharing
   async createShareToken(songId: number, options?: { maxAccess?: number; expiresInHours?: number }): Promise<ApiResponse<{ token: string; shareUrl: string }>> {
-    return this.request('POST', '/share/create', {
+    const response = await this.request('POST', '/share/create', {
       songId,
       maxAccess: options?.maxAccess,
       expiresInHours: options?.expiresInHours
-    });
+    }) as any;
+
+    // Construct the full share URL using BASE_URL from config
+    const baseUrl = getBaseUrl();
+    response.data.shareUrl = `${baseUrl}/share/${response.data.token}`;
+
+    return response;
   }
 
   // System Settings (Admin)

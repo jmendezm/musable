@@ -8,6 +8,7 @@ import { handleRoomAwarePlayback } from '../utils/roomPlayback';
 import { useContextMenu } from '../hooks/useContextMenu';
 import ContextMenu from '../components/ContextMenu';
 import { useToast } from '../contexts/ToastContext';
+import { copyToClipboard } from '../utils/clipboard';
 import EditSongModal from '../components/EditSongModal';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
 import { apiService } from '../services/api';
@@ -220,20 +221,12 @@ const SearchPage: React.FC = () => {
     try {
       const response = await apiService.createShareToken(song.id);
       const shareUrl = response.data.shareUrl;
-      
-      await navigator.clipboard.writeText(shareUrl);
+
+      await copyToClipboard(shareUrl);
       showSuccess('Share URL copied to clipboard!');
     } catch (err) {
       console.error('Failed to create share URL:', err);
-      // Fallback to copying song info
-      const shareText = `🎵 ${song.title} by ${song.artist_name}`;
-      try {
-        await navigator.clipboard.writeText(shareText);
-        showSuccess('Song info copied to clipboard!');
-      } catch (clipboardErr) {
-        console.error('Failed to copy to clipboard:', clipboardErr);
-        showSuccess('Failed to copy share URL. Please try again.');
-      }
+      showError('Failed to copy share URL. Please try again.');
     }
   };
 

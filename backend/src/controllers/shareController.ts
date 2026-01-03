@@ -81,15 +81,11 @@ export const createShareToken = asyncHandler(async (req: AuthRequest, res: Respo
   });
   
   logger.info(`Share token created for song ${songId} by user ${userId}`);
-  
-  // Create share URL safely - use hardcoded host to avoid req.get() issues
-  const shareUrl = `http://localhost:3000/share/${shareToken.token}`;
-  
+
   res.status(201).json({
     success: true,
-    data: { 
-      token: shareToken.token,
-      shareUrl
+    data: {
+      token: shareToken.token
     }
   });
 });

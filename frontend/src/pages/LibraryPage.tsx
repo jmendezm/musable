@@ -11,6 +11,7 @@ import ContextMenu from '../components/ContextMenu';
 import EditSongModal from '../components/EditSongModal';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
 import { useToast } from '../contexts/ToastContext';
+import { copyToClipboard } from '../utils/clipboard';
 import {
   MusicalNoteIcon,
   PlayIcon,
@@ -38,7 +39,7 @@ const LibraryPage: React.FC = () => {
   const { user } = useAuthStore();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const roomStore = useRoomStore();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const {
     contextMenu,
     closeContextMenu,
@@ -138,20 +139,12 @@ const LibraryPage: React.FC = () => {
     try {
       const response = await apiService.createShareToken(song.id);
       const shareUrl = response.data.shareUrl;
-      
-      await navigator.clipboard.writeText(shareUrl);
+
+      await copyToClipboard(shareUrl);
       showSuccess('Share URL copied to clipboard!');
     } catch (err) {
       console.error('Failed to create share URL:', err);
-      // Fallback to copying song info
-      const shareText = `🎵 ${song.title} by ${song.artist_name}`;
-      try {
-        await navigator.clipboard.writeText(shareText);
-        showSuccess('Song info copied to clipboard!');
-      } catch (clipboardErr) {
-        console.error('Failed to copy to clipboard:', clipboardErr);
-        showSuccess('Failed to copy share URL. Please try again.');
-      }
+      showError('Failed to copy share URL. Please try again.');
     }
   };
 
