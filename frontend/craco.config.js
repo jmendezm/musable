@@ -22,6 +22,11 @@ module.exports = {
         new webpack.DefinePlugin(reactAppVars)
       );
 
+      // Remove React Refresh in production to avoid build errors
+      if (env === 'production') {
+        webpackConfig = removeReactRefresh(webpackConfig);
+      }
+
       return webpackConfig;
     },
   },
@@ -46,3 +51,38 @@ module.exports = {
     return devServerConfig;
   },
 };
+
+// Helper function to remove React Refresh plugins
+function removeReactRefresh(webpackConfig) {
+  // Remove ReactRefreshWebpackPlugin
+  if (webpackConfig.plugins) {
+    webpackConfig.plugins = webpackConfig.plugins.filter(
+      plugin => plugin.constructor.name !== 'ReactRefreshWebpackPlugin'
+    );
+  }
+
+  // Remove React Refresh from babel loader options
+  const babelLoader = webpackConfig.module.rules.find(
+    rule =>
+      rule.oneOf &&
+      rule.oneOf.find(oneOf =>
+        oneOf.loader && oneOf.loader.includes('babel-loader')
+      )
+  );
+
+  if (babelLoader && babelLoader.oneOf) {
+    babelLoader.oneOf.forEach(rule => {
+      if (rule.use && rule.use.options && rule.use.options.plugins) {
+        rule.use.options.plugins = rule.use.options.plugins.filter(
+          plugin =>
+            !(
+              Array.isArray(plugin) &&
+              plugin[0].includes('react-refresh')
+            )
+        );
+      }
+    });
+  }
+
+  return webpackConfig;
+}
