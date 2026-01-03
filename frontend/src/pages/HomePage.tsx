@@ -16,7 +16,6 @@ import {
   MusicalNoteIcon,
   MagnifyingGlassIcon,
   PlayIcon,
-  ChevronRightIcon,
   HeartIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
@@ -182,57 +181,6 @@ const HomePage: React.FC = () => {
         <p className="text-gray-400">
           Welcome back to your music library
         </p>
-      </div>
-
-      {/* Quick actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div 
-          onClick={() => navigate('/history')}
-          className="bg-gradient-to-r from-purple-600 to-blue-600 p-6 rounded-lg cursor-pointer hover:scale-105 transition-transform"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-white font-semibold mb-2 flex items-center">
-                <ClockIcon className="w-5 h-5 mr-2" />
-                Recently Played
-              </h3>
-              <p className="text-gray-200 text-sm">Pick up where you left off</p>
-            </div>
-            <ChevronRightIcon className="w-6 h-6 text-white" />
-          </div>
-        </div>
-        
-        <div 
-          onClick={() => navigate('/library')}
-          className="bg-gradient-to-r from-green-600 to-teal-600 p-6 rounded-lg cursor-pointer hover:scale-105 transition-transform"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-white font-semibold mb-2 flex items-center">
-                <MusicalNoteIcon className="w-5 h-5 mr-2" />
-                Your Library
-              </h3>
-              <p className="text-gray-200 text-sm">Browse your music collection</p>
-            </div>
-            <ChevronRightIcon className="w-6 h-6 text-white" />
-          </div>
-        </div>
-        
-        <div 
-          onClick={() => navigate('/search')}
-          className="bg-gradient-to-r from-pink-600 to-red-600 p-6 rounded-lg cursor-pointer hover:scale-105 transition-transform"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-white font-semibold mb-2 flex items-center">
-                <MagnifyingGlassIcon className="w-5 h-5 mr-2" />
-                Discover
-              </h3>
-              <p className="text-gray-200 text-sm">Find new music to enjoy</p>
-            </div>
-            <ChevronRightIcon className="w-6 h-6 text-white" />
-          </div>
-        </div>
       </div>
 
       {/* Recently Played Songs */}
