@@ -17,6 +17,17 @@ build-musable:
     - name: docker:dind
       # We keep this as a backup, but the daemon.json below is the primary fix
       command: ["--insecure-registry=192.168.1.20:5050"]
+
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      variables:
+        IMAGE_NAME: "$INTERNAL_IMAGE_BASE"
+    - if: $CI_COMMIT_BRANCH == "dev"
+      variables:
+        # This creates a sub-repository named 'dev' in the UI
+        # Or you can use "$INTERNAL_IMAGE_BASE-dev" if you prefer that naming
+        IMAGE_NAME: "$INTERNAL_IMAGE_BASE/dev"
+        
   before_script:
     # 1. Create the Docker config directory
     - mkdir -p /etc/docker
