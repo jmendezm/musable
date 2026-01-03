@@ -10,8 +10,6 @@ const result = dotenv.config({ path: envPath });
 if (!result.error) {
   logger.info('Loaded .env file');
 } else {
-  // Only log as ERROR if it's not a simple "file not found" error
-  // Missing .env is fine - we'll use default values
   const error = result.error as NodeJS.ErrnoException;
   if (error.code === 'ENOENT') {
     logger.info('.env file not found (this is OK - using default values)');
