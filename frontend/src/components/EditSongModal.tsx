@@ -72,9 +72,6 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
     const ModalComponent = imageSearchExtensionManager.getModalComponent();
     if (ModalComponent) {
       setImageSearchModalComponent(() => ModalComponent);
-      console.log('Image search modal loaded from extension');
-    } else {
-      console.log('No image search modal component available from extensions');
     }
   }, []);
 

@@ -811,6 +811,30 @@ export const getAllPathScanReports = asyncHandler(async (req: Request, res: Resp
   });
 });
 
+export const deleteScanReport = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { reportId } = req.params;
+
+  if (!req.user?.is_admin) {
+    throw new AppError('Admin access required', 403);
+  }
+
+  const scanReportId = parseInt(reportId);
+
+  // Check if report exists
+  const report = await LibraryPathScanReportModel.findById(scanReportId);
+  if (!report) {
+    throw new AppError('Scan report not found', 404);
+  }
+
+  // Delete the report (this will also delete associated errors)
+  await LibraryPathScanReportModel.delete(scanReportId);
+
+  res.json({
+    success: true,
+    data: { message: 'Scan report deleted successfully' }
+  });
+});
+
 export const setSystemSetting = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { key } = req.params;
   const { value } = req.body;

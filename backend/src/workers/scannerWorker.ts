@@ -547,15 +547,16 @@ async function performScan(
         }
       }
 
-      // Mark path report as completed
+      // Mark path report as completed or stopped
       if (currentPathReport) {
+        const reportStatus = shouldStop ? 'stopped' : 'completed';
         await Database.run(
           `UPDATE library_path_scan_reports
-           SET status = 'completed', completed_at = ?, progress = 100
+           SET status = ?, completed_at = ?, progress = 100
            WHERE id = ?`,
-          [new Date().toISOString(), currentPathReport.reportId]
+          [reportStatus, new Date().toISOString(), currentPathReport.reportId]
         );
-        console.log(`[Worker] Completed report ${currentPathReport.reportId} for path ${scanPath}`);
+        console.log(`[Worker] ${reportStatus} report ${currentPathReport.reportId} for path ${scanPath}`);
       }
     }
 
@@ -568,17 +569,30 @@ async function performScan(
     );
 
     const completedAt = new Date().toISOString();
+    const scanStatus = shouldStop ? 'stopped' : 'completed';
     await Database.run(
-      `UPDATE scan_history SET status = 'completed', completed_at = ? WHERE id = ?`,
-      [completedAt, scanId]
+      `UPDATE scan_history SET status = ?, completed_at = ? WHERE id = ?`,
+      [scanStatus, completedAt, scanId]
     );
+
+    // If scan was stopped, mark any remaining "running" path reports as stopped
+    if (shouldStop && pathReports && pathReports.length > 0) {
+      for (const pr of pathReports) {
+        await Database.run(
+          `UPDATE library_path_scan_reports
+           SET status = 'stopped', completed_at = ?
+           WHERE id = ? AND status = 'running'`,
+          [completedAt, pr.reportId]
+        );
+      }
+    }
 
     sendMessage({
       type: 'scanComplete',
       data: { scanId }
     });
 
-    console.log(`[Worker] Scan completed: ${totalFilesScanned} scanned, ${totalFilesAdded} added, ${totalFilesUpdated} updated, ${totalFilesSkipped} skipped, ${totalErrors} errors`);
+    console.log(`[Worker] Scan ${scanStatus}: ${totalFilesScanned} scanned, ${totalFilesAdded} added, ${totalFilesUpdated} updated, ${totalFilesSkipped} skipped, ${totalErrors} errors`);
 
     // Log artwork error summary if there were any
     if (artworkErrors > 0) {

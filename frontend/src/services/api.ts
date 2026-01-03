@@ -396,6 +396,15 @@ class ApiService {
     return this.request('PUT', `/admin/settings/${key}`, { value: String(value) });
   }
 
+  // Library Scan Reports (Admin)
+  async getAllScanReports(limit: number = 100): Promise<ApiResponse<{ reports: any[] }>> {
+    return this.request('GET', `/admin/library/scans?limit=${limit}`);
+  }
+
+  async deleteScanReport(reportId: number): Promise<ApiResponse<{ message: string }>> {
+    return this.request('DELETE', `/admin/library/scans/${reportId}`);
+  }
+
   // System Statistics
   async getSystemStats(): Promise<ApiResponse<{
     uptime: number;

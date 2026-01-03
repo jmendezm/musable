@@ -18,6 +18,8 @@ import { Song, ScanProgress } from '../../types';
 import clsx from 'clsx';
 import EditSongModal from '../../components/EditSongModal';
 import ScanReportModal from '../../components/ScanReportModal';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import { useToast } from '../../contexts/ToastContext';
 
 interface LibraryPath {
   id: number;
@@ -51,6 +53,12 @@ const LibraryManagementTab: React.FC = () => {
   const [scanReportModalOpen, setScanReportModalOpen] = useState(false);
   const [selectedPathForReport, setSelectedPathForReport] = useState<{ id: number; path: string } | null>(null);
 
+  // Delete confirmation dialogs
+  const [deleteReportDialogOpen, setDeleteReportDialogOpen] = useState(false);
+  const [reportToDelete, setReportToDelete] = useState<{ id: number; path: string } | null>(null);
+  const [deleteSongDialogOpen, setDeleteSongDialogOpen] = useState(false);
+  const [songToDelete, setSongToDelete] = useState<Song | null>(null);
+
   // New states for path selector
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [pathError, setPathError] = useState<string | null>(null);
@@ -58,6 +66,9 @@ const LibraryManagementTab: React.FC = () => {
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([]);
   const [isValidPath, setIsValidPath] = useState<boolean | null>(null);
   const [debouncedPath, setDebouncedPath] = useState('');
+
+  const { showSuccess, showError } = useToast();
+
   const [focusedSuggestionIndex, setFocusedSuggestionIndex] = useState(-1);
   const [isShowingRoot, setIsShowingRoot] = useState(false);
   const [inputHasFocus, setInputHasFocus] = useState(false);
@@ -419,17 +430,46 @@ const LibraryManagementTab: React.FC = () => {
     }
   };
 
-  const handleDeleteSong = async (songId: number) => {
-    if (!window.confirm('Are you sure you want to delete this song? This will remove it from the database but not delete the file.')) {
-      return;
-    }
+  const handleDeleteReport = (reportId: number, path: string) => {
+    setReportToDelete({ id: reportId, path });
+    setDeleteReportDialogOpen(true);
+  };
+
+  const handleConfirmDeleteReport = async () => {
+    if (!reportToDelete) return;
 
     try {
-      await apiService.deleteSong(songId);
+      await apiService.deleteScanReport(reportToDelete.id);
+      // Refresh library data to update the latest scan info
+      await fetchLibraryData();
+      showSuccess('Scan report deleted successfully');
+    } catch (err: any) {
+      console.error('Failed to delete scan report:', err);
+      showError(err.message || 'Failed to delete scan report');
+    } finally {
+      setDeleteReportDialogOpen(false);
+      setReportToDelete(null);
+    }
+  };
+
+  const handleDeleteSong = (song: Song) => {
+    setSongToDelete(song);
+    setDeleteSongDialogOpen(true);
+  };
+
+  const handleConfirmDeleteSong = async () => {
+    if (!songToDelete) return;
+
+    try {
+      await apiService.deleteSong(songToDelete.id);
       await fetchSongs(currentPage, searchQuery);
+      showSuccess('Song deleted successfully');
     } catch (err: any) {
       console.error('Failed to delete song:', err);
-      setError(err.message || 'Failed to delete song');
+      showError(err.message || 'Failed to delete song');
+    } finally {
+      setDeleteSongDialogOpen(false);
+      setSongToDelete(null);
     }
   };
 
@@ -772,11 +812,22 @@ const LibraryManagementTab: React.FC = () => {
                         {new Date(path.latest_scan.started_at).toLocaleDateString()}
                       </span>
                     </div>
-                    {path.latest_scan.status === 'running' && (
-                      <span className="text-blue-400 text-sm font-medium">
-                        {path.latest_scan.progress}%
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {path.latest_scan.status === 'running' && (
+                        <span className="text-blue-400 text-sm font-medium">
+                          {path.latest_scan.progress}%
+                        </span>
+                      )}
+                      {path.latest_scan.status !== 'running' && (
+                        <button
+                          onClick={() => handleDeleteReport(path.latest_scan!.id, path.path)}
+                          className="p-1 text-gray-400 hover:text-red-400 transition-colors"
+                          title="Delete scan report"
+                        >
+                          <TrashIcon className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Progress bar for running scans */}
@@ -923,7 +974,7 @@ const LibraryManagementTab: React.FC = () => {
                           <PencilIcon className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDeleteSong(song.id!)}
+                          onClick={() => handleDeleteSong(song)}
                           className="p-1 text-gray-400 hover:text-red-400 transition-colors"
                           title="Remove from library"
                         >
@@ -1039,6 +1090,61 @@ const LibraryManagementTab: React.FC = () => {
           pathName={selectedPathForReport.path}
         />
       )}
+
+      {/* Delete Scan Report Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteReportDialogOpen}
+        onClose={() => setDeleteReportDialogOpen(false)}
+        onConfirm={handleConfirmDeleteReport}
+        title="Delete Scan Report"
+        message={
+          reportToDelete ? (
+            <div>
+              <p className="mb-2">Are you sure you want to delete this scan report?</p>
+              <p className="text-sm text-gray-400">
+                Path: {reportToDelete.path}
+              </p>
+              <p className="text-red-400 text-sm mt-3">
+                This will permanently delete the report and all associated error logs. This action cannot be undone.
+              </p>
+            </div>
+          ) : (
+            'Are you sure you want to delete this scan report?'
+          )
+        }
+        confirmText="Delete Report"
+        cancelText="Cancel"
+        type="danger"
+      />
+
+      {/* Delete Song Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteSongDialogOpen}
+        onClose={() => setDeleteSongDialogOpen(false)}
+        onConfirm={handleConfirmDeleteSong}
+        title="Delete Song"
+        message={
+          songToDelete ? (
+            <div>
+              <p className="mb-2">Are you sure you want to delete this song?</p>
+              <p className="text-sm text-gray-400">
+                {songToDelete.title} by {songToDelete.artist_name}
+              </p>
+              <p className="text-yellow-400 text-sm mt-1">
+                This will remove it from the database but will NOT delete the actual file.
+              </p>
+              <p className="text-red-400 text-sm mt-3">
+                This action cannot be undone.
+              </p>
+            </div>
+          ) : (
+            'Are you sure you want to delete this song? This will remove it from the database but not delete the file.'
+          )
+        }
+        confirmText="Delete Song"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 };

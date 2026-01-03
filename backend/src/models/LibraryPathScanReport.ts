@@ -226,6 +226,20 @@ class LibraryPathScanReportModel {
       [libraryPathId]
     );
   }
+
+  async delete(id: number): Promise<void> {
+    // First delete associated errors
+    await this.db.run(
+      'DELETE FROM library_path_scan_errors WHERE scan_report_id = ?',
+      [id]
+    );
+
+    // Then delete the report
+    await this.db.run(
+      'DELETE FROM library_path_scan_reports WHERE id = ?',
+      [id]
+    );
+  }
 }
 
 export default new LibraryPathScanReportModel();

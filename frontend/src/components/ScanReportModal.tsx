@@ -5,10 +5,13 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   ClockIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 import { apiService } from '../services/api';
 import clsx from 'clsx';
+import ConfirmDialog from './ConfirmDialog';
+import { useToast } from '../contexts/ToastContext';
 
 interface ScanError {
   id: number;
@@ -56,6 +59,10 @@ const ScanReportModal: React.FC<ScanReportModalProps> = ({
   const [selectedReport, setSelectedReport] = useState<ScanReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [reportToDelete, setReportToDelete] = useState<ScanReport | null>(null);
+
+  const { showSuccess, showError } = useToast();
 
   useEffect(() => {
     if (isOpen) {
@@ -139,6 +146,35 @@ const ScanReportModal: React.FC<ScanReportModalProps> = ({
     }
   };
 
+  const handleDeleteClick = (report: ScanReport) => {
+    if (report.status === 'running') return; // Can't delete running scans
+    setReportToDelete(report);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!reportToDelete) return;
+
+    try {
+      await apiService.deleteScanReport(reportToDelete.id);
+      showSuccess('Scan report deleted successfully');
+
+      // Refresh reports list
+      await fetchReports();
+
+      // If the deleted report was selected, clear selection
+      if (selectedReport?.id === reportToDelete.id) {
+        setSelectedReport(null);
+      }
+    } catch (err: any) {
+      console.error('Failed to delete scan report:', err);
+      showError(err.message || 'Failed to delete scan report');
+    } finally {
+      setDeleteDialogOpen(false);
+      setReportToDelete(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -195,9 +231,23 @@ const ScanReportModal: React.FC<ScanReportModalProps> = ({
                           {getStatusIcon(report.status)}
                           <span className="text-white font-medium">{getStatusText(report.status)}</span>
                         </div>
-                        <span className="text-gray-400 text-sm">
-                          {formatDate(report.started_at)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 text-sm">
+                            {formatDate(report.started_at)}
+                          </span>
+                          {report.status !== 'running' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteClick(report);
+                              }}
+                              className="p-1.5 text-gray-400 hover:text-red-400 transition-colors rounded-lg hover:bg-gray-600"
+                              title="Delete scan report"
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-5 gap-3 text-sm">
@@ -362,6 +412,35 @@ const ScanReportModal: React.FC<ScanReportModalProps> = ({
             )}
           </div>
         </div>
+
+        {/* Delete Confirmation Dialog */}
+        <ConfirmDialog
+          isOpen={deleteDialogOpen}
+          onClose={() => setDeleteDialogOpen(false)}
+          onConfirm={handleDeleteConfirm}
+          title="Delete Scan Report"
+          message={
+            reportToDelete ? (
+              <div>
+                <p className="mb-2">Are you sure you want to delete this scan report?</p>
+                <p className="text-sm text-gray-400">
+                  Started: {formatDate(reportToDelete.started_at)}
+                </p>
+                <p className="text-sm text-gray-400 mt-1">
+                  Status: {getStatusText(reportToDelete.status)}
+                </p>
+                <p className="text-red-400 text-sm mt-3">
+                  This will permanently delete the report and all associated error logs. This action cannot be undone.
+                </p>
+              </div>
+            ) : (
+              'Are you sure you want to delete this scan report?'
+            )
+          }
+          confirmText="Delete Report"
+          cancelText="Cancel"
+          type="danger"
+        />
       </div>
     </div>
   );

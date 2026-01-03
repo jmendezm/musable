@@ -25,6 +25,7 @@ import {
   getPathScanReportDetail,
   getLatestPathScanReport,
   getAllPathScanReports,
+  deleteScanReport,
   adminUploadProfilePicture,
   updateUserProfilePicture,
   deleteUserProfilePicture
@@ -65,6 +66,7 @@ router.get('/library/paths/:pathId/scans', getPathScanReports);
 router.get('/library/paths/:pathId/scans/latest', getLatestPathScanReport);
 router.get('/library/paths/:pathId/scans/:reportId', getPathScanReportDetail);
 router.get('/library/scans', getAllPathScanReports);
+router.delete('/library/scans/:reportId', deleteScanReport);
 
 router.get('/settings', getAllSystemSettings);
 router.get('/settings/:key', getSystemSetting);
