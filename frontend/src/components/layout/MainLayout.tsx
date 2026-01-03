@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { createContext, useContext } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import Player from '../player/Player';
@@ -6,12 +6,28 @@ import BottomNavigation from './BottomNavigation';
 import ToastContainer from '../ToastContainer';
 import { useToast } from '../../contexts/ToastContext';
 
+interface LayoutContextType {
+  disablePadding: boolean;
+  setDisablePadding: (value: boolean) => void;
+}
+
+const LayoutContext = createContext<LayoutContextType | undefined>(undefined);
+
+export const useLayoutContext = () => {
+  const context = useContext(LayoutContext);
+  if (!context) {
+    throw new Error('useLayoutContext must be used within MainLayout');
+  }
+  return context;
+};
+
 interface MainLayoutProps {
   children: React.ReactNode;
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { toasts, removeToast } = useToast();
+  const [disablePadding, setDisablePadding] = React.useState(false);
 
   // Set CSS custom properties for mobile viewport height on mount
   React.useEffect(() => {
@@ -31,7 +47,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   }, []);
 
   return (
-    <div className="flex flex-col bg-black overflow-hidden" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
+    <LayoutContext.Provider value={{ disablePadding, setDisablePadding }}>
+      <div className="flex flex-col bg-black overflow-hidden" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
       {/* Main content area */}
       <div className="flex flex-1 min-h-0">
         {/* Sidebar - hidden on mobile */}
@@ -45,8 +62,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           </div>
           
           {/* Page content */}
-          <main className="flex-1 overflow-auto bg-gradient-to-b from-gray-900 to-black p-6 pb-20 md:pb-6">
-            <div className="max-w-screen-2xl mx-auto">
+          <main className={`flex-1 ${disablePadding ? 'overflow-hidden' : 'overflow-auto'} bg-gradient-to-b from-gray-900 to-black p-6 pb-8 ${disablePadding ? 'md:p-0' : 'md:pb-6'}`}>
+            <div className={`max-w-screen-2xl mx-auto ${disablePadding ? 'h-full' : ''}`}>
               {children}
             </div>
           </main>
@@ -63,7 +80,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
       {/* Toast notifications */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
-    </div>
+      </div>
+    </LayoutContext.Provider>
   );
 };
 
