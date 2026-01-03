@@ -13,7 +13,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { apiService } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
-import { getBaseUrl } from '../config/config';
+import { getApiBaseUrl } from '../config/config';
 import clsx from 'clsx';
 
 interface UserSettings {
@@ -275,7 +275,7 @@ const SettingsPage: React.FC = () => {
                     <div className="w-24 h-24 rounded-full bg-gray-700 overflow-hidden border-2 border-gray-600">
                       {user?.profile_picture || previewUrl ? (
                         <img
-                          src={previewUrl || `${getBaseUrl()}${user?.profile_picture}`}
+                          src={previewUrl || `${getApiBaseUrl().replace('/api', '')}${user?.profile_picture}`}
                           alt={user?.username || 'Profile'}
                           className="w-full h-full object-cover"
                         />

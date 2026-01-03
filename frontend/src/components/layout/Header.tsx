@@ -16,7 +16,7 @@ import {
   ShieldCheckIcon
 } from '@heroicons/react/24/outline';
 import { useAuthStore } from '../../stores/authStore';
-import { getBaseUrl } from '../../config/config';
+import { getApiBaseUrl } from '../../config/config';
 import clsx from 'clsx';
 
 // Mobile Navigation Link Component
@@ -166,7 +166,7 @@ const Header: React.FC = () => {
           
           {user?.profile_picture ? (
             <img
-              src={`${getBaseUrl()}${user.profile_picture}`}
+              src={`${getApiBaseUrl().replace('/api', '')}${user.profile_picture}`}
               alt={`${user.username}'s profile`}
               className="w-8 h-8 rounded-full object-cover border border-gray-600"
             />

@@ -12,7 +12,7 @@ import {
   PhotoIcon
 } from '@heroicons/react/24/outline';
 import { apiService } from '../../services/api';
-import { getBaseUrl } from '../../config/config';
+import { getApiBaseUrl } from '../../config/config';
 import { User, Invite } from '../../types';
 import clsx from 'clsx';
 
@@ -361,7 +361,7 @@ const UserManagementTab: React.FC = () => {
                       <div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center mr-3 overflow-hidden">
                         {user.profile_picture ? (
                           <img
-                            src={`${getBaseUrl()}${user.profile_picture}`}
+                            src={`${getApiBaseUrl().replace('/api', '')}${user.profile_picture}`}
                             alt={user.username}
                             className="w-full h-full object-cover"
                           />
