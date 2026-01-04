@@ -128,7 +128,7 @@ export class SongModel {
   async searchSongs(query: string): Promise<SongWithDetails[]> {
     const searchTerm = `%${query}%`;
     return await this.db.query<SongWithDetails>(
-      `SELECT 
+      `SELECT
         s.*,
         a.name as artist_name,
         al.title as album_title,
@@ -136,12 +136,30 @@ export class SongModel {
        FROM songs s
        JOIN artists a ON s.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
-       WHERE s.title LIKE ? 
-          OR a.name LIKE ? 
+       WHERE s.title LIKE ?
+          OR a.name LIKE ?
           OR al.title LIKE ?
           OR s.genre LIKE ?
        ORDER BY a.name, al.title, s.track_number, s.title`,
       [searchTerm, searchTerm, searchTerm, searchTerm]
+    );
+  }
+
+  // Search method for OpenSubsonic API with limit
+  async search(query: string, limit: number = 20): Promise<Song[]> {
+    const searchTerm = `%${query}%`;
+    return await this.db.query<Song>(
+      `SELECT s.*
+       FROM songs s
+       JOIN artists a ON s.artist_id = a.id
+       LEFT JOIN albums al ON s.album_id = al.id
+       WHERE s.title LIKE ?
+          OR a.name LIKE ?
+          OR al.title LIKE ?
+          OR s.genre LIKE ?
+       ORDER BY a.name, al.title, s.track_number, s.title
+       LIMIT ?`,
+      [searchTerm, searchTerm, searchTerm, searchTerm, limit]
     );
   }
 

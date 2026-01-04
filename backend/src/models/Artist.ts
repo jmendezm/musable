@@ -67,11 +67,21 @@ export class ArtistModel {
     );
   }
 
-  async search(query: string): Promise<Artist[]> {
+  async search(query: string, limit: number = 20): Promise<ArtistWithStats[]> {
     const searchTerm = `%${query}%`;
-    return await this.db.query<Artist>(
-      'SELECT * FROM artists WHERE name LIKE ? ORDER BY name',
-      [searchTerm]
+    return await this.db.query<ArtistWithStats>(
+      `SELECT
+        a.*,
+        COUNT(DISTINCT s.id) as song_count,
+        COUNT(DISTINCT al.id) as album_count
+       FROM artists a
+       LEFT JOIN songs s ON a.id = s.artist_id
+       LEFT JOIN albums al ON a.id = al.artist_id
+       WHERE a.name LIKE ?
+       GROUP BY a.id
+       ORDER BY a.name
+       LIMIT ?`,
+      [searchTerm, limit]
     );
   }
 

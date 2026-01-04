@@ -116,10 +116,10 @@ export class AlbumModel {
     );
   }
 
-  async search(query: string): Promise<AlbumWithDetails[]> {
+  async search(query: string, limit: number = 20): Promise<AlbumWithDetails[]> {
     const searchTerm = `%${query}%`;
     return await this.db.query<AlbumWithDetails>(
-      `SELECT 
+      `SELECT
         al.*,
         a.name as artist_name,
         COUNT(s.id) as song_count,
@@ -129,8 +129,9 @@ export class AlbumModel {
        LEFT JOIN songs s ON al.id = s.album_id
        WHERE al.title LIKE ? OR a.name LIKE ?
        GROUP BY al.id
-       ORDER BY a.name, al.title`,
-      [searchTerm, searchTerm]
+       ORDER BY a.name, al.title
+       LIMIT ?`,
+      [searchTerm, searchTerm, limit]
     );
   }
 
