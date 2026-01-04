@@ -2,12 +2,14 @@ import { Router } from 'express';
 import pluginModel from '../models/Plugin';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { pluginManager as globalPluginManager } from '../app';
+import logger from '../utils/logger';
 
 const router = Router();
 
 // Get all plugins
 router.get('/', authenticateToken, requireAdmin, async (req, res): Promise<void> => {
   try {
+    logger.info('[Plugin Settings] Fetching all plugins with settings');
     const plugins = await pluginModel.getAll();
 
     // Get settings and schema for each plugin
@@ -26,9 +28,48 @@ router.get('/', authenticateToken, requireAdmin, async (req, res): Promise<void>
             const loadedPlugin = globalPluginManager.plugins?.get(plugin.plugin_id);
             if (loadedPlugin && loadedPlugin.getSettingsSchema) {
               settingsSchema = loadedPlugin.getSettingsSchema();
+
+              // Initialize default settings if they don't exist and remove obsolete settings
+              if (settingsSchema) {
+                logger.info(`[Plugin Settings] Checking settings for plugin: ${plugin.plugin_id}`);
+                let initializedCount = 0;
+                let removedCount = 0;
+
+                // Get all setting keys from schema
+                const schemaKeys = new Set(Object.keys(settingsSchema));
+
+                // Initialize missing settings and update existing ones
+                for (const [key, schema] of Object.entries(settingsSchema)) {
+                  const typedSchema = schema as { default?: string; label?: string };
+                  // If setting doesn't exist and has a default value, create it
+                  if (!(key in settingsObject) && typedSchema.default !== undefined) {
+                    await pluginModel.setSetting(plugin.plugin_id, key, typedSchema.default);
+                    settingsObject[key] = typedSchema.default;
+                    initializedCount++;
+                    logger.info(`[Plugin Settings] Initialized default setting for ${plugin.plugin_id}: ${key} (${typedSchema.label || key}) = "${typedSchema.default}"`);
+                  }
+                }
+
+                // Remove settings that are no longer in the schema
+                for (const existingKey of Object.keys(settingsObject)) {
+                  if (!schemaKeys.has(existingKey)) {
+                    await pluginModel.deleteSetting(plugin.plugin_id, existingKey);
+                    delete settingsObject[existingKey];
+                    removedCount++;
+                    logger.info(`[Plugin Settings] Removed obsolete setting for ${plugin.plugin_id}: ${existingKey}`);
+                  }
+                }
+
+                if (initializedCount > 0 || removedCount > 0) {
+                  logger.info(`[Plugin Settings] Initialized ${initializedCount} new settings, removed ${removedCount} obsolete settings for plugin: ${plugin.plugin_id}`);
+                } else {
+                  logger.info(`[Plugin Settings] All settings up to date for plugin: ${plugin.plugin_id}`);
+                }
+              }
             }
           } catch (err) {
             // Plugin might not have getSettingsSchema method
+            logger.warn(`[Plugin Settings] Error getting settings schema for plugin ${plugin.plugin_id}:`, err);
           }
         }
 
@@ -40,12 +81,13 @@ router.get('/', authenticateToken, requireAdmin, async (req, res): Promise<void>
       })
     );
 
+    logger.info(`[Plugin Settings] Successfully fetched ${pluginsWithSettings.length} plugins`);
     res.json({
       success: true,
       data: { plugins: pluginsWithSettings }
     });
   } catch (error) {
-    console.error('Error fetching plugins:', error);
+    logger.error('Error fetching plugins:', error);
     res.status(500).json({
       success: false,
       error: { message: 'Failed to fetch plugins' }
