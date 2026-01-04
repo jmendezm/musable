@@ -183,8 +183,13 @@ const LibraryPage: React.FC = () => {
       }
 
       let currentPath = '';
-      parts.forEach((part) => {
-        currentPath = currentPath ? `${currentPath}/${part}` : part;
+      parts.forEach((part, partIndex) => {
+        // Preserve leading slash for absolute paths (Linux)
+        if (currentPath === '' && normalizedPath.startsWith('/')) {
+          currentPath = `/${part}`;
+        } else {
+          currentPath = currentPath ? `${currentPath}/${part}` : part;
+        }
 
         if (!folderMap.has(currentPath)) {
           folderMap.set(currentPath, {
@@ -214,7 +219,12 @@ const LibraryPage: React.FC = () => {
       // Add count to ALL parent folders
       let currentPath = '';
       parts.forEach((part) => {
-        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        // Preserve leading slash for absolute paths (Linux)
+        if (currentPath === '' && normalizedPath.startsWith('/')) {
+          currentPath = `/${part}`;
+        } else {
+          currentPath = currentPath ? `${currentPath}/${part}` : part;
+        }
         const node = folderMap.get(currentPath);
         if (node) {
           node.songCount++;
