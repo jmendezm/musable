@@ -55,6 +55,8 @@ class RoomWebSocketService {
       // Connection event handlers
       this.socket.on('connect', () => {
         console.log('🎵 Connected to room service');
+        // Identify this as a room service connection (exclude from "Currently Using")
+        this.socket?.emit('identify_room_service');
         useRoomStore.getState().setConnectionState(true);
         this.reconnectAttempts = 0;
         resolve();

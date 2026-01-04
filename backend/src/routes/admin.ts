@@ -30,7 +30,9 @@ import {
   updateUserProfilePicture,
   deleteUserProfilePicture,
   clearAllSongsAndRescan,
-  resetAllUserData
+  resetAllUserData,
+  getCurrentlyPlaying,
+  getActiveRooms
 } from '../controllers/adminController';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 
@@ -40,6 +42,8 @@ router.use(authenticateToken);
 router.use(requireAdmin);
 
 router.get('/dashboard', getDashboardStats);
+router.get('/currently-playing', getCurrentlyPlaying);
+router.get('/active-rooms', getActiveRooms);
 
 router.get('/users', getAllUsers);
 router.put('/users/:id', updateUser);

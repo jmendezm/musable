@@ -4,6 +4,7 @@ import { Howl } from 'howler';
 import { Song, PlayerState, RepeatMode } from '../types';
 import { apiService } from '../services/api';
 import { handleRoomAwareNext } from '../utils/roomPlayback';
+import { playbackWebSocketService } from '../services/playbackWebSocket';
 
 // Media Session API helper functions
 const updateMediaSession = (song: Song | null, isPlaying: boolean) => {
@@ -129,6 +130,7 @@ interface PlayerStore extends PlayerState, PlayerActions {
   eqFilters: BiquadFilterNode[];
   masterGainNode: GainNode | null;
   audioContext: AudioContext | null;
+  progressTrackerInterval: NodeJS.Timeout | null;
 
   // Reverb
   reverbEnabled: boolean;
@@ -349,6 +351,38 @@ const setupAudioEffects = (
   return { filters, masterGainNode, ctx, reverbNode, reverbDryGain, reverbWetGain, reverbFilter, limiterNode };
 };
 
+// Progress tracking helper
+const startProgressTracking = (howl: Howl, set: any, get: any) => {
+  // Clear any existing interval
+  const currentState = get();
+  if (currentState.progressTrackerInterval) {
+    clearInterval(currentState.progressTrackerInterval);
+  }
+
+  // Update progress every 5 seconds
+  const interval = setInterval(() => {
+    try {
+      const currentTime = howl.seek() as number;
+      set({ currentTime });
+
+      // Emit progress update to WebSocket
+      playbackWebSocketService.emitProgress(currentTime);
+    } catch (error) {
+      console.error('Error tracking progress:', error);
+    }
+  }, 5000);
+
+  set({ progressTrackerInterval: interval });
+};
+
+const stopProgressTracking = (set: any, get: any) => {
+  const currentState = get();
+  if (currentState.progressTrackerInterval) {
+    clearInterval(currentState.progressTrackerInterval);
+    set({ progressTrackerInterval: null });
+  }
+};
+
 export const usePlayerStore = create<PlayerStore>()(
   persist(
     (set, get) => ({
@@ -365,6 +399,7 @@ export const usePlayerStore = create<PlayerStore>()(
       duration: 0,
       isLoading: false,
       howl: null,
+      progressTrackerInterval: null,
       eqEnabled: JSON.parse(localStorage.getItem(EQ_ENABLED_STORAGE_KEY) || 'false'),
       eqGains: JSON.parse(localStorage.getItem(EQ_GAINS_STORAGE_KEY) || '[0,0,0,0,0,0,0,0,0,0]'),
       masterGain: parseFloat(localStorage.getItem(MASTER_GAIN_STORAGE_KEY) || '1.0'),
@@ -394,6 +429,17 @@ export const usePlayerStore = create<PlayerStore>()(
       // Playback controls
       play: (song) => {
         const state = get();
+
+        // If no song provided and we have a current song, resume playback
+        if (!song) {
+          if (state.currentSong && state.howl) {
+            // Resume current song
+            if (!state.isPlaying) {
+              state.howl.play();
+            }
+          }
+          return;
+        }
 
         // Track the previous song if we're changing songs
         if (state.currentSong && song.id !== state.currentSong.id && state.howl) {
@@ -443,10 +489,28 @@ export const usePlayerStore = create<PlayerStore>()(
             onplay: () => {
               set({ isPlaying: true });
               updateMediaSession(song, true);
+
+              // Emit WebSocket event for playback tracking
+              const currentState = get();
+              playbackWebSocketService.emitPlay(
+                song.id,
+                currentState.currentTime,
+                currentState.duration
+              );
+
+              // Start progress tracking
+              startProgressTracking(howl, set, get);
             },
             onpause: () => {
               set({ isPlaying: false });
               updateMediaSession(song, false);
+
+              // Emit WebSocket event for pause tracking
+              const currentState = get();
+              playbackWebSocketService.emitPause(currentState.currentTime);
+
+              // Stop progress tracking
+              stopProgressTracking(set, get);
             },
             onend: () => {
               const currentState = get();
@@ -465,6 +529,9 @@ export const usePlayerStore = create<PlayerStore>()(
               // Mark that this song ended naturally (not skipped)
               // This prevents trackSongBeforeChange from tracking again
               (howl as any)._endedNaturally = true;
+
+              // Stop progress tracking
+              stopProgressTracking(set, get);
 
               // Auto-advance to next song
               if (currentState.repeatMode === 'one') {
@@ -610,6 +677,9 @@ export const usePlayerStore = create<PlayerStore>()(
         if (howl) {
           howl.seek(time);
           set({ currentTime: time });
+
+          // Emit WebSocket event for seek tracking
+          playbackWebSocketService.emitSeek(time);
         }
       },
 

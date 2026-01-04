@@ -15,6 +15,7 @@ import SettingsModel from '../models/Settings';
 import LibraryPathScanReportModel from '../models/LibraryPathScanReport';
 import getScannerWorkerService from '../services/scannerWorkerService';
 import { Database } from '../config/database';
+import { RoomModel } from '../models/Room';
 
 // Get the singleton instance (lazy initialization)
 const scannerWorkerService = getScannerWorkerService();
@@ -1046,6 +1047,144 @@ export const resetAllUserData = asyncHandler(async (req: AuthRequest, res: Respo
     });
   } catch (error) {
     throw new AppError('Failed to reset user data', 500);
+  }
+});
+
+export const getCurrentlyPlaying = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const db = Database.getInstance();
+
+  // Get songs played in the last 5 minutes (increased from 2)
+  const recentPlays = await db.query(`
+    SELECT
+      lh.song_id,
+      lh.user_id,
+      lh.played_at,
+      lh.duration_played,
+      lh.completed,
+      s.title as song_title,
+      s.duration as song_duration,
+      al.artwork_path,
+      u.username,
+      a.name as artist_name,
+      al.title as album_title
+    FROM listen_history lh
+    JOIN songs s ON lh.song_id = s.id
+    JOIN users u ON lh.user_id = u.id
+    JOIN artists a ON s.artist_id = a.id
+    LEFT JOIN albums al ON s.album_id = al.id
+    WHERE lh.played_at >= datetime('now', '-5 minutes')
+    ORDER BY lh.played_at DESC
+  `);
+
+  console.log('Recent plays found:', recentPlays.length);
+
+  // Group by user and get the most recent play for each user
+  const userLatestPlays = new Map();
+  recentPlays.forEach((play: any) => {
+    if (!userLatestPlays.has(play.user_id)) {
+      userLatestPlays.set(play.user_id, play);
+    }
+  });
+
+  // Import userSockets from websocket
+  const { userSockets } = require('../websocket');
+
+  // Convert to array and add online status
+  const currentlyPlaying = Array.from(userLatestPlays.values()).map((play: any) => {
+    const isOnline = userSockets.has(play.user_id);
+    return {
+      ...play,
+      is_online: isOnline,
+      // Calculate progress (if we have duration_played and song_duration)
+      progress: play.duration_played && play.song_duration
+        ? (play.duration_played / play.song_duration) * 100
+        : 0
+    };
+  });
+
+  console.log('Currently playing:', currentlyPlaying.length);
+
+  res.json({
+    success: true,
+    data: { currentlyPlaying }
+  });
+});
+
+export const getActiveRooms = asyncHandler(async (req: AuthRequest, res: Response) => {
+  try {
+    // Get all rooms from database
+    const db = Database.getInstance();
+    const rooms = await db.query(`
+      SELECT
+        r.id,
+        r.code,
+        r.name,
+        r.current_song_id,
+        r.current_position,
+        r.is_playing,
+        r.created_at,
+        COUNT(rp.user_id) as participant_count
+      FROM listening_rooms r
+      LEFT JOIN room_participants rp ON r.id = rp.room_id
+      GROUP BY r.id
+      HAVING participant_count > 0
+      ORDER BY participant_count DESC
+    `);
+
+    // Get detailed participant info for each room
+    const roomsWithParticipants = await Promise.all(
+      rooms.map(async (room: any) => {
+        const participants = await RoomModel.getParticipants(room.id);
+
+        // Get song info if playing
+        let songInfo = null;
+        if (room.current_song_id) {
+          const song = await db.query(`
+            SELECT
+              s.id,
+              s.title,
+              s.duration,
+              a.name as artist_name,
+              al.artwork_path
+            FROM songs s
+            JOIN artists a ON s.artist_id = a.id
+            LEFT JOIN albums al ON s.album_id = al.id
+            WHERE s.id = ?
+          `, [room.current_song_id]);
+
+          if (song.length > 0) {
+            songInfo = song[0];
+          }
+        }
+
+        return {
+          id: room.id,
+          code: room.code,
+          name: room.name,
+          current_song_id: room.current_song_id,
+          current_position: room.current_position,
+          is_playing: room.is_playing === 1,
+          participant_count: room.participant_count,
+          participants: participants.map((p: any) => ({
+            user_id: p.user_id,
+            username: p.username,
+            role: p.role
+          })),
+          song_info: songInfo
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      data: { activeRooms: roomsWithParticipants }
+    });
+  } catch (error) {
+    console.error('Error fetching active rooms:', error);
+    res.status(500).json({
+      success: false,
+      error: { message: 'Failed to fetch active rooms' }
+    });
   }
 });
 

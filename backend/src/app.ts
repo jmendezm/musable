@@ -14,6 +14,7 @@ import { seedDatabase } from './utils/seedDb';
 import logger from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
 import { RoomService } from './services/roomService';
+import { PlaybackTracker } from './services/playbackTracker';
 import morganMiddleware from './utils/morgan';
 
 import authRoutes from './routes/auth';
@@ -313,6 +314,10 @@ async function startServer(): Promise<void> {
     // Initialize room service
     const roomService = new RoomService(io);
     roomService.startPeriodicSync();
+
+    // Initialize playback tracker
+    const playbackTracker = new PlaybackTracker(io);
+    logger.info('Playback tracker initialized');
 
     // Start server FIRST so it can accept connections
     server.listen(config.port, '0.0.0.0', () => {

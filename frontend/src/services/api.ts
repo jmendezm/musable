@@ -286,6 +286,13 @@ class ApiService {
     return this.request('GET', '/admin/dashboard');
   }
 
+  async getCurrentlyPlaying(): Promise<ApiResponse<{ currentlyPlaying: any[] }>> {
+    return this.request('GET', '/admin/currently-playing');
+  }
+   async getActiveRooms(): Promise<ApiResponse<{ activeRooms: any[] }>> {
+    return this.request('GET', '/admin/active-rooms');
+  }
+
   async getAllUsers(): Promise<ApiResponse<{ users: User[] }>> {
     return this.request('GET', '/admin/users');
   }

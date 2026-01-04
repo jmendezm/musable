@@ -8,6 +8,7 @@ import { searchExtensionManager } from './services/searchExtensions';
 import { imageSearchExtensionManager } from './services/imageSearchExtensions';
 import { frontendPluginLoader } from './services/frontendPluginLoader';
 import { apiService } from './services/api';
+import { playbackWebSocketService } from './services/playbackWebSocket';
 
 // Layout components
 import MainLayout from './components/layout/MainLayout';
@@ -70,6 +71,64 @@ const App: React.FC = () => {
     if (isAuthenticated) {
       loadFollowedAlbums();
       loadFollowedPlaylists();
+
+      // Connect playback WebSocket and setup state restoration listener
+      playbackWebSocketService.connect()
+        .then(() => {
+          console.log('🎵 Playback WebSocket connected, setting up state restoration listener');
+
+          const socket = playbackWebSocketService.getSocket();
+          if (socket) {
+            socket.on('playback_state_restored', async (data: {
+              songId: number;
+              currentTime: number;
+              duration: number;
+              isPlaying: boolean;
+              isPaused: boolean;
+              isIdle: boolean;
+            }) => {
+              console.log('🎵 Received playback_state_restored:', data);
+
+              // Only restore if user was playing something (not idle)
+              if (!data.isIdle && data.songId > 0) {
+                try {
+                  // Fetch song details
+                  const response = await apiService.getSong(data.songId);
+                  const song = response.data.song;
+
+                  if (song) {
+                    // Import playerStore dynamically to avoid circular dependency
+                    const { usePlayerStore } = await import('./stores/playerStore');
+                    const play = usePlayerStore.getState().play;
+                    const seek = usePlayerStore.getState().seek;
+
+                    // Play the song
+                    play(song);
+
+                    // Wait for Howl to be ready, then seek to position
+                    setTimeout(() => {
+                      seek(data.currentTime);
+
+                      // If it was paused, pause it
+                      if (data.isPaused && !data.isPlaying) {
+                        const pause = usePlayerStore.getState().pause;
+                        pause();
+                      }
+                    }, 500);
+                  }
+                } catch (error) {
+                  console.error('Error restoring playback state:', error);
+                }
+              }
+            });
+          }
+        })
+        .catch(err => {
+          console.error('Failed to connect to playback tracker:', err);
+        });
+    } else {
+      // Disconnect when user logs out
+      playbackWebSocketService.disconnect();
     }
   }, [isAuthenticated, loadFollowedAlbums, loadFollowedPlaylists]);
 

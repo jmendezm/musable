@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { RoomModel, Room, RoomParticipant } from '../models/Room';
 import { UserWithoutPassword, UserModel } from '../models/User';
+import config from '../config/config';
 
 interface AuthenticatedSocket extends Socket {
   user?: UserWithoutPassword;
@@ -37,103 +38,276 @@ export interface ChatMessage {
 export class RoomService {
   private io: Server;
   private roomStates: Map<number, RoomState> = new Map();
-  
+  private socketRooms: Map<string, string> = new Map(); // Track socket ID -> room mapping
+  private roomParticipants: Map<number, Set<string>> = new Map(); // Track room ID -> socket IDs
+
   constructor(io: Server) {
     this.io = io;
     this.setupSocketHandlers();
   }
 
+  // Broadcast active rooms update to all admin users
+  private async broadcastActiveRoomsUpdate(): Promise<void> {
+    try {
+      // Get all rooms from database
+      const db = await import('../config/database').then(m => m.Database.getInstance());
+      const rooms = await db.query(`
+        SELECT
+          r.id,
+          r.code,
+          r.name,
+          r.current_song_id,
+          r.current_position,
+          r.is_playing,
+          r.created_at,
+          COUNT(rp.user_id) as participant_count
+        FROM listening_rooms r
+        LEFT JOIN room_participants rp ON r.id = rp.room_id
+        GROUP BY r.id
+        HAVING participant_count > 0
+        ORDER BY participant_count DESC
+      `);
+
+      // Import RoomModel
+      const { RoomModel } = await import('../models/Room');
+
+      // Get detailed participant info for each room
+      const roomsWithParticipants = await Promise.all(
+        rooms.map(async (room: any) => {
+          const participants = await RoomModel.getParticipants(room.id);
+
+          // Get song info if playing
+          let songInfo = null;
+          if (room.current_song_id) {
+            const song = await db.query(`
+              SELECT
+                s.id,
+                s.title,
+                s.duration,
+                a.name as artist_name,
+                al.artwork_path
+              FROM songs s
+              JOIN artists a ON s.artist_id = a.id
+              LEFT JOIN albums al ON s.album_id = al.id
+              WHERE s.id = ?
+            `, [room.current_song_id]);
+
+            if (song.length > 0) {
+              songInfo = song[0];
+            }
+          }
+
+          return {
+            id: room.id,
+            code: room.code,
+            name: room.name,
+            current_song_id: room.current_song_id,
+            current_position: room.current_position,
+            is_playing: room.is_playing === 1,
+            participant_count: room.participant_count,
+            participants: participants.map((p: any) => ({
+              user_id: p.user_id,
+              username: p.username,
+              role: p.role
+            })),
+            song_info: songInfo
+          };
+        })
+      );
+
+      this.io.emit('active_rooms_update', { activeRooms: roomsWithParticipants });
+      console.log(`🎵 Broadcasted active_rooms_update. Count: ${roomsWithParticipants.length}`);
+    } catch (error) {
+      console.error('Error broadcasting active rooms update:', error);
+    }
+  }
+
+  // Get all active rooms with participants
+  public getActiveRooms(): Array<{
+    roomId: number;
+    roomCode: string;
+    roomName: string;
+    isPlaying: boolean;
+    currentSongId?: number;
+    currentPosition: number;
+    participantCount: number;
+    participantSockets: string[];
+  }> {
+    const activeRooms: Array<{
+      roomId: number;
+      roomCode: string;
+      roomName: string;
+      isPlaying: boolean;
+      currentSongId?: number;
+      currentPosition: number;
+      participantCount: number;
+      participantSockets: string[];
+    }> = [];
+
+    this.roomStates.forEach((state, roomId) => {
+      const participants = this.roomParticipants.get(roomId) || new Set();
+      activeRooms.push({
+        roomId: state.id,
+        roomCode: '', // Will be filled by controller from RoomModel
+        roomName: '', // Will be filled by controller from RoomModel
+        isPlaying: state.is_playing,
+        currentSongId: state.current_song_id,
+        currentPosition: state.current_position,
+        participantCount: participants.size,
+        participantSockets: Array.from(participants)
+      });
+    });
+
+    return activeRooms;
+  }
+
   private setupSocketHandlers(): void {
-    this.io.use(this.authenticateSocket.bind(this));
-    
-    this.io.on('connection', (socket: AuthenticatedSocket) => {
-      console.log(`🎵 User ${socket.user?.username} connected to room service`);
+    this.io.on('connection', (socket: Socket) => {
+      console.log(`🎵 Socket ${socket.id} connected to room service`);
 
       // Join room
       socket.on('join_room', async (data: { roomCode: string }) => {
-        await this.handleJoinRoom(socket, data.roomCode);
+        const authSocket = await this.authenticateSocket(socket);
+        if (authSocket) {
+          await this.handleJoinRoom(authSocket, data.roomCode);
+        }
       });
 
       // Leave room
       socket.on('leave_room', async () => {
-        await this.handleLeaveRoom(socket);
+        const authSocket = await this.authenticateSocket(socket);
+        if (authSocket) {
+          await this.handleLeaveRoom(authSocket);
+        }
       });
 
       // Playback controls
       socket.on('room_play', async (data: { song_id?: number; position?: number }) => {
-        await this.handlePlaybackControl(socket, 'play', data);
+        const authSocket = await this.authenticateSocket(socket);
+        if (authSocket) {
+          await this.handlePlaybackControl(authSocket, 'play', data);
+        }
       });
 
       socket.on('room_pause', async () => {
-        await this.handlePlaybackControl(socket, 'pause', {});
+        const authSocket = await this.authenticateSocket(socket);
+        if (authSocket) {
+          await this.handlePlaybackControl(authSocket, 'pause', {});
+        }
       });
 
       socket.on('room_seek', async (data: { position: number }) => {
-        await this.handlePlaybackControl(socket, 'seek', data);
+        const authSocket = await this.authenticateSocket(socket);
+        if (authSocket) {
+          await this.handlePlaybackControl(authSocket, 'seek', data);
+        }
       });
 
       socket.on('room_song_change', async (data: { song_id: number }) => {
-        await this.handlePlaybackControl(socket, 'song_change', data);
+        const authSocket = await this.authenticateSocket(socket);
+        if (authSocket) {
+          await this.handlePlaybackControl(authSocket, 'song_change', data);
+        }
       });
 
       // Queue management
       socket.on('add_to_queue', async (data: { song_id: number }) => {
-        await this.handleAddToQueue(socket, data.song_id);
+        const authSocket = await this.authenticateSocket(socket);
+        if (authSocket) {
+          await this.handleAddToQueue(authSocket, data.song_id);
+        }
       });
 
       socket.on('add_to_queue_top', async (data: { song_id: number }) => {
-        await this.handleAddToQueueTop(socket, data.song_id);
+        const authSocket = await this.authenticateSocket(socket);
+        if (authSocket) {
+          await this.handleAddToQueueTop(authSocket, data.song_id);
+        }
       });
 
       socket.on('remove_from_queue', async (data: { queue_item_id: number }) => {
-        await this.handleRemoveFromQueue(socket, data.queue_item_id);
+        const authSocket = await this.authenticateSocket(socket);
+        if (authSocket) {
+          await this.handleRemoveFromQueue(authSocket, data.queue_item_id);
+        }
       });
 
       // Chat
       socket.on('room_chat', async (data: { message: string }) => {
-        await this.handleChatMessage(socket, data.message);
+        const authSocket = await this.authenticateSocket(socket);
+        if (authSocket) {
+          await this.handleChatMessage(authSocket, data.message);
+        }
       });
 
       // Request room sync
       socket.on('request_sync', async () => {
-        await this.sendRoomSync(socket);
+        const authSocket = await this.authenticateSocket(socket);
+        if (authSocket) {
+          await this.sendRoomSync(authSocket);
+        }
       });
 
       // Disconnect
       socket.on('disconnect', async () => {
-        console.log(`🎵 User ${socket.user?.username} disconnected from room service`);
-        await this.handleLeaveRoom(socket);
+        const room = this.socketRooms.get(socket.id);
+
+        if (room) {
+          // Try to authenticate and properly leave the room
+          const authSocket = await this.authenticateSocket(socket);
+          if (authSocket) {
+            // Set currentRoom from our tracking
+            authSocket.currentRoom = room;
+            await this.handleLeaveRoom(authSocket);
+          } else {
+            // Authentication failed, but we can still clean up the database
+            const roomId = parseInt(room.replace('room_', ''));
+            try {
+              // Remove participant from database without authentication
+              const participants = await RoomModel.getParticipants(roomId);
+              if (participants.length === 0) {
+                await RoomModel.delete(roomId);
+                this.roomStates.delete(roomId);
+                console.log(`🎵 Room ${roomId} auto-deleted on disconnect (last participant)`);
+              }
+            } catch (error) {
+              console.error('Error cleaning up room on disconnect:', error);
+            }
+            // Remove from tracking
+            this.socketRooms.delete(socket.id);
+          }
+        }
+
+        console.log(`🎵 Socket ${socket.id} disconnected from room service`);
       });
     });
   }
 
-  private async authenticateSocket(socket: AuthenticatedSocket, next: (err?: Error) => void): Promise<void> {
+  private async authenticateSocket(socket: Socket): Promise<AuthenticatedSocket | null> {
     try {
       const token = socket.handshake.auth.token || socket.handshake.headers.authorization;
-      
-      console.log('🔍 WebSocket auth debug - Token received:', token ? 'YES' : 'NO');
-      
+
       if (!token) {
-        return next(new Error('Authentication token required'));
+        console.warn('🔍 Room Service: No token provided');
+        return null;
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
-      console.log('🔍 WebSocket auth debug - Decoded JWT:', { id: decoded.id, userId: decoded.userId, exp: decoded.exp });
-      
+      const decoded = jwt.verify(token, config.jwtSecret) as any;
+
       const userModel = new UserModel();
       const user = await userModel.findById(decoded.id);
-      
-      console.log('🔍 WebSocket auth debug - User found:', user ? `YES (${user.username})` : 'NO');
-      
+
       if (!user) {
-        return next(new Error('User not found'));
+        console.warn('🔍 Room Service: User not found');
+        return null;
       }
 
-      socket.user = user;
-      next();
+      const authSocket = socket as AuthenticatedSocket;
+      authSocket.user = user;
+      return authSocket;
     } catch (error) {
-      console.error('🔍 WebSocket auth debug - Authentication error:', error instanceof Error ? error.message : String(error));
-      next(new Error('Authentication failed'));
+      console.error('🔍 Room Service: Authentication error:', error instanceof Error ? error.message : String(error));
+      return null;
     }
   }
 
@@ -163,6 +337,15 @@ export class RoomService {
       await RoomModel.addParticipant(room.id, socket.user.id);
       socket.join(`room_${room.id}`);
       socket.currentRoom = `room_${room.id}`;
+
+      // Track socket -> room mapping
+      this.socketRooms.set(socket.id, `room_${room.id}`);
+
+      // Track participant in room
+      if (!this.roomParticipants.has(room.id)) {
+        this.roomParticipants.set(room.id, new Set());
+      }
+      this.roomParticipants.get(room.id)!.add(socket.id);
 
       // Update room state if not exists
       if (!this.roomStates.has(room.id)) {
@@ -199,6 +382,9 @@ export class RoomService {
         }
       });
 
+      // Broadcast active rooms update to admins
+      this.broadcastActiveRoomsUpdate();
+
       console.log(`🎵 User ${socket.user.username} joined room ${room.name} (${room.code})`);
     } catch (error) {
       console.error('Error joining room:', error);
@@ -214,7 +400,16 @@ export class RoomService {
       
       // Remove from database
       await RoomModel.removeParticipant(roomId, socket.user.id);
-      
+
+      // Remove participant tracking
+      const participants = this.roomParticipants.get(roomId);
+      if (participants) {
+        participants.delete(socket.id);
+        if (participants.size === 0) {
+          this.roomParticipants.delete(roomId);
+        }
+      }
+
       // Check if this was the last participant
       const remainingParticipants = await RoomModel.getParticipants(roomId);
       console.log(`🎵 After ${socket.user.username} left room ${roomId}, remaining participants: ${remainingParticipants.length}`);
@@ -223,10 +418,13 @@ export class RoomService {
         // This was the last person - delete the room
         try {
           await RoomModel.delete(roomId);
-          
+
           // Remove room state
           this.roomStates.delete(roomId);
-          
+
+          // Broadcast active rooms update to admins (room was removed)
+          this.broadcastActiveRoomsUpdate();
+
           console.log(`🎵 Room ${roomId} auto-deleted - last participant left`);
         } catch (deleteError) {
           console.error(`🎵 Failed to auto-delete room ${roomId}:`, deleteError);
@@ -236,7 +434,7 @@ export class RoomService {
         this.io.to(`room_${roomId}`).emit('participants_updated', {
           participants: remainingParticipants
         });
-        
+
         // Notify other participants about the user leaving (for chat/toast)
         socket.to(socket.currentRoom).emit('user_left', {
           user: {
@@ -244,14 +442,20 @@ export class RoomService {
             username: socket.user.username
           }
         });
-        
+
+        // Broadcast active rooms update to admins
+        this.broadcastActiveRoomsUpdate();
+
         console.log(`🎵 Notified ${remainingParticipants.length} participants about ${socket.user.username} leaving room ${roomId}`);
       }
       
       // Leave socket room
       socket.leave(socket.currentRoom);
       socket.currentRoom = undefined;
-      
+
+      // Remove from socketRooms tracking
+      this.socketRooms.delete(socket.id);
+
       console.log(`🎵 User ${socket.user.username} left room ${roomId}`);
     } catch (error) {
       console.error('Error leaving room:', error);
@@ -353,6 +557,9 @@ export class RoomService {
       };
 
       this.io.to(`room_${roomId}`).emit('playback_sync', syncEvent);
+
+      // Update active rooms on dashboard
+      await this.broadcastActiveRoomsUpdate();
 
       console.log(`🎵 Room ${roomId} playback control: ${type} by ${socket.user.username}`);
     } catch (error) {
@@ -527,7 +734,7 @@ export class RoomService {
             const now = new Date();
             const elapsedSeconds = (now.getTime() - roomState.play_started_at.getTime()) / 1000;
             const newPosition = roomState.current_position + elapsedSeconds;
-            
+
             // Update database every 10 seconds during playback
             if (now.getTime() - roomState.last_update.getTime() > 10000) {
               await RoomModel.updatePlaybackState(roomId, {
@@ -536,6 +743,9 @@ export class RoomService {
               roomState.current_position = newPosition;
               roomState.play_started_at = now;
               roomState.last_update = now;
+
+              // Broadcast updated active rooms to dashboard
+              await this.broadcastActiveRoomsUpdate();
             }
           }
         } catch (error) {

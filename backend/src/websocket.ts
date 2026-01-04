@@ -82,3 +82,8 @@ export function getUserConnectionCount(userId: number): number {
   const sockets = userSockets.get(userId);
   return sockets ? sockets.size : 0;
 }
+
+/**
+ * Export userSockets for use in other modules
+ */
+export { userSockets };

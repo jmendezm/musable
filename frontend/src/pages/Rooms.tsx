@@ -15,6 +15,7 @@ import { useAuthStore } from '../stores/authStore';
 const Rooms: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const { currentRoom } = useRoomStore();
   const roomStore = useRoomStore();
   
   const [joinCode, setJoinCode] = useState('');
@@ -290,45 +291,66 @@ const Rooms: React.FC = () => {
         <div className="bg-gray-800 rounded-lg p-6">
           <h2 className="text-xl font-semibold text-white mb-4">My Rooms</h2>
           <div className="grid gap-3">
-            {myRooms.map((room) => (
-              <div
-                key={room.id}
-                className="flex items-center justify-between p-4 bg-gray-700 rounded-lg hover:bg-gray-600 cursor-pointer transition-colors"
-                onClick={() => handleJoinExistingRoom(room)}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-600 rounded-lg">
-                    <UserGroupIcon className="w-5 h-5 text-white" />
+            {myRooms.map((room) => {
+              const isInRoom = currentRoom?.id === room.id;
+              return (
+                <div
+                  key={room.id}
+                  className={`flex items-center justify-between p-4 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors ${!isInRoom ? 'cursor-pointer' : ''}`}
+                  onClick={() => !isInRoom && handleJoinExistingRoom(room)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-600 rounded-lg">
+                      <UserGroupIcon className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium text-white">{room.name}</h3>
+                        {isInRoom && (
+                          <span className="text-xs bg-green-600 px-2 py-0.5 rounded text-white">
+                            Currently In
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-400">
+                        Code: {room.code} • {room.participant_count || 0} listeners
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-medium text-white">{room.name}</h3>
-                    <p className="text-sm text-gray-400">
-                      Code: {room.code} • {room.participant_count || 0} listeners
-                    </p>
+                  <div className="flex items-center gap-2">
+                    {room.is_public ? (
+                      <GlobeAltIcon className="w-4 h-4 text-green-400" title="Public" />
+                    ) : (
+                      <LockClosedIcon className="w-4 h-4 text-yellow-400" title="Private" />
+                    )}
+                    <span className="text-xs bg-gray-600 px-2 py-1 rounded text-gray-300">
+                      {room.host?.username || 'Unknown'}
+                    </span>
+                    {!isInRoom && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleJoinExistingRoom(room);
+                        }}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+                      >
+                        Rejoin
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteRoom(room.id);
+                      }}
+                      className="p-1 text-gray-400 hover:text-red-400 transition-colors ml-2"
+                      title="Delete room"
+                    >
+                      <TrashIcon className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {room.is_public ? (
-                    <GlobeAltIcon className="w-4 h-4 text-green-400" title="Public" />
-                  ) : (
-                    <LockClosedIcon className="w-4 h-4 text-yellow-400" title="Private" />
-                  )}
-                  <span className="text-xs bg-gray-600 px-2 py-1 rounded text-gray-300">
-                    {room.host?.username || 'Unknown'}
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteRoom(room.id);
-                    }}
-                    className="p-1 text-gray-400 hover:text-red-400 transition-colors ml-2"
-                    title="Delete room"
-                  >
-                    <TrashIcon className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -352,36 +374,57 @@ const Rooms: React.FC = () => {
           </div>
         ) : (
           <div className="grid gap-3">
-            {publicRooms.map((room) => (
-              <div
-                key={room.id}
-                className="flex items-center justify-between p-4 bg-gray-700 rounded-lg hover:bg-gray-600 cursor-pointer transition-colors"
-                onClick={() => handleJoinExistingRoom(room)}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-600 rounded-lg">
-                    <UserGroupIcon className="w-5 h-5 text-white" />
+            {publicRooms.map((room) => {
+              const isInRoom = currentRoom?.id === room.id;
+              return (
+                <div
+                  key={room.id}
+                  className={`flex items-center justify-between p-4 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors ${!isInRoom ? 'cursor-pointer' : ''}`}
+                  onClick={() => !isInRoom && handleJoinExistingRoom(room)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-600 rounded-lg">
+                      <UserGroupIcon className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium text-white">{room.name}</h3>
+                        {isInRoom && (
+                          <span className="text-xs bg-green-600 px-2 py-0.5 rounded text-white">
+                            Currently In
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-400">
+                        {room.description && `${room.description} • `}
+                        Code: {room.code} • {room.participant_count || 0}/{room.max_listeners} listeners
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-medium text-white">{room.name}</h3>
-                    <p className="text-sm text-gray-400">
-                      {room.description && `${room.description} • `}
-                      Code: {room.code} • {room.participant_count || 0}/{room.max_listeners} listeners
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs bg-gray-600 px-2 py-1 rounded text-gray-300">
-                    Host: {room.host?.username || 'Unknown'}
-                  </span>
-                  {room.current_song && (
-                    <span className="text-xs bg-green-600 px-2 py-1 rounded text-white">
-                      🎵 Playing
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-gray-600 px-2 py-1 rounded text-gray-300">
+                      Host: {room.host?.username || 'Unknown'}
                     </span>
-                  )}
+                    {room.current_song && (
+                      <span className="text-xs bg-green-600 px-2 py-1 rounded text-white">
+                        🎵 Playing
+                      </span>
+                    )}
+                    {!isInRoom && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleJoinExistingRoom(room);
+                        }}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+                      >
+                        Join
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
