@@ -6,6 +6,7 @@ export interface User {
   username: string;
   email: string;
   password_hash: string;
+  password?: string; // Plain text password for OpenSubsonic API compatibility
   profile_picture?: string;
   is_admin: boolean;
   created_at: string;
@@ -61,9 +62,9 @@ export class UserModel {
     const password_hash = await bcrypt.hash(userData.password, saltRounds);
 
     const result = await this.db.run(
-      `INSERT INTO users (username, email, password_hash, is_admin) 
-       VALUES (?, ?, ?, ?)`,
-      [userData.username, userData.email, password_hash, userData.is_admin || false]
+      `INSERT INTO users (username, email, password_hash, password, is_admin)
+       VALUES (?, ?, ?, ?, ?)`,
+      [userData.username, userData.email, password_hash, userData.password, userData.is_admin || false]
     );
 
     const user = await this.findById(result.lastID!);
@@ -90,8 +91,15 @@ export class UserModel {
     const password_hash = await bcrypt.hash(newPassword, saltRounds);
 
     await this.db.run(
-      'UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [password_hash, id]
+      'UPDATE users SET password_hash = ?, password = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [password_hash, newPassword, id]
+    );
+  }
+
+  async updatePlainTextPassword(id: number, plainPassword: string): Promise<void> {
+    await this.db.run(
+      'UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [plainPassword, id]
     );
   }
 

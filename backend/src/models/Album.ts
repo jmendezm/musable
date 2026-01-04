@@ -165,7 +165,7 @@ export class AlbumModel {
 
   async getRecentAlbums(limit: number = 20): Promise<AlbumWithDetails[]> {
     return await this.db.query<AlbumWithDetails>(
-      `SELECT 
+      `SELECT
         al.*,
         a.name as artist_name,
         COUNT(s.id) as song_count,
@@ -177,6 +177,96 @@ export class AlbumModel {
        ORDER BY al.created_at DESC
        LIMIT ?`,
       [limit]
+    );
+  }
+
+  // OpenSubsonic API support methods
+
+  async getAll(limit: number = 10, offset: number = 0): Promise<AlbumWithDetails[]> {
+    return await this.db.query<AlbumWithDetails>(
+      `SELECT
+        al.*,
+        a.name as artist_name,
+        COUNT(s.id) as song_count,
+        COALESCE(SUM(s.duration), 0) as total_duration
+       FROM albums al
+       JOIN artists a ON al.artist_id = a.id
+       LEFT JOIN songs s ON al.id = s.album_id
+       GROUP BY al.id
+       ORDER BY a.name, al.title
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+  }
+
+  async getRandom(limit: number = 10): Promise<AlbumWithDetails[]> {
+    return await this.db.query<AlbumWithDetails>(
+      `SELECT
+        al.*,
+        a.name as artist_name,
+        COUNT(s.id) as song_count,
+        COALESCE(SUM(s.duration), 0) as total_duration
+       FROM albums al
+       JOIN artists a ON al.artist_id = a.id
+       LEFT JOIN songs s ON al.id = s.album_id
+       GROUP BY al.id
+       ORDER BY RANDOM()
+       LIMIT ?`,
+      [limit]
+    );
+  }
+
+  async getNewest(limit: number = 10, offset: number = 0): Promise<AlbumWithDetails[]> {
+    return await this.db.query<AlbumWithDetails>(
+      `SELECT
+        al.*,
+        a.name as artist_name,
+        COUNT(s.id) as song_count,
+        COALESCE(SUM(s.duration), 0) as total_duration
+       FROM albums al
+       JOIN artists a ON al.artist_id = a.id
+       LEFT JOIN songs s ON al.id = s.album_id
+       GROUP BY al.id
+       ORDER BY al.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+  }
+
+  async getMostPlayed(limit: number = 10, offset: number = 0): Promise<AlbumWithDetails[]> {
+    return await this.db.query<AlbumWithDetails>(
+      `SELECT
+        al.*,
+        a.name as artist_name,
+        COUNT(s.id) as song_count,
+        COALESCE(SUM(s.duration), 0) as total_duration,
+        COALESCE(SUM(lh.played_at), 0) as play_count
+       FROM albums al
+       JOIN artists a ON al.artist_id = a.id
+       LEFT JOIN songs s ON al.id = s.album_id
+       LEFT JOIN listen_history lh ON s.id = lh.song_id
+       GROUP BY al.id
+       ORDER BY play_count DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+  }
+
+  async getStarred(userId: number): Promise<AlbumWithDetails[]> {
+    return await this.db.query<AlbumWithDetails>(
+      `SELECT DISTINCT
+        al.*,
+        a.name as artist_name,
+        COUNT(s.id) as song_count,
+        COALESCE(SUM(s.duration), 0) as total_duration
+       FROM albums al
+       JOIN artists a ON al.artist_id = a.id
+       LEFT JOIN songs s ON al.id = s.album_id
+       INNER JOIN favorites f ON s.id = f.song_id
+       WHERE f.user_id = ?
+       GROUP BY al.id
+       ORDER BY a.name, al.title`,
+      [userId]
     );
   }
 }

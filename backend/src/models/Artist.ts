@@ -92,6 +92,18 @@ export class ArtistModel {
     );
     return result!.count;
   }
+
+  async getStarred(userId: number): Promise<Artist[]> {
+    return await this.db.query<Artist>(
+      `SELECT DISTINCT a.*
+       FROM artists a
+       INNER JOIN songs s ON a.id = s.artist_id
+       INNER JOIN favorites f ON s.id = f.song_id
+       WHERE f.user_id = ?
+       ORDER BY a.name`,
+      [userId]
+    );
+  }
 }
 
 export default new ArtistModel();

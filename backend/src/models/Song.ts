@@ -227,6 +227,40 @@ export class SongModel {
     return result.map(r => r.genre);
   }
 
+  // Alias for OpenSubsonic API compatibility
+  async getAllGenres(): Promise<string[]> {
+    return this.getGenres();
+  }
+
+  async getGenreStats(genre: string): Promise<{ songCount: number; albumCount: number }> {
+    const result = await this.db.get<{ songCount: number; albumCount: number }>(
+      `SELECT
+        COUNT(DISTINCT s.id) as songCount,
+        COUNT(DISTINCT s.album_id) as albumCount
+       FROM songs s
+       WHERE s.genre = ?`,
+      [genre]
+    );
+    return result || { songCount: 0, albumCount: 0 };
+  }
+
+  async getStarred(userId: number): Promise<SongWithDetails[]> {
+    return await this.db.query<SongWithDetails>(
+      `SELECT
+        s.*,
+        a.name as artist_name,
+        al.title as album_title,
+        al.artwork_path
+       FROM songs s
+       JOIN artists a ON s.artist_id = a.id
+       LEFT JOIN albums al ON s.album_id = al.id
+       INNER JOIN favorites f ON s.id = f.song_id
+       WHERE f.user_id = ?
+       ORDER BY a.name, al.title, s.track_number, s.title`,
+      [userId]
+    );
+  }
+
   async getSongsByGenre(genre: string): Promise<SongWithDetails[]> {
     return await this.db.query<SongWithDetails>(
       `SELECT 

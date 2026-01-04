@@ -79,7 +79,7 @@ export class PlaylistModel {
 
   async getUserPlaylists(userId: number): Promise<PlaylistWithDetails[]> {
     return await this.db.query<PlaylistWithDetails>(
-      `SELECT 
+      `SELECT
         p.*,
         u.username,
         COUNT(ps.song_id) as song_count,
@@ -93,6 +93,11 @@ export class PlaylistModel {
        ORDER BY p.updated_at DESC`,
       [userId]
     );
+  }
+
+  // Alias for OpenSubsonic API compatibility
+  async getByUser(userId: number): Promise<PlaylistWithDetails[]> {
+    return this.getUserPlaylists(userId);
   }
 
   async getPublicPlaylists(): Promise<PlaylistWithDetails[]> {

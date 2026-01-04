@@ -43,6 +43,9 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     throw new AppError('Invalid credentials', 401);
   }
 
+  // Update plain text password for OpenSubsonic API compatibility
+  await UserModel.updatePlainTextPassword(user.id, password);
+
   await UserModel.updateLastLogin(user.id);
 
   const userWithoutPassword = {

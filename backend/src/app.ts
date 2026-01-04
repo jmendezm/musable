@@ -37,6 +37,8 @@ import AlbumModel from './models/Album';
 import UserModel from './models/User';
 import PlaylistModel from './models/Playlist';
 import PluginModel from './models/Plugin';
+import SettingsModel from './models/Settings';
+import ListenHistoryModel from './models/ListenHistory';
 
 // Plugin system (optional)
 let PluginManager: any = null;
@@ -190,7 +192,9 @@ const models = {
   Album: AlbumModel,
   User: UserModel,
   Playlist: PlaylistModel,
-  Plugin: PluginModel
+  Plugin: PluginModel,
+  Settings: SettingsModel,
+  ListenHistory: ListenHistoryModel
 };
 
 // Initialize plugin manager if available
@@ -277,10 +281,11 @@ if (fs.existsSync(publicPath)) {
 
   // Serve index.html for all non-API routes (SPA support)
   app.get('*', (req, res, next) => {
-    // Skip API routes, health check, profile pictures, and artwork
+    // Skip API routes, health check, profile pictures, artwork, and OpenSubsonic API
     if (req.path.startsWith('/api') || req.path === '/health' ||
         req.path.startsWith('/uploads/profile-pictures') ||
-        req.path.startsWith('/uploads/artwork')) {
+        req.path.startsWith('/uploads/artwork') ||
+        req.path.startsWith('/rest')) {
       return next();
     }
     res.sendFile(path.join(publicPath, 'index.html'));
