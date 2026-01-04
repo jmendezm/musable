@@ -291,9 +291,10 @@ export const updateSong = asyncHandler(async (req: AuthRequest, res: Response) =
     throw new AppError('Song not found', 404);
   }
 
-  // Handle artist_name to artist_id conversion
+  // Handle artist_name to artist_id conversion via junction table
   let updateData = { ...req.body };
   let artworkUrl: string | null = undefined;
+  let artistId: number | null = null;
 
   if (updateData.artist_name) {
     const artistName = updateData.artist_name.trim();
@@ -303,24 +304,22 @@ export const updateSong = asyncHandler(async (req: AuthRequest, res: Response) =
       artist = await ArtistModel.create(artistName);
     }
 
-    updateData.artist_id = artist.id;
+    artistId = artist.id;
     delete updateData.artist_name;
   }
 
-  // Handle album_title to album_id conversion
+  // Handle album_title to album_id conversion (consolidates by title only)
   if (updateData.album_title) {
     const albumTitle = updateData.album_title.trim();
-    const artistId = updateData.artist_id || song.artist_id;
 
-    let album = await AlbumModel.findByTitleAndArtist(albumTitle, artistId);
+    // Find album by title only (consolidates albums with same name)
+    let album = await AlbumModel.findByTitle(albumTitle);
 
     if (!album) {
-      const albumData: any = {
-        title: albumTitle,
-        artist_id: artistId
-      };
-
-      album = await AlbumModel.create(albumData);
+      // Create album
+      album = await AlbumModel.create({
+        title: albumTitle
+      });
     }
 
     updateData.album_id = album.id;
@@ -340,6 +339,11 @@ export const updateSong = asyncHandler(async (req: AuthRequest, res: Response) =
 
   // Update the song
   const updatedSong = await SongModel.update(songId, updateData);
+
+  // Update artist associations via junction table
+  if (artistId) {
+    await SongModel.setArtists(songId, [artistId]);
+  }
 
   // If artwork was provided, download and save it, then update the album
   if (artworkUrl !== undefined && updatedSong.album_id) {
@@ -1070,9 +1074,11 @@ export const getCurrentlyPlaying = asyncHandler(async (req: AuthRequest, res: Re
     FROM listen_history lh
     JOIN songs s ON lh.song_id = s.id
     JOIN users u ON lh.user_id = u.id
-    JOIN artists a ON s.artist_id = a.id
+    JOIN song_artists sa ON s.id = sa.song_id
+    JOIN artists a ON sa.artist_id = a.id
     LEFT JOIN albums al ON s.album_id = al.id
     WHERE lh.played_at >= datetime('now', '-5 minutes')
+    GROUP BY lh.id, s.id, u.id, al.id
     ORDER BY lh.played_at DESC
   `);
 
@@ -1144,12 +1150,14 @@ export const getActiveRooms = asyncHandler(async (req: AuthRequest, res: Respons
               s.id,
               s.title,
               s.duration,
-              a.name as artist_name,
+              GROUP_CONCAT(a.name, ', ') as artist_name,
               al.artwork_path
             FROM songs s
-            JOIN artists a ON s.artist_id = a.id
+            JOIN song_artists sa ON s.id = sa.song_id
+            JOIN artists a ON sa.artist_id = a.id
             LEFT JOIN albums al ON s.album_id = al.id
             WHERE s.id = ?
+            GROUP BY s.id, al.id
           `, [room.current_song_id]);
 
           if (song.length > 0) {

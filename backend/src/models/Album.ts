@@ -3,7 +3,6 @@ import Database from '../config/database';
 export interface Album {
   id: number;
   title: string;
-  artist_id: number;
   release_year?: number;
   artwork_path?: string;
   created_at: string;
@@ -11,14 +10,14 @@ export interface Album {
 }
 
 export interface AlbumWithDetails extends Album {
-  artist_name: string;
+  artists: { id: number; name: string }[];
+  artist_name?: string;
   song_count: number;
   total_duration: number;
 }
 
 export interface CreateAlbumData {
   title: string;
-  artist_id: number;
   release_year?: number;
   artwork_path?: string;
 }
@@ -33,17 +32,17 @@ export class AlbumModel {
     );
   }
 
-  async findByTitleAndArtist(title: string, artistId: number): Promise<Album | null> {
+  async findByTitle(title: string): Promise<Album | null> {
     return await this.db.get<Album>(
-      'SELECT * FROM albums WHERE title = ? AND artist_id = ?',
-      [title, artistId]
+      'SELECT * FROM albums WHERE title = ?',
+      [title]
     );
   }
 
   async create(albumData: CreateAlbumData): Promise<Album> {
     const result = await this.db.run(
-      'INSERT INTO albums (title, artist_id, release_year, artwork_path) VALUES (?, ?, ?, ?)',
-      [albumData.title, albumData.artist_id, albumData.release_year || null, albumData.artwork_path || null]
+      'INSERT INTO albums (title, release_year, artwork_path) VALUES (?, ?, ?)',
+      [albumData.title, albumData.release_year || null, albumData.artwork_path || null]
     );
 
     const album = await this.findById(result.lastID!);
@@ -54,85 +53,122 @@ export class AlbumModel {
     return album;
   }
 
-  async findOrCreate(title: string, artistId: number, releaseYear?: number): Promise<Album> {
-    let album = await this.findByTitleAndArtist(title, artistId);
-    
+  async findOrCreate(title: string, releaseYear?: number): Promise<Album> {
+    // Try to insert first (atomic operation with UNIQUE constraint)
+    await this.db.run(
+      'INSERT OR IGNORE INTO albums (title, release_year) VALUES (?, ?)',
+      [title, releaseYear || null]
+    );
+
+    // Now fetch the album (it either existed or was just created)
+    const album = await this.findByTitle(title);
     if (!album) {
-      album = await this.create({
-        title,
-        artist_id: artistId,
-        release_year: releaseYear
-      });
+      throw new Error('Failed to find or create album');
     }
 
     return album;
   }
 
+  // Get artists for an album (derived from songs)
+  async getArtists(albumId: number): Promise<{ id: number; name: string }[]> {
+    return await this.db.query<{ id: number; name: string }>(
+      `SELECT DISTINCT a.id, a.name
+       FROM artists a
+       JOIN song_artists sa ON a.id = sa.artist_id
+       JOIN songs s ON sa.song_id = s.id
+       WHERE s.album_id = ?
+       ORDER BY a.name`,
+      [albumId]
+    );
+  }
+
   async findWithDetails(id: number): Promise<AlbumWithDetails | null> {
-    return await this.db.get<AlbumWithDetails>(
-      `SELECT 
-        al.*,
-        a.name as artist_name,
+    const album = await this.findById(id);
+    if (!album) return null;
+
+    const artists = await this.getArtists(id);
+    const songStats = await this.db.get<{ song_count: number; total_duration: number }>(
+      `SELECT
         COUNT(s.id) as song_count,
         COALESCE(SUM(s.duration), 0) as total_duration
-       FROM albums al
-       JOIN artists a ON al.artist_id = a.id
-       LEFT JOIN songs s ON al.id = s.album_id
-       WHERE al.id = ?
-       GROUP BY al.id`,
+       FROM songs s
+       WHERE s.album_id = ?`,
       [id]
     );
+
+    // Create artist_name string from artists array
+    const artist_name = artists.map(a => a.name).join(', ');
+
+    return {
+      ...album,
+      artists,
+      artist_name,
+      song_count: songStats?.song_count || 0,
+      total_duration: songStats?.total_duration || 0
+    };
   }
 
   async getAllWithDetails(): Promise<AlbumWithDetails[]> {
-    return await this.db.query<AlbumWithDetails>(
-      `SELECT 
-        al.*,
-        a.name as artist_name,
-        COUNT(s.id) as song_count,
-        COALESCE(SUM(s.duration), 0) as total_duration
-       FROM albums al
-       JOIN artists a ON al.artist_id = a.id
-       LEFT JOIN songs s ON al.id = s.album_id
-       GROUP BY al.id
-       ORDER BY a.name, al.title`
+    const albums = await this.db.query<Album>(
+      'SELECT * FROM albums ORDER BY title'
     );
+
+    const result: AlbumWithDetails[] = [];
+    for (const album of albums) {
+      const details = await this.findWithDetails(album.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   async getAlbumsByArtist(artistId: number): Promise<AlbumWithDetails[]> {
-    return await this.db.query<AlbumWithDetails>(
-      `SELECT 
-        al.*,
-        a.name as artist_name,
-        COUNT(s.id) as song_count,
-        COALESCE(SUM(s.duration), 0) as total_duration
+    const albums = await this.db.query<Album>(
+      `SELECT DISTINCT al.*
        FROM albums al
-       JOIN artists a ON al.artist_id = a.id
-       LEFT JOIN songs s ON al.id = s.album_id
-       WHERE al.artist_id = ?
-       GROUP BY al.id
+       JOIN songs s ON al.id = s.album_id
+       JOIN song_artists sa ON s.id = sa.song_id
+       WHERE sa.artist_id = ?
        ORDER BY al.release_year DESC, al.title`,
       [artistId]
     );
+
+    const result: AlbumWithDetails[] = [];
+    for (const album of albums) {
+      const details = await this.findWithDetails(album.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   async search(query: string, limit: number = 20): Promise<AlbumWithDetails[]> {
     const searchTerm = `%${query}%`;
-    return await this.db.query<AlbumWithDetails>(
-      `SELECT
-        al.*,
-        a.name as artist_name,
-        COUNT(s.id) as song_count,
-        COALESCE(SUM(s.duration), 0) as total_duration
+    const albums = await this.db.query<Album>(
+      `SELECT DISTINCT al.*
        FROM albums al
-       JOIN artists a ON al.artist_id = a.id
        LEFT JOIN songs s ON al.id = s.album_id
+       LEFT JOIN song_artists sa ON s.id = sa.song_id
+       LEFT JOIN artists a ON sa.artist_id = a.id
        WHERE al.title LIKE ? OR a.name LIKE ?
-       GROUP BY al.id
-       ORDER BY a.name, al.title
+       ORDER BY al.title
        LIMIT ?`,
       [searchTerm, searchTerm, limit]
     );
+
+    const result: AlbumWithDetails[] = [];
+    for (const album of albums) {
+      const details = await this.findWithDetails(album.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   async updateArtwork(id: number, artworkPath: string): Promise<void> {
@@ -165,85 +201,82 @@ export class AlbumModel {
   }
 
   async getRecentAlbums(limit: number = 20): Promise<AlbumWithDetails[]> {
-    return await this.db.query<AlbumWithDetails>(
-      `SELECT
-        al.*,
-        a.name as artist_name,
-        COUNT(s.id) as song_count,
-        COALESCE(SUM(s.duration), 0) as total_duration
-       FROM albums al
-       JOIN artists a ON al.artist_id = a.id
-       LEFT JOIN songs s ON al.id = s.album_id
-       GROUP BY al.id
-       ORDER BY al.created_at DESC
-       LIMIT ?`,
+    const albums = await this.db.query<Album>(
+      'SELECT * FROM albums ORDER BY created_at DESC LIMIT ?',
       [limit]
     );
+
+    const result: AlbumWithDetails[] = [];
+    for (const album of albums) {
+      const details = await this.findWithDetails(album.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   // OpenSubsonic API support methods
 
   async getAll(limit: number = 10, offset: number = 0): Promise<AlbumWithDetails[]> {
-    return await this.db.query<AlbumWithDetails>(
-      `SELECT
-        al.*,
-        a.name as artist_name,
-        COUNT(s.id) as song_count,
-        COALESCE(SUM(s.duration), 0) as total_duration
-       FROM albums al
-       JOIN artists a ON al.artist_id = a.id
-       LEFT JOIN songs s ON al.id = s.album_id
-       GROUP BY al.id
-       ORDER BY a.name, al.title
-       LIMIT ? OFFSET ?`,
+    const albums = await this.db.query<Album>(
+      'SELECT * FROM albums ORDER BY title LIMIT ? OFFSET ?',
       [limit, offset]
     );
+
+    const result: AlbumWithDetails[] = [];
+    for (const album of albums) {
+      const details = await this.findWithDetails(album.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   async getRandom(limit: number = 10): Promise<AlbumWithDetails[]> {
-    return await this.db.query<AlbumWithDetails>(
-      `SELECT
-        al.*,
-        a.name as artist_name,
-        COUNT(s.id) as song_count,
-        COALESCE(SUM(s.duration), 0) as total_duration
-       FROM albums al
-       JOIN artists a ON al.artist_id = a.id
-       LEFT JOIN songs s ON al.id = s.album_id
-       GROUP BY al.id
-       ORDER BY RANDOM()
-       LIMIT ?`,
+    const albums = await this.db.query<Album>(
+      'SELECT * FROM albums ORDER BY RANDOM() LIMIT ?',
       [limit]
     );
+
+    const result: AlbumWithDetails[] = [];
+    for (const album of albums) {
+      const details = await this.findWithDetails(album.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   async getNewest(limit: number = 10, offset: number = 0): Promise<AlbumWithDetails[]> {
-    return await this.db.query<AlbumWithDetails>(
-      `SELECT
-        al.*,
-        a.name as artist_name,
-        COUNT(s.id) as song_count,
-        COALESCE(SUM(s.duration), 0) as total_duration
-       FROM albums al
-       JOIN artists a ON al.artist_id = a.id
-       LEFT JOIN songs s ON al.id = s.album_id
-       GROUP BY al.id
-       ORDER BY al.created_at DESC
-       LIMIT ? OFFSET ?`,
+    const albums = await this.db.query<Album>(
+      'SELECT * FROM albums ORDER BY created_at DESC LIMIT ? OFFSET ?',
       [limit, offset]
     );
+
+    const result: AlbumWithDetails[] = [];
+    for (const album of albums) {
+      const details = await this.findWithDetails(album.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   async getMostPlayed(limit: number = 10, offset: number = 0): Promise<AlbumWithDetails[]> {
-    return await this.db.query<AlbumWithDetails>(
+    // Get albums with play counts
+    const albums = await this.db.query<Album & { play_count: number }>(
       `SELECT
         al.*,
-        a.name as artist_name,
-        COUNT(s.id) as song_count,
-        COALESCE(SUM(s.duration), 0) as total_duration,
         COALESCE(SUM(lh.played_at), 0) as play_count
        FROM albums al
-       JOIN artists a ON al.artist_id = a.id
        LEFT JOIN songs s ON al.id = s.album_id
        LEFT JOIN listen_history lh ON s.id = lh.song_id
        GROUP BY al.id
@@ -251,24 +284,43 @@ export class AlbumModel {
        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
+
+    // Fetch full details for each album
+    const result: AlbumWithDetails[] = [];
+    for (const album of albums) {
+      const details = await this.findWithDetails(album.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   async getStarred(userId: number): Promise<AlbumWithDetails[]> {
-    return await this.db.query<AlbumWithDetails>(
-      `SELECT DISTINCT
-        al.*,
-        a.name as artist_name,
-        COUNT(s.id) as song_count,
-        COALESCE(SUM(s.duration), 0) as total_duration
+    // Get albums that have starred songs
+    const albums = await this.db.query<Album>(
+      `SELECT DISTINCT al.*
        FROM albums al
-       JOIN artists a ON al.artist_id = a.id
        LEFT JOIN songs s ON al.id = s.album_id
+       LEFT JOIN song_artists sa ON s.id = sa.song_id
+       LEFT JOIN artists a ON sa.artist_id = a.id
        INNER JOIN favorites f ON s.id = f.song_id
        WHERE f.user_id = ?
-       GROUP BY al.id
-       ORDER BY a.name, al.title`,
+       ORDER BY al.title`,
       [userId]
     );
+
+    // Fetch full details for each album
+    const result: AlbumWithDetails[] = [];
+    for (const album of albums) {
+      const details = await this.findWithDetails(album.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 }
 

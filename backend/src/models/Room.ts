@@ -129,12 +129,14 @@ export class RoomModel {
     
     const stmt = `
       SELECT lr.*, u.username as host_username, u.email as host_email,
-             s.title as current_song_title, s.artist_id, a.name as current_song_artist
+             s.title as current_song_title, GROUP_CONCAT(a.name, ', ') as current_song_artist
       FROM listening_rooms lr
       LEFT JOIN users u ON lr.host_id = u.id
       LEFT JOIN songs s ON lr.current_song_id = s.id
-      LEFT JOIN artists a ON s.artist_id = a.id
+      LEFT JOIN song_artists sa ON s.id = sa.song_id
+      LEFT JOIN artists a ON sa.artist_id = a.id
       WHERE lr.id = ?
+      GROUP BY lr.id, u.username, u.email, s.title
     `;
     
     const row = await db.get(stmt, [id]);
@@ -228,13 +230,15 @@ export class RoomModel {
       SELECT lr.*, u.username as host_username,
              (SELECT COUNT(*) FROM room_participants rp WHERE rp.room_id = lr.id AND rp.is_active = 1) as participant_count,
              s.id as song_id, s.title as song_title, s.duration, s.file_path,
-             a.name as artist_name, al.title as album_title, al.artwork_path
+             GROUP_CONCAT(a.name, ', ') as artist_name, al.title as album_title, al.artwork_path
       FROM listening_rooms lr
       LEFT JOIN users u ON lr.host_id = u.id
       LEFT JOIN songs s ON lr.current_song_id = s.id
-      LEFT JOIN artists a ON s.artist_id = a.id
+      LEFT JOIN song_artists sa ON s.id = sa.song_id
+      LEFT JOIN artists a ON sa.artist_id = a.id
       LEFT JOIN albums al ON s.album_id = al.id
       WHERE lr.is_public = 1
+      GROUP BY lr.id, u.username, s.id, s.title, s.duration, s.file_path, al.title, al.artwork_path
       ORDER BY participant_count DESC, lr.created_at DESC
       LIMIT ? OFFSET ?
     `;
@@ -510,12 +514,14 @@ export class RoomModel {
     const db = Database;
     
     const stmt = `
-      SELECT rq.*, s.title, s.artist_id, s.duration, a.name as artist_name, u.username as added_by_username
+      SELECT rq.*, s.title, s.duration, GROUP_CONCAT(a.name, ', ') as artist_name, u.username as added_by_username
       FROM room_queue rq
       JOIN songs s ON rq.song_id = s.id
-      JOIN artists a ON s.artist_id = a.id
+      JOIN song_artists sa ON s.id = sa.song_id
+      JOIN artists a ON sa.artist_id = a.id
       JOIN users u ON rq.added_by = u.id
       WHERE rq.room_id = ?
+      GROUP BY rq.id, s.title, s.duration, u.username
       ORDER BY rq.position
     `;
     
@@ -531,7 +537,6 @@ export class RoomModel {
       song: {
         id: row.song_id,
         title: row.title,
-        artist_id: row.artist_id,
         artist_name: row.artist_name,
         duration: row.duration,
         file_path: '',
@@ -605,21 +610,22 @@ export class RoomModel {
     const db = Database;
     
     const stmt = `
-      SELECT 
+      SELECT
         rq.*,
         s.title,
-        s.artist_id,
         s.duration,
-        a.name as artist_name,
+        GROUP_CONCAT(a.name, ', ') as artist_name,
         al.title as album_title,
         al.artwork_path,
         u.username as added_by_username
       FROM room_queue rq
       LEFT JOIN songs s ON rq.song_id = s.id
-      LEFT JOIN artists a ON s.artist_id = a.id
+      LEFT JOIN song_artists sa ON s.id = sa.song_id
+      LEFT JOIN artists a ON sa.artist_id = a.id
       LEFT JOIN albums al ON s.album_id = al.id
       LEFT JOIN users u ON rq.added_by = u.id
       WHERE rq.id = ? AND rq.room_id = ?
+      GROUP BY rq.id, s.title, s.duration, al.title, al.artwork_path, u.username
       ORDER BY rq.position ASC
     `;
     
@@ -637,7 +643,6 @@ export class RoomModel {
       song: {
         id: row.song_id,
         title: row.title,
-        artist_id: row.artist_id,
         artist_name: row.artist_name,
         album_title: row.album_title,
         duration: row.duration,

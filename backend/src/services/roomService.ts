@@ -84,12 +84,14 @@ export class RoomService {
                 s.id,
                 s.title,
                 s.duration,
-                a.name as artist_name,
+                GROUP_CONCAT(a.name, ', ') as artist_name,
                 al.artwork_path
               FROM songs s
-              JOIN artists a ON s.artist_id = a.id
+              JOIN song_artists sa ON s.id = sa.song_id
+              JOIN artists a ON sa.artist_id = a.id
               LEFT JOIN albums al ON s.album_id = al.id
               WHERE s.id = ?
+              GROUP BY s.id, al.artwork_path
             `, [room.current_song_id]);
 
             if (song.length > 0) {

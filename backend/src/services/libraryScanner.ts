@@ -114,6 +114,11 @@ export class LibraryScanner {
       throw error;
     }
 
+    // Clean up empty albums and artists BEFORE scanning
+    logger.info('🧹 Pre-scan cleanup: removing empty albums and artists...');
+    const cleanupResult = await this.cleanupAllEmptyEntries();
+    logger.info(`✅ Pre-scan cleanup complete: ${cleanupResult.albumsDeleted} albums deleted, ${cleanupResult.artistsDeleted} artists deleted`);
+
     this.isScanning = true;
     this.shouldStop = false;
 
@@ -421,9 +426,9 @@ export class LibraryScanner {
 
       let album = null;
       if (albumTitle) {
+        // Find or create album by title only (consolidates albums with same name)
         album = await AlbumModel.findOrCreate(
           albumTitle,
-          artist.id,
           metadata.common.year
         );
 
@@ -439,7 +444,6 @@ export class LibraryScanner {
 
       const songData: CreateSongData = {
         title,
-        artist_id: artist.id,
         album_id: album?.id,
         file_path: normalizedFilePath,
         file_size: fileStats.size,
@@ -455,8 +459,12 @@ export class LibraryScanner {
       const existingSong = await SongModel.findByPath(songData.file_path);
       if (existingSong) {
         await SongModel.updateSong(existingSong.id, songData);
+        // Update artists for existing song
+        await SongModel.setArtists(existingSong.id, [artist.id]);
       } else {
-        await SongModel.create(songData);
+        const newSong = await SongModel.create(songData);
+        // Add artist to song (supports multiple artists per song)
+        await SongModel.addArtist(newSong.id, artist.id);
       }
 
     } catch (error: any) {
@@ -530,11 +538,88 @@ export class LibraryScanner {
     try {
       const song = await SongModel.findByPath(filePath);
       if (song) {
+        const albumId = song.album_id;
+        const artists = await SongModel.getArtists(song.id);
+
+        // Delete the song (this will also clean up song_artists junction table via CASCADE)
         await SongModel.deleteSong(song.id);
         logger.info(`Removed deleted file from library: ${filePath}`);
+
+        // Clean up empty albums
+        if (albumId) {
+          await this.cleanupEmptyAlbum(albumId);
+        }
+
+        // Clean up artists that have no more songs or albums
+        for (const artist of artists) {
+          await this.cleanupEmptyArtist(artist.id);
+        }
       }
     } catch (error: any) {
       logger.error(`Failed to remove deleted file ${filePath}:`, error);
+    }
+  }
+
+  private async cleanupEmptyAlbum(albumId: number): Promise<void> {
+    try {
+      // Check if album has any songs left
+      const songCount = await this.db.get<{ count: number }>(
+        'SELECT COUNT(*) as count FROM songs WHERE album_id = ?',
+        [albumId]
+      );
+
+      if (!songCount || songCount.count === 0) {
+        // Album is empty, delete it
+        await this.db.run('DELETE FROM albums WHERE id = ?', [albumId]);
+        logger.info(`Deleted empty album: ${albumId}`);
+      }
+    } catch (error: any) {
+      logger.error(`Failed to cleanup empty album ${albumId}:`, error);
+    }
+  }
+
+  private async cleanupEmptyArtist(artistId: number): Promise<void> {
+    try {
+      // Check if artist has any songs (albums are derived from songs)
+      const songCount = await this.db.get<{ count: number }>(
+        'SELECT COUNT(*) as count FROM song_artists WHERE artist_id = ?',
+        [artistId]
+      );
+
+      if (!songCount || songCount.count === 0) {
+        // Artist has no songs, delete it
+        await this.db.run('DELETE FROM artists WHERE id = ?', [artistId]);
+        logger.info(`Deleted empty artist: ${artistId}`);
+      }
+    } catch (error: any) {
+      logger.error(`Failed to cleanup empty artist ${artistId}:`, error);
+    }
+  }
+
+  async cleanupAllEmptyEntries(): Promise<{ albumsDeleted: number; artistsDeleted: number }> {
+    try {
+      logger.info('🧹 Cleaning up empty albums and artists...');
+
+      // Delete albums with no songs
+      const albumResult = await this.db.run(
+        `DELETE FROM albums
+         WHERE id NOT IN (SELECT DISTINCT album_id FROM songs WHERE album_id IS NOT NULL)`
+      );
+      const albumsDeleted = albumResult.changes;
+
+      // Delete artists with no songs
+      const artistResult = await this.db.run(
+        `DELETE FROM artists
+         WHERE id NOT IN (SELECT DISTINCT artist_id FROM song_artists)`
+      );
+      const artistsDeleted = artistResult.changes;
+
+      logger.info(`✅ Cleanup complete: ${albumsDeleted} empty albums deleted, ${artistsDeleted} empty artists deleted`);
+
+      return { albumsDeleted, artistsDeleted };
+    } catch (error: any) {
+      logger.error('❌ Failed to cleanup empty entries:', error);
+      throw error;
     }
   }
 

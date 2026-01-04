@@ -64,7 +64,6 @@ export const getRecentlyPlayed = asyncHandler(async (req: AuthRequest, res: Resp
   const songs = recentHistoryData.map(item => ({
     id: item.song_id,
     title: item.song_title,
-    artist_id: item.artist_id,
     artist_name: item.artist_name,
     album_id: item.album_id,
     album_title: item.album_title,

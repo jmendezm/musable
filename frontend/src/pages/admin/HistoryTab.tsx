@@ -298,16 +298,21 @@ const HistoryTab: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-3 px-4 text-gray-300">
-                        {entry.duration_played !== null && entry.duration_played !== undefined
-                          ? formatDuration(entry.duration_played)
-                          : 'N/A'}
+                        {(() => {
+                          console.log('HistoryTab entry:', entry);
+                          console.log('duration_played:', entry.duration_played);
+                          console.log('completed:', entry.completed);
+                          return entry.duration_played !== null && entry.duration_played !== undefined
+                            ? formatDuration(entry.duration_played)
+                            : 'N/A';
+                        })()}
                       </td>
                       <td className="py-3 px-4">
                         <span className={clsx(
                           'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium',
-                          // If duration_played is null, show as Partial (unknown duration)
+                          // If duration_played is null, show as Unknown (unknown duration)
                           entry.duration_played === null
-                            ? 'bg-yellow-900/20 text-yellow-400'
+                            ? 'bg-gray-700/50 text-gray-400'
                             : entry.duration_played < 5
                             ? 'bg-gray-700/50 text-gray-400'
                             : entry.completed
@@ -315,7 +320,7 @@ const HistoryTab: React.FC = () => {
                             : 'bg-yellow-900/20 text-yellow-400'
                         )}>
                           {entry.duration_played === null
-                            ? 'Partial'
+                            ? 'Unknown'
                             : entry.duration_played < 5
                             ? 'Skipped'
                             : entry.completed

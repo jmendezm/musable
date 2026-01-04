@@ -153,12 +153,9 @@ const AlbumPage: React.FC = () => {
               {album.title}
             </h1>
             <div className="mb-4 md:mb-6">
-              <button
-                onClick={() => navigate(`/artist/${album.artist_id}`)}
-                className="text-sm md:text-lg font-semibold text-gray-300 hover:text-white hover:underline transition-colors block text-center lg:text-left mb-2"
-              >
+              <p className="text-sm md:text-lg font-semibold text-gray-300 block text-center lg:text-left mb-2">
                 {album.artist_name}
-              </button>
+              </p>
               <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 md:gap-4 text-xs md:text-sm text-gray-400">
                 {album.release_year && (
                   <div className="flex items-center gap-1">

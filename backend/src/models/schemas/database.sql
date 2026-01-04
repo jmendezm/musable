@@ -36,23 +36,20 @@ CREATE TABLE artists (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Albums table
+-- Album table
 CREATE TABLE albums (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title VARCHAR(255) NOT NULL,
-    artist_id INTEGER NOT NULL,
     release_year INTEGER,
     artwork_path VARCHAR(500),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Songs table
 CREATE TABLE songs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title VARCHAR(255) NOT NULL,
-    artist_id INTEGER NOT NULL,
     album_id INTEGER,
     file_path VARCHAR(1000) NOT NULL,
     file_size INTEGER,
@@ -66,8 +63,18 @@ CREATE TABLE songs (
     youtube_id VARCHAR(50),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE,
     FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE SET NULL
+);
+
+-- Song artists junction table (many-to-many relationship)
+CREATE TABLE song_artists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    song_id INTEGER NOT NULL,
+    artist_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE,
+    FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE,
+    UNIQUE(song_id, artist_id)
 );
 
 -- Playlists table
@@ -134,7 +141,7 @@ CREATE TABLE listen_history (
     song_id INTEGER NOT NULL,
     played_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     duration_played INTEGER, -- in seconds
-    completed BOOLEAN DEFAULT 0, -- whether the song was played to completion
+    completed BOOLEAN, -- whether the song was played to completion (null = unknown, 0 = partial, 1 = complete)
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
 );
@@ -253,10 +260,16 @@ CREATE TABLE room_messages (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_songs_artist ON songs(artist_id);
 CREATE INDEX idx_songs_album ON songs(album_id);
 CREATE INDEX idx_songs_title ON songs(title);
 CREATE INDEX idx_songs_file_path ON songs(file_path);
+CREATE INDEX idx_song_artists_song ON song_artists(song_id);
+CREATE INDEX idx_song_artists_artist ON song_artists(artist_id);
+
+-- Unique constraints to prevent duplicates during concurrent scanning
+CREATE UNIQUE INDEX idx_songs_file_path_unique ON songs(file_path);
+CREATE UNIQUE INDEX idx_artists_name_unique ON artists(name COLLATE NOCASE);
+CREATE UNIQUE INDEX idx_albums_title_unique ON albums(title COLLATE NOCASE);
 CREATE INDEX idx_listen_history_user ON listen_history(user_id);
 CREATE INDEX idx_listen_history_song ON listen_history(song_id);
 CREATE INDEX idx_listen_history_played_at ON listen_history(played_at);
@@ -287,15 +300,6 @@ CREATE INDEX idx_room_queue_position ON room_queue(room_id, position);
 CREATE INDEX idx_room_messages_room ON room_messages(room_id);
 CREATE INDEX idx_room_messages_user ON room_messages(user_id);
 CREATE INDEX idx_room_messages_time ON room_messages(sent_at);
-
--- Migration: Add role column to existing room_participants table
-ALTER TABLE room_participants ADD COLUMN role VARCHAR(20) DEFAULT 'listener';
-
--- Migration: Add profile_picture column to existing users table
-ALTER TABLE users ADD COLUMN profile_picture VARCHAR(500);
-
--- Migration: Add password column for plain text storage (OpenSubsonic API compatibility)
-ALTER TABLE users ADD COLUMN password VARCHAR(255);
 
 -- Insert default settings
 INSERT OR IGNORE INTO settings (key, value, description) VALUES

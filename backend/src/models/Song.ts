@@ -3,7 +3,6 @@ import Database from '../config/database';
 export interface Song {
   id: number;
   title: string;
-  artist_id: number;
   album_id?: number;
   file_path: string;
   file_size?: number;
@@ -20,14 +19,14 @@ export interface Song {
 }
 
 export interface SongWithDetails extends Song {
-  artist_name: string;
+  artists: { id: number; name: string }[];
+  artist_name?: string;
   album_title?: string;
   artwork_path?: string;
 }
 
 export interface CreateSongData {
   title: string;
-  artist_id: number;
   album_id?: number;
   file_path: string;
   file_size?: number;
@@ -47,12 +46,11 @@ export class SongModel {
   async create(songData: CreateSongData): Promise<Song> {
     const result = await this.db.run(
       `INSERT INTO songs (
-        title, artist_id, album_id, file_path, file_size, duration,
+        title, album_id, file_path, file_size, duration,
         track_number, genre, year, bitrate, sample_rate, source, youtube_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         songData.title,
-        songData.artist_id,
         songData.album_id || null,
         songData.file_path,
         songData.file_size || null,
@@ -96,103 +94,170 @@ export class SongModel {
     );
   }
 
-  async findWithDetails(id: number): Promise<SongWithDetails | null> {
-    return await this.db.get<SongWithDetails>(
-      `SELECT 
-        s.*,
-        a.name as artist_name,
-        al.title as album_title,
-        al.artwork_path
-       FROM songs s
-       JOIN artists a ON s.artist_id = a.id
-       LEFT JOIN albums al ON s.album_id = al.id
-       WHERE s.id = ?`,
-      [id]
+  // Artist management for songs
+  async addArtist(songId: number, artistId: number): Promise<void> {
+    await this.db.run(
+      'INSERT OR IGNORE INTO song_artists (song_id, artist_id) VALUES (?, ?)',
+      [songId, artistId]
     );
   }
 
-  async getAllWithDetails(): Promise<SongWithDetails[]> {
-    return await this.db.query<SongWithDetails>(
-      `SELECT 
-        s.*,
-        a.name as artist_name,
-        al.title as album_title,
-        al.artwork_path
-       FROM songs s
-       JOIN artists a ON s.artist_id = a.id
-       LEFT JOIN albums al ON s.album_id = al.id
-       ORDER BY a.name, al.title, s.track_number, s.title`
+  async removeArtist(songId: number, artistId: number): Promise<void> {
+    await this.db.run(
+      'DELETE FROM song_artists WHERE song_id = ? AND artist_id = ?',
+      [songId, artistId]
     );
+  }
+
+  async setArtists(songId: number, artistIds: number[]): Promise<void> {
+    // Remove all existing artists
+    await this.db.run(
+      'DELETE FROM song_artists WHERE song_id = ?',
+      [songId]
+    );
+
+    // Add new artists
+    for (const artistId of artistIds) {
+      await this.addArtist(songId, artistId);
+    }
+  }
+
+  async getArtists(songId: number): Promise<{ id: number; name: string }[]> {
+    return await this.db.query<{ id: number; name: string }>(
+      `SELECT a.id, a.name
+       FROM artists a
+       JOIN song_artists sa ON a.id = sa.artist_id
+       WHERE sa.song_id = ?
+       ORDER BY a.name`,
+      [songId]
+    );
+  }
+
+  async findWithDetails(id: number): Promise<SongWithDetails | null> {
+    const song = await this.findById(id);
+    if (!song) return null;
+
+    const artists = await this.getArtists(id);
+    const album = await this.db.get<{ title: string; artwork_path: string }>(
+      'SELECT title, artwork_path FROM albums WHERE id = ?',
+      [song.album_id || 0]
+    );
+
+    // Create artist_name string from artists array
+    const artist_name = artists.map(a => a.name).join(', ');
+
+    return {
+      ...song,
+      artists,
+      artist_name,
+      album_title: album?.title,
+      artwork_path: album?.artwork_path
+    };
+  }
+
+  async getAllWithDetails(): Promise<SongWithDetails[]> {
+    const songs = await this.db.query<Song>(
+      `SELECT s.*
+       FROM songs s
+       ORDER BY s.title`
+    );
+
+    const result: SongWithDetails[] = [];
+    for (const song of songs) {
+      const details = await this.findWithDetails(song.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   async searchSongs(query: string): Promise<SongWithDetails[]> {
     const searchTerm = `%${query}%`;
-    return await this.db.query<SongWithDetails>(
-      `SELECT
-        s.*,
-        a.name as artist_name,
-        al.title as album_title,
-        al.artwork_path
+    const songs = await this.db.query<Song>(
+      `SELECT DISTINCT s.*
        FROM songs s
-       JOIN artists a ON s.artist_id = a.id
+       LEFT JOIN song_artists sa ON s.id = sa.song_id
+       LEFT JOIN artists a ON sa.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
        WHERE s.title LIKE ?
           OR a.name LIKE ?
           OR al.title LIKE ?
           OR s.genre LIKE ?
-       ORDER BY a.name, al.title, s.track_number, s.title`,
+       ORDER BY s.title`,
       [searchTerm, searchTerm, searchTerm, searchTerm]
     );
+
+    const result: SongWithDetails[] = [];
+    for (const song of songs) {
+      const details = await this.findWithDetails(song.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   // Search method for OpenSubsonic API with limit
   async search(query: string, limit: number = 20): Promise<Song[]> {
     const searchTerm = `%${query}%`;
     return await this.db.query<Song>(
-      `SELECT s.*
+      `SELECT DISTINCT s.*
        FROM songs s
-       JOIN artists a ON s.artist_id = a.id
+       LEFT JOIN song_artists sa ON s.id = sa.song_id
+       LEFT JOIN artists a ON sa.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
        WHERE s.title LIKE ?
           OR a.name LIKE ?
           OR al.title LIKE ?
           OR s.genre LIKE ?
-       ORDER BY a.name, al.title, s.track_number, s.title
+       ORDER BY s.title
        LIMIT ?`,
       [searchTerm, searchTerm, searchTerm, searchTerm, limit]
     );
   }
 
   async getSongsByArtist(artistId: number): Promise<SongWithDetails[]> {
-    return await this.db.query<SongWithDetails>(
-      `SELECT 
-        s.*,
-        a.name as artist_name,
-        al.title as album_title,
-        al.artwork_path
+    const songs = await this.db.query<Song>(
+      `SELECT DISTINCT s.*
        FROM songs s
-       JOIN artists a ON s.artist_id = a.id
-       LEFT JOIN albums al ON s.album_id = al.id
-       WHERE s.artist_id = ?
-       ORDER BY al.title, s.track_number, s.title`,
+       JOIN song_artists sa ON s.id = sa.song_id
+       WHERE sa.artist_id = ?
+       ORDER BY s.title`,
       [artistId]
     );
+
+    const result: SongWithDetails[] = [];
+    for (const song of songs) {
+      const details = await this.findWithDetails(song.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   async getSongsByAlbum(albumId: number): Promise<SongWithDetails[]> {
-    return await this.db.query<SongWithDetails>(
-      `SELECT 
-        s.*,
-        a.name as artist_name,
-        al.title as album_title,
-        al.artwork_path
-       FROM songs s
-       JOIN artists a ON s.artist_id = a.id
-       LEFT JOIN albums al ON s.album_id = al.id
-       WHERE s.album_id = ?
-       ORDER BY s.track_number, s.title`,
+    const songs = await this.db.query<Song>(
+      `SELECT *
+       FROM songs
+       WHERE album_id = ?
+       ORDER BY track_number, title`,
       [albumId]
     );
+
+    const result: SongWithDetails[] = [];
+    for (const song of songs) {
+      const details = await this.findWithDetails(song.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   async updateSong(id: number, updates: Partial<CreateSongData>): Promise<void> {
@@ -263,52 +328,64 @@ export class SongModel {
   }
 
   async getStarred(userId: number): Promise<SongWithDetails[]> {
-    return await this.db.query<SongWithDetails>(
-      `SELECT
-        s.*,
-        a.name as artist_name,
-        al.title as album_title,
-        al.artwork_path
+    const songs = await this.db.query<Song>(
+      `SELECT DISTINCT s.*
        FROM songs s
-       JOIN artists a ON s.artist_id = a.id
-       LEFT JOIN albums al ON s.album_id = al.id
        INNER JOIN favorites f ON s.id = f.song_id
        WHERE f.user_id = ?
-       ORDER BY a.name, al.title, s.track_number, s.title`,
+       ORDER BY s.title`,
       [userId]
     );
+
+    const result: SongWithDetails[] = [];
+    for (const song of songs) {
+      const details = await this.findWithDetails(song.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   async getSongsByGenre(genre: string): Promise<SongWithDetails[]> {
-    return await this.db.query<SongWithDetails>(
-      `SELECT 
-        s.*,
-        a.name as artist_name,
-        al.title as album_title,
-        al.artwork_path
-       FROM songs s
-       JOIN artists a ON s.artist_id = a.id
-       LEFT JOIN albums al ON s.album_id = al.id
-       WHERE s.genre = ?
-       ORDER BY a.name, al.title, s.track_number, s.title`,
+    const songs = await this.db.query<Song>(
+      `SELECT *
+       FROM songs
+       WHERE genre = ?
+       ORDER BY title`,
       [genre]
     );
+
+    const result: SongWithDetails[] = [];
+    for (const song of songs) {
+      const details = await this.findWithDetails(song.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 
   async getRandomSongs(limit: number = 50): Promise<SongWithDetails[]> {
-    return await this.db.query<SongWithDetails>(
-      `SELECT 
-        s.*,
-        a.name as artist_name,
-        al.title as album_title,
-        al.artwork_path
-       FROM songs s
-       JOIN artists a ON s.artist_id = a.id
-       LEFT JOIN albums al ON s.album_id = al.id
+    const songs = await this.db.query<Song>(
+      `SELECT *
+       FROM songs
        ORDER BY RANDOM()
        LIMIT ?`,
       [limit]
     );
+
+    const result: SongWithDetails[] = [];
+    for (const song of songs) {
+      const details = await this.findWithDetails(song.id);
+      if (details) {
+        result.push(details);
+      }
+    }
+
+    return result;
   }
 }
 

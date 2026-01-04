@@ -162,36 +162,38 @@ async function scanFile(filePath: string): Promise<ScanFileResult> {
     const albumTitle = metadata.common.album;
     const title = metadata.common.title || path.basename(filePath, path.extname(filePath));
 
-    // Find or create artist
-    let artist = await Database.query(
-      'SELECT * FROM artists WHERE name = ? COLLATE NOCASE',
+    // Atomic insert-or-ignore to prevent duplicate artists during concurrent scanning
+    await Database.run(
+      'INSERT OR IGNORE INTO artists (name) VALUES (?)',
       [artistName]
     );
 
-    if (!artist || artist.length === 0) {
-      const result = await Database.run(
-        'INSERT INTO artists (name) VALUES (?)',
-        [artistName]
-      );
-      artist = [{ id: result.lastID }];
-    }
+    // Now fetch the artist (it either existed or was just created)
+    const artistResult = await Database.query(
+      'SELECT * FROM artists WHERE name = ? COLLATE NOCASE',
+      [artistName]
+    );
+    const artist = artistResult;
 
     let album = null;
     if (albumTitle) {
-      let albumResult = await Database.query(
-        'SELECT * FROM albums WHERE title = ? AND artist_id = ? COLLATE NOCASE',
-        [albumTitle, artist[0].id]
+      // Atomic insert-or-ignore to prevent duplicate albums during concurrent scanning
+      await Database.run(
+        'INSERT OR IGNORE INTO albums (title, release_year) VALUES (?, ?)',
+        [albumTitle, metadata.common.year || null]
       );
 
-      if (!albumResult || albumResult.length === 0) {
-        const albumInsert = await Database.run(
-          'INSERT INTO albums (title, artist_id, release_year) VALUES (?, ?, ?)',
-          [albumTitle, artist[0].id, metadata.common.year || null]
-        );
-        album = { id: albumInsert.lastID };
+      // Now fetch the album (it either existed or was just created)
+      let albumResult = await Database.query(
+        'SELECT * FROM albums WHERE title = ? COLLATE NOCASE',
+        [albumTitle]
+      );
 
-        // Save artwork if present
-        if (metadata.common.picture && metadata.common.picture.length > 0) {
+      if (albumResult && albumResult.length > 0) {
+        album = albumResult[0];
+
+        // Save artwork if present (only if album doesn't have artwork yet)
+        if (metadata.common.picture && metadata.common.picture.length > 0 && !album.artwork_path) {
           const artworkPath = await saveAlbumArtwork(album.id, metadata.common.picture[0]);
           if (artworkPath) {
             await Database.run(
@@ -200,81 +202,79 @@ async function scanFile(filePath: string): Promise<ScanFileResult> {
             );
           }
         }
-      } else {
-        album = albumResult[0];
       }
     }
 
-    // Check if song exists
-    const existingSong = await Database.query(
+    // Atomic insert-or-ignore to prevent duplicate songs during concurrent scanning
+    await Database.run(
+      `INSERT OR IGNORE INTO songs (title, album_id, file_path, file_size, duration,
+       track_number, genre, year, bitrate, sample_rate, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        title,
+        album?.id || null,
+        filePath,
+        fileStats.size,
+        metadata.format.duration ? Math.round(metadata.format.duration) : null,
+        metadata.common.track?.no || null,
+        metadata.common.genre?.join(', ') || null,
+        metadata.common.year || null,
+        metadata.format.bitrate || null,
+        metadata.format.sampleRate || null,
+        'local'
+      ]
+    );
+
+    // Fetch the song (it either existed or was just created)
+    const fetchedSongs = await Database.query(
       'SELECT * FROM songs WHERE file_path = ?',
       [filePath]
     );
 
-    const songData = {
-      title,
-      artist_id: artist[0].id,
-      album_id: album?.id,
-      file_path: filePath,
-      file_size: fileStats.size,
-      duration: metadata.format.duration ? Math.round(metadata.format.duration) : null,
-      track_number: metadata.common.track?.no || null,
-      genre: metadata.common.genre?.join(', ') || null,
-      year: metadata.common.year || null,
-      bitrate: metadata.format.bitrate || null,
-      sample_rate: metadata.format.sampleRate || null,
-      source: 'local'
-    };
+    if (!fetchedSongs || fetchedSongs.length === 0) {
+      throw new Error('Failed to insert or fetch song');
+    }
 
-    if (existingSong && existingSong.length > 0) {
-      // Check if file_size has changed
-      if (existingSong[0].file_size === fileStats.size) {
-        // File hasn't changed, skip it
-        return { added: false, updated: false, skipped: true };
-      }
+    const song = fetchedSongs[0];
+    let wasAdded = false;
+    let wasUpdated = false;
 
+    // Check if this is a new song (file_size should match if it existed before)
+    // If file_size differs, the file was modified and needs update
+    if (song.file_size !== fileStats.size) {
       // File size changed, update metadata
       await Database.run(
-        `UPDATE songs SET title = ?, artist_id = ?, album_id = ?, file_size = ?,
+        `UPDATE songs SET title = ?, album_id = ?, file_size = ?,
          duration = ?, track_number = ?, genre = ?, year = ?, bitrate = ?, sample_rate = ?
          WHERE id = ?`,
         [
-          songData.title,
-          songData.artist_id,
-          songData.album_id,
-          songData.file_size,
-          songData.duration,
-          songData.track_number,
-          songData.genre,
-          songData.year,
-          songData.bitrate,
-          songData.sample_rate,
-          existingSong[0].id
+          title,
+          album?.id || null,
+          fileStats.size,
+          metadata.format.duration ? Math.round(metadata.format.duration) : null,
+          metadata.common.track?.no || null,
+          metadata.common.genre?.join(', ') || null,
+          metadata.common.year || null,
+          metadata.format.bitrate || null,
+          metadata.format.sampleRate || null,
+          song.id
         ]
       );
-      return { added: false, updated: true, skipped: false };
-    } else {
-      await Database.run(
-        `INSERT INTO songs (title, artist_id, album_id, file_path, file_size, duration,
-         track_number, genre, year, bitrate, sample_rate, source)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          songData.title,
-          songData.artist_id,
-          songData.album_id,
-          songData.file_path,
-          songData.file_size,
-          songData.duration,
-          songData.track_number,
-          songData.genre,
-          songData.year,
-          songData.bitrate,
-          songData.sample_rate,
-          songData.source
-        ]
-      );
-      return { added: true, updated: false, skipped: false };
+      wasUpdated = true;
+    } else if (song.created_at === song.updated_at) {
+      // Song was just created (created_at equals updated_at for new rows)
+      wasAdded = true;
     }
+
+    // Atomic artist update: always delete all existing artists and insert the correct one
+    // This ensures each song has exactly ONE artist from its metadata
+    await Database.run('DELETE FROM song_artists WHERE song_id = ?', [song.id]);
+    await Database.run(
+      'INSERT INTO song_artists (song_id, artist_id) VALUES (?, ?)',
+      [song.id, artist[0].id]
+    );
+
+    return { added: wasAdded, updated: wasUpdated, skipped: !wasAdded && !wasUpdated };
   } catch (error: any) {
     console.error(`[Worker] Failed to scan file ${filePath}:`, error.message);
     throw error;

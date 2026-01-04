@@ -211,18 +211,20 @@ export class PlaylistModel {
 
   async getPlaylistSongs(playlistId: number): Promise<PlaylistSong[]> {
     return await this.db.query<PlaylistSong>(
-      `SELECT 
+      `SELECT
         ps.*,
         s.title,
-        a.name as artist_name,
+        GROUP_CONCAT(a.name, ', ') as artist_name,
         al.title as album_title,
         s.duration,
         al.artwork_path
        FROM playlist_songs ps
        JOIN songs s ON ps.song_id = s.id
-       JOIN artists a ON s.artist_id = a.id
+       JOIN song_artists sa ON s.id = sa.song_id
+       JOIN artists a ON sa.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
        WHERE ps.playlist_id = ?
+       GROUP BY ps.id, s.title, al.title, s.duration, al.artwork_path
        ORDER BY ps.position`,
       [playlistId]
     );

@@ -81,11 +81,13 @@ class ShareTokenModel {
 
     // Get song details
     const song = await this.db.get(
-      `SELECT s.*, a.name as artist_name, al.title as album_title, al.artwork_path
+      `SELECT s.*, GROUP_CONCAT(a.name, ', ') as artist_name, al.title as album_title, al.artwork_path
        FROM songs s
-       JOIN artists a ON s.artist_id = a.id
+       JOIN song_artists sa ON s.id = sa.song_id
+       JOIN artists a ON sa.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
-       WHERE s.id = ?`,
+       WHERE s.id = ?
+       GROUP BY s.id, al.title, al.artwork_path`,
       [shareToken.song_id]
     );
 
@@ -118,11 +120,13 @@ class ShareTokenModel {
 
   async findByCreatedBy(userId: number): Promise<ShareToken[]> {
     return await this.db.query<ShareToken>(
-      `SELECT st.*, s.title as song_title, a.name as artist_name
+      `SELECT st.*, s.title as song_title, GROUP_CONCAT(a.name, ', ') as artist_name
        FROM share_tokens st
        JOIN songs s ON st.song_id = s.id
-       JOIN artists a ON s.artist_id = a.id
+       JOIN song_artists sa ON s.id = sa.song_id
+       JOIN artists a ON sa.artist_id = a.id
        WHERE st.created_by = ?
+       GROUP BY st.id, s.title
        ORDER BY st.created_at DESC`,
       [userId]
     );

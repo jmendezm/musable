@@ -44,10 +44,16 @@ export class ArtistModel {
   }
 
   async findOrCreate(name: string): Promise<Artist> {
-    let artist = await this.findByName(name);
-    
+    // Try to insert first (atomic operation with UNIQUE constraint)
+    await this.db.run(
+      'INSERT OR IGNORE INTO artists (name) VALUES (?)',
+      [name]
+    );
+
+    // Now fetch the artist (it either existed or was just created)
+    const artist = await this.findByName(name);
     if (!artist) {
-      artist = await this.create(name);
+      throw new Error('Failed to find or create artist');
     }
 
     return artist;
@@ -55,13 +61,14 @@ export class ArtistModel {
 
   async getAllWithStats(): Promise<ArtistWithStats[]> {
     return await this.db.query<ArtistWithStats>(
-      `SELECT 
+      `SELECT
         a.*,
         COUNT(DISTINCT s.id) as song_count,
         COUNT(DISTINCT al.id) as album_count
        FROM artists a
-       LEFT JOIN songs s ON a.id = s.artist_id
-       LEFT JOIN albums al ON a.id = al.artist_id
+       LEFT JOIN song_artists sa ON a.id = sa.artist_id
+       LEFT JOIN songs s ON sa.song_id = s.id
+       LEFT JOIN albums al ON s.album_id = al.id
        GROUP BY a.id
        ORDER BY a.name`
     );
@@ -75,8 +82,9 @@ export class ArtistModel {
         COUNT(DISTINCT s.id) as song_count,
         COUNT(DISTINCT al.id) as album_count
        FROM artists a
-       LEFT JOIN songs s ON a.id = s.artist_id
-       LEFT JOIN albums al ON a.id = al.artist_id
+       LEFT JOIN song_artists sa ON a.id = sa.artist_id
+       LEFT JOIN songs s ON sa.song_id = s.id
+       LEFT JOIN albums al ON s.album_id = al.id
        WHERE a.name LIKE ?
        GROUP BY a.id
        ORDER BY a.name
@@ -107,7 +115,8 @@ export class ArtistModel {
     return await this.db.query<Artist>(
       `SELECT DISTINCT a.*
        FROM artists a
-       INNER JOIN songs s ON a.id = s.artist_id
+       INNER JOIN song_artists sa ON a.id = sa.artist_id
+       INNER JOIN songs s ON sa.song_id = s.id
        INNER JOIN favorites f ON s.id = f.song_id
        WHERE f.user_id = ?
        ORDER BY a.name`,

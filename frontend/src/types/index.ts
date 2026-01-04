@@ -43,7 +43,6 @@ export interface Artist {
 export interface Album {
   id: number;
   title: string;
-  artist_id: number;
   artist_name: string;
   release_year?: number;
   artwork_path?: string;
@@ -56,7 +55,6 @@ export interface Album {
 export interface Song {
   id: number;
   title: string;
-  artist_id: number;
   artist_name: string;
   album_id?: number;
   album_title?: string;

@@ -56,7 +56,6 @@ const HistoryPage: React.FC = () => {
       const songsWithHistory = response.data.history.map((entry: any) => ({
         id: entry.song_id,
         title: entry.song_title || 'Unknown',
-        artist_id: entry.artist_id,
         artist_name: entry.artist_name || 'Unknown Artist',
         album_id: entry.album_id,
         album_title: entry.album_title,
@@ -289,6 +288,17 @@ const HistoryPage: React.FC = () => {
                 <div className="flex items-center gap-2 text-gray-400 text-xs mr-4 hidden sm:flex">
                   <CalendarIcon className="w-4 h-4" />
                   <span>{formatPlayDate(historyEntry?.played_at)}</span>
+                </div>
+
+                {/* Completion Status */}
+                <div className="text-gray-400 text-xs mr-4 hidden lg:block">
+                  {historyEntry?.duration_played === null ? (
+                    <span className="text-gray-500">Unknown</span>
+                  ) : historyEntry?.completed === true ? (
+                    <span className="text-green-400">Completed</span>
+                  ) : (
+                    <span className="text-yellow-400">Partial</span>
+                  )}
                 </div>
 
                 {/* Duration */}

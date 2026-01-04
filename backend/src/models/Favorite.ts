@@ -45,17 +45,19 @@ export class FavoriteModel {
   static async getUserFavorites(userId: number): Promise<SongWithDetails[]> {
     try {
       const stmt = `
-        SELECT 
+        SELECT
           s.*,
-          a.name as artist_name,
+          GROUP_CONCAT(a.name, ', ') as artist_name,
           al.title as album_title,
           al.artwork_path,
           f.added_at as favorited_at
         FROM favorites f
         JOIN songs s ON f.song_id = s.id
-        JOIN artists a ON s.artist_id = a.id
+        JOIN song_artists sa ON s.id = sa.song_id
+        JOIN artists a ON sa.artist_id = a.id
         LEFT JOIN albums al ON s.album_id = al.id
         WHERE f.user_id = ?
+        GROUP BY s.id, al.title, al.artwork_path, f.added_at
         ORDER BY f.added_at DESC
       `;
       const favorites = await Database.query(stmt, [userId]);

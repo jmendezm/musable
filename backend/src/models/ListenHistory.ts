@@ -6,13 +6,12 @@ export interface ListenHistory {
   song_id: number;
   played_at: string;
   duration_played?: number;
-  completed: boolean;
+  completed: boolean | null;
 }
 
 export interface ListenHistoryWithDetails extends ListenHistory {
   username: string;
   song_title: string;
-  artist_id: number;
   artist_name: string;
   album_id?: number;
   album_title?: string;
@@ -24,7 +23,7 @@ export interface CreateListenHistoryData {
   user_id: number;
   song_id: number;
   duration_played?: number;
-  completed?: boolean;
+  completed?: boolean | null;
 }
 
 export class ListenHistoryModel {
@@ -53,21 +52,23 @@ export class ListenHistoryModel {
 
   async getUserHistory(userId: number, limit: number = 50, offset: number = 0): Promise<ListenHistoryWithDetails[]> {
     return await this.db.query<ListenHistoryWithDetails>(
-      `SELECT 
+      `SELECT
         lh.*,
         u.username,
         s.title as song_title,
-        a.name as artist_name,
+        GROUP_CONCAT(a.name, ', ') as artist_name,
         al.title as album_title,
         s.duration as song_duration,
         al.artwork_path as artwork_path
        FROM listen_history lh
        JOIN users u ON lh.user_id = u.id
        JOIN songs s ON lh.song_id = s.id
-       JOIN artists a ON s.artist_id = a.id
+       JOIN song_artists sa ON s.id = sa.song_id
+       JOIN artists a ON sa.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
        WHERE lh.user_id = ?
-       ORDER BY lh.played_at DESC
+       GROUP BY s.id, lh.id, u.username, al.title, s.title, s.duration, al.artwork_path
+       ORDER BY MAX(lh.played_at) DESC
        LIMIT ? OFFSET ?`,
       [userId, limit, offset]
     );
@@ -75,20 +76,22 @@ export class ListenHistoryModel {
 
   async getAllHistory(limit: number = 100, offset: number = 0): Promise<ListenHistoryWithDetails[]> {
     return await this.db.query<ListenHistoryWithDetails>(
-      `SELECT 
+      `SELECT
         lh.*,
         u.username,
         s.title as song_title,
-        a.name as artist_name,
+        GROUP_CONCAT(a.name, ', ') as artist_name,
         al.title as album_title,
         s.duration as song_duration,
         al.artwork_path as artwork_path
        FROM listen_history lh
        JOIN users u ON lh.user_id = u.id
        JOIN songs s ON lh.song_id = s.id
-       JOIN artists a ON s.artist_id = a.id
+       JOIN song_artists sa ON s.id = sa.song_id
+       JOIN artists a ON sa.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
-       ORDER BY lh.played_at DESC
+       GROUP BY s.id, lh.id, u.username, al.title, s.title, s.duration, al.artwork_path
+       ORDER BY MAX(lh.played_at) DESC
        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
@@ -100,8 +103,7 @@ export class ListenHistoryModel {
         lh.*,
         u.username,
         s.title as song_title,
-        s.artist_id,
-        a.name as artist_name,
+        GROUP_CONCAT(a.name, ', ') as artist_name,
         s.album_id,
         al.title as album_title,
         s.duration as song_duration,
@@ -109,7 +111,8 @@ export class ListenHistoryModel {
        FROM listen_history lh
        JOIN users u ON lh.user_id = u.id
        JOIN songs s ON lh.song_id = s.id
-       JOIN artists a ON s.artist_id = a.id
+       JOIN song_artists sa ON s.id = sa.song_id
+       JOIN artists a ON sa.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
        WHERE lh.user_id = ?
        GROUP BY lh.song_id
@@ -122,16 +125,17 @@ export class ListenHistoryModel {
   async getMostPlayedSongs(userId?: number, limit: number = 20): Promise<any[]> {
     if (userId) {
       return await this.db.query(
-        `SELECT 
+        `SELECT
           s.id,
           s.title,
-          a.name as artist_name,
+          GROUP_CONCAT(a.name, ', ') as artist_name,
           al.title as album_title,
           al.artwork_path,
           COUNT(*) as play_count
          FROM listen_history lh
          JOIN songs s ON lh.song_id = s.id
-         JOIN artists a ON s.artist_id = a.id
+         JOIN song_artists sa ON s.id = sa.song_id
+         JOIN artists a ON sa.artist_id = a.id
          LEFT JOIN albums al ON s.album_id = al.id
          WHERE lh.user_id = ?
          GROUP BY s.id
@@ -141,16 +145,17 @@ export class ListenHistoryModel {
       );
     } else {
       return await this.db.query(
-        `SELECT 
+        `SELECT
           s.id,
           s.title,
-          a.name as artist_name,
+          GROUP_CONCAT(a.name, ', ') as artist_name,
           al.title as album_title,
           al.artwork_path,
           COUNT(*) as play_count
          FROM listen_history lh
          JOIN songs s ON lh.song_id = s.id
-         JOIN artists a ON s.artist_id = a.id
+         JOIN song_artists sa ON s.id = sa.song_id
+         JOIN artists a ON sa.artist_id = a.id
          LEFT JOIN albums al ON s.album_id = al.id
          GROUP BY s.id
          ORDER BY play_count DESC
@@ -222,14 +227,15 @@ export class ListenHistoryModel {
 
   async getUserTopArtists(userId: number, limit: number = 10): Promise<any[]> {
     return await this.db.query(
-      `SELECT 
+      `SELECT
         a.id,
         a.name,
         COUNT(*) as play_count,
         COUNT(DISTINCT s.id) as unique_songs
        FROM listen_history lh
        JOIN songs s ON lh.song_id = s.id
-       JOIN artists a ON s.artist_id = a.id
+       JOIN song_artists sa ON s.id = sa.song_id
+       JOIN artists a ON sa.artist_id = a.id
        WHERE lh.user_id = ?
        GROUP BY a.id
        ORDER BY play_count DESC
@@ -240,15 +246,16 @@ export class ListenHistoryModel {
 
   async getUserTopAlbums(userId: number, limit: number = 10): Promise<any[]> {
     return await this.db.query(
-      `SELECT 
+      `SELECT
         al.id,
         al.title,
-        a.name as artist_name,
+        GROUP_CONCAT(a.name, ', ') as artist_name,
         al.artwork_path,
         COUNT(*) as play_count
        FROM listen_history lh
        JOIN songs s ON lh.song_id = s.id
-       JOIN artists a ON s.artist_id = a.id
+       JOIN song_artists sa ON s.id = sa.song_id
+       JOIN artists a ON sa.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
        WHERE lh.user_id = ? AND al.id IS NOT NULL
        GROUP BY al.id

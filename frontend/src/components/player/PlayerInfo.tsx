@@ -69,17 +69,7 @@ const PlayerInfo: React.FC = () => {
         <p className="text-gray-400 text-xs truncate flex items-center">
           {currentSong ? (
             <>
-              {currentSong.artist_id > 0 ? (
-                <button
-                  onClick={() => navigate(`/artist/${currentSong.artist_id}`)}
-                  className="hover:text-primary transition-colors truncate"
-                  title={`View artist: ${currentSong.artist_name}`}
-                >
-                  {currentSong.artist_name}
-                </button>
-              ) : (
-                <span className="truncate">{currentSong.artist_name}</span>
-              )}
+              <span className="truncate">{currentSong.artist_name}</span>
               {currentSong.album_id && currentSong.album_id > 0 && currentSong.album_title && (
                 <>
                   <span className="mx-1 flex-shrink-0">•</span>
