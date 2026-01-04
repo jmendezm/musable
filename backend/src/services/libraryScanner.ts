@@ -437,12 +437,6 @@ export class LibraryScanner {
 
       const normalizedFilePath = filePath.replace(/\\/g, '/'); // Normalize path separators to forward slashes
 
-      // Debug logging for path normalization
-      if (this.scannedCount <= 5) {
-        logger.info(`[PATH DEBUG] Original: ${filePath}`);
-        logger.info(`[PATH DEBUG] Normalized: ${normalizedFilePath}`);
-      }
-
       const songData: CreateSongData = {
         title,
         artist_id: artist.id,
