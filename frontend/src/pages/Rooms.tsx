@@ -17,7 +17,11 @@ const Rooms: React.FC = () => {
   const { user } = useAuthStore();
   const { currentRoom } = useRoomStore();
   const roomStore = useRoomStore();
-  
+
+  // Debug logging
+  console.log('🏠 Rooms Page - currentRoom:', currentRoom);
+  console.log('🏠 Rooms Page - currentRoom ID:', currentRoom?.id);
+
   const [joinCode, setJoinCode] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [newRoomData, setNewRoomData] = useState({
@@ -83,6 +87,13 @@ const Rooms: React.FC = () => {
       ]);
       setPublicRooms(publicResponse.rooms);
       setMyRooms(myResponse.rooms);
+
+      // Debug logging
+      console.log('📋 Loaded myRooms:', myResponse.rooms);
+      console.log('📋 myRooms count:', myResponse.rooms.length);
+      myResponse.rooms.forEach((room: Room) => {
+        console.log(`📋 Room: ${room.name}, ID: ${room.id}`);
+      });
     } catch (error) {
       console.error('Failed to load rooms:', error);
     } finally {
@@ -293,6 +304,13 @@ const Rooms: React.FC = () => {
           <div className="grid gap-3">
             {myRooms.map((room) => {
               const isInRoom = currentRoom?.id === room.id;
+              console.log('🔍 Room check:', {
+                roomName: room.name,
+                roomId: room.id,
+                currentRoomId: currentRoom?.id,
+                isInRoom,
+                currentRoom
+              });
               return (
                 <div
                   key={room.id}

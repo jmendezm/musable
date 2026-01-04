@@ -271,7 +271,7 @@ export class PlaybackTracker {
 
     try {
       const songModel = new SongModel();
-      const song = await songModel.findById(data.songId);
+      const song = await songModel.findWithDetails(data.songId);
 
       if (!song) {
         console.error(`Song ${data.songId} not found`);
@@ -359,7 +359,7 @@ export class PlaybackTracker {
 
     try {
       const songModel = new SongModel();
-      const song = await songModel.findById(data.songId);
+      const song = await songModel.findWithDetails(data.songId);
 
       if (!song) {
         console.error(`Song ${data.songId} not found`);
