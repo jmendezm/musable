@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
+    password VARCHAR(255),
     profile_picture VARCHAR(500),
     is_admin BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -292,6 +293,9 @@ ALTER TABLE room_participants ADD COLUMN role VARCHAR(20) DEFAULT 'listener';
 
 -- Migration: Add profile_picture column to existing users table
 ALTER TABLE users ADD COLUMN profile_picture VARCHAR(500);
+
+-- Migration: Add password column for plain text storage (OpenSubsonic API compatibility)
+ALTER TABLE users ADD COLUMN password VARCHAR(255);
 
 -- Insert default settings
 INSERT OR IGNORE INTO settings (key, value, description) VALUES
