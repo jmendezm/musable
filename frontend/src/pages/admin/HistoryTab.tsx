@@ -305,14 +305,18 @@ const HistoryTab: React.FC = () => {
                       <td className="py-3 px-4">
                         <span className={clsx(
                           'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium',
-                          // If played less than 5 seconds, show as Skipped
-                          (!entry.duration_played || entry.duration_played < 5)
+                          // If duration_played is null, show as Partial (unknown duration)
+                          entry.duration_played === null
+                            ? 'bg-yellow-900/20 text-yellow-400'
+                            : entry.duration_played < 5
                             ? 'bg-gray-700/50 text-gray-400'
                             : entry.completed
                             ? 'bg-green-900/20 text-green-400'
                             : 'bg-yellow-900/20 text-yellow-400'
                         )}>
-                          {!entry.duration_played || entry.duration_played < 5
+                          {entry.duration_played === null
+                            ? 'Partial'
+                            : entry.duration_played < 5
                             ? 'Skipped'
                             : entry.completed
                             ? 'Complete'
