@@ -439,7 +439,7 @@ export class LibraryScanner {
         title,
         artist_id: artist.id,
         album_id: album?.id,
-        file_path: filePath,
+        file_path: filePath.replace(/\\/g, '/'), // Normalize path separators to forward slashes
         file_size: fileStats.size,
         duration: metadata.format.duration ? Math.round(metadata.format.duration) : undefined,
         track_number: metadata.common.track?.no,
@@ -450,7 +450,7 @@ export class LibraryScanner {
         source: 'local'
       };
 
-      const existingSong = await SongModel.findByPath(filePath);
+      const existingSong = await SongModel.findByPath(songData.file_path);
       if (existingSong) {
         await SongModel.updateSong(existingSong.id, songData);
       } else {

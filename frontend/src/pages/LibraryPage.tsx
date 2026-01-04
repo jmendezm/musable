@@ -227,7 +227,8 @@ const LibraryPage: React.FC = () => {
       result = result.filter(song => {
         if (!song.file_path) return false;
         const normalizedPath = song.file_path.replace(/\\/g, '/');
-        return normalizedPath.startsWith(currentFolder);
+        const folderWithSlash = currentFolder.endsWith('/') ? currentFolder : `${currentFolder}/`;
+        return normalizedPath.startsWith(folderWithSlash) || normalizedPath.startsWith(currentFolder);
       });
     }
 
@@ -772,7 +773,7 @@ const LibraryPage: React.FC = () => {
                       onTouchStart={(e) => handleTouchStart(e, song)}
                       onTouchEnd={handleTouchEnd}
                       onTouchMove={handleTouchMove}
-                      className={`flex items-center p-3 lg:p-4 hover:bg-gray-700 transition-colors border-b border-gray-800 last:border-b-0 group ${
+                      className={`flex items-center p-3 lg:p-4 hover:bg-gray-700 transition-colors border-b border-gray-800 last:border-b-0 group cursor-pointer ${
                         currentSong?.id === song.id
                           ? 'bg-blue-500 bg-opacity-20 border border-blue-500 border-opacity-50'
                           : ''
