@@ -143,9 +143,16 @@ const LibraryPage: React.FC = () => {
       setLoading(true);
       const response: any = await apiService.getSongs({ limit: 10000 });
       const allSongsData = response.data.songs || [];
+
+      console.log('📚 [DEBUG] Fetched', allSongsData.length, 'songs');
+      console.log('📚 [DEBUG] Sample file paths from backend:', allSongsData.slice(0, 5).map(s => s.file_path));
+
       setAllSongs(allSongsData);
 
       const folderTree = buildFolderTree(allSongsData);
+      console.log('🌳 [DEBUG] Built folder tree with', folderTree.length, 'root folders');
+      console.log('🌳 [DEBUG] Root folder paths:', folderTree.map(f => f.path));
+
       setFolders(folderTree);
     } catch (error) {
       console.error('Error fetching library data:', error);
@@ -158,11 +165,22 @@ const LibraryPage: React.FC = () => {
   const buildFolderTree = (songs: Song[]): FolderNode[] => {
     const folderMap = new Map<string, FolderNode>();
 
-    songs.forEach(song => {
+    console.log('🌲 [DEBUG] Building folder tree from', songs.length, 'songs');
+
+    songs.forEach((song, index) => {
       if (!song.file_path) return;
 
       const normalizedPath = song.file_path.replace(/\\/g, '/');
       const parts = normalizedPath.split('/').filter(p => p && !p.endsWith('.mp3') && !p.endsWith('.flac') && !p.endsWith('.wav') && !p.endsWith('.m4a') && !p.endsWith('.ogg'));
+
+      // Log first few songs for debugging
+      if (index < 3) {
+        console.log('🌲 [DEBUG] Processing song:', {
+          original: song.file_path,
+          normalized: normalizedPath,
+          parts: parts
+        });
+      }
 
       let currentPath = '';
       parts.forEach((part) => {
@@ -175,6 +193,13 @@ const LibraryPage: React.FC = () => {
             children: [],
             songCount: 0
           });
+
+          if (index < 3) {
+            console.log('🌲 [DEBUG] Created folder node:', {
+              name: part,
+              path: currentPath
+            });
+          }
         }
       });
     });
@@ -224,12 +249,33 @@ const LibraryPage: React.FC = () => {
     }
 
     if (currentFolder && !currentVirtualFolder) {
+      console.log('🔍 [DEBUG] Filtering by folder:', currentFolder);
+      console.log('🔍 [DEBUG] Total songs before filter:', result.length);
+
+      // Log first few songs for debugging
+      console.log('🔍 [DEBUG] Sample song paths:', result.slice(0, 3).map(s => s.file_path));
+
       result = result.filter(song => {
         if (!song.file_path) return false;
         const normalizedPath = song.file_path.replace(/\\/g, '/');
         const folderWithSlash = currentFolder.endsWith('/') ? currentFolder : `${currentFolder}/`;
-        return normalizedPath.startsWith(folderWithSlash) || normalizedPath.startsWith(currentFolder);
+        const matches = normalizedPath.startsWith(folderWithSlash) || normalizedPath.startsWith(currentFolder);
+
+        // Log first match for debugging
+        if (result.indexOf(song) < 3) {
+          console.log('🔍 [DEBUG] Song:', {
+            original: song.file_path,
+            normalized: normalizedPath,
+            folder: currentFolder,
+            folderWithSlash: folderWithSlash,
+            matches: matches
+          });
+        }
+
+        return matches;
       });
+
+      console.log('🔍 [DEBUG] Songs after filter:', result.length);
     }
 
     if (searchQuery) {
@@ -281,6 +327,8 @@ const LibraryPage: React.FC = () => {
   };
 
   const handleFolderClick = (folderPath: string) => {
+    console.log('📁 [DEBUG] Folder clicked:', folderPath);
+    console.log('📁 [DEBUG] Folder path type:', typeof folderPath);
     setCurrentFolder(folderPath);
     setCurrentVirtualFolder(null);
     setSearchQuery('');
