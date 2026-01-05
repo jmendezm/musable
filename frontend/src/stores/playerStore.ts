@@ -5,6 +5,7 @@ import { Song, PlayerState, RepeatMode } from '../types';
 import { apiService } from '../services/api';
 import { handleRoomAwareNext } from '../utils/roomPlayback';
 import { playbackWebSocketService } from '../services/playbackWebSocket';
+import { startHeartbeat, stopHeartbeat } from '../utils/heartbeat';
 
 // Media Session API helper functions
 const updateMediaSession = (song: Song | null, isPlaying: boolean) => {
@@ -449,6 +450,7 @@ export const usePlayerStore = create<PlayerStore>()(
         // If a new song is provided, update current song and queue, OR if no howl exists
         if (song && (song.id !== state.currentSong?.id || !state.howl)) {
           if (state.howl) {
+            stopHeartbeat(); // Stop heartbeat before unloading
             state.howl.unload();
           }
           
@@ -500,6 +502,9 @@ export const usePlayerStore = create<PlayerStore>()(
 
               // Start progress tracking
               startProgressTracking(howl, set, get);
+
+              // Start heartbeat for play tracking
+              startHeartbeat(song.id, () => get().currentTime);
             },
             onpause: () => {
               set({ isPlaying: false });
@@ -511,6 +516,9 @@ export const usePlayerStore = create<PlayerStore>()(
 
               // Stop progress tracking
               stopProgressTracking(set, get);
+
+              // Stop heartbeat
+              stopHeartbeat();
             },
             onend: () => {
               const currentState = get();
@@ -532,6 +540,9 @@ export const usePlayerStore = create<PlayerStore>()(
 
               // Stop progress tracking
               stopProgressTracking(set, get);
+
+              // Stop heartbeat
+              stopHeartbeat();
 
               // Auto-advance to next song
               if (currentState.repeatMode === 'one') {
@@ -611,9 +622,10 @@ export const usePlayerStore = create<PlayerStore>()(
         if (howl) {
           howl.stop();
         }
-        set({ 
+        stopHeartbeat(); // Stop heartbeat when stopping playback
+        set({
           currentTime: 0,
-          isPlaying: false 
+          isPlaying: false
         });
       },
 
@@ -962,6 +974,7 @@ export const usePlayerStore = create<PlayerStore>()(
 
         // Stop current playback
         if (state.howl) {
+          stopHeartbeat(); // Stop heartbeat when changing queue
           state.howl.unload();
         }
 
@@ -994,6 +1007,7 @@ export const usePlayerStore = create<PlayerStore>()(
         } else if (index === currentIndex) {
           // Removing current song - pause playback
           if (state.howl) {
+            stopHeartbeat(); // Stop heartbeat when removing current song
             state.howl.unload();
           }
           
@@ -1033,6 +1047,7 @@ export const usePlayerStore = create<PlayerStore>()(
       clearQueue: () => {
         const { howl } = get();
         if (howl) {
+          stopHeartbeat(); // Stop heartbeat when clearing queue
           howl.unload();
         }
         

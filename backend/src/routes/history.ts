@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   trackPlay,
+  heartbeat,
   getUserHistory,
   getRecentlyPlayed,
   getMostPlayed,
@@ -14,6 +15,7 @@ const router = Router();
 router.use(authenticateToken);
 
 router.post('/track', trackPlay);
+router.post('/heartbeat', heartbeat);
 router.get('/', getUserHistory);
 router.get('/recent', getRecentlyPlayed);
 router.get('/most-played', getMostPlayed);

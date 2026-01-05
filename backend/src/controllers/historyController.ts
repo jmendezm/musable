@@ -11,6 +11,11 @@ const trackPlaySchema = Joi.object({
   completed: Joi.boolean().default(false)
 });
 
+const heartbeatSchema = Joi.object({
+  songId: Joi.number().integer().positive().required(),
+  durationPlayed: Joi.number().integer().min(0).required()
+});
+
 export const trackPlay = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { error } = trackPlaySchema.validate(req.body);
   if (error) {
@@ -25,14 +30,43 @@ export const trackPlay = asyncHandler(async (req: AuthRequest, res: Response) =>
     throw new AppError('Song not found', 404);
   }
 
-  const historyEntry = await ListenHistoryModel.create({
-    user_id: userId,
-    song_id: songId,
-    duration_played: durationPlayed,
+  // Update the most recent listen_history entry for this user/song
+  // This prevents duplicate entries when skipping songs
+  const historyEntry = await ListenHistoryModel.updateMostRecent(
+    userId,
+    songId,
+    durationPlayed,
     completed
-  });
+  );
 
   res.status(201).json({
+    success: true,
+    data: { historyEntry }
+  });
+});
+
+export const heartbeat = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { error } = heartbeatSchema.validate(req.body);
+  if (error) {
+    throw new AppError(error.details[0].message, 400);
+  }
+
+  const { songId, durationPlayed } = req.body;
+  const userId = req.user!.id;
+
+  const song = await SongModel.findById(songId);
+  if (!song) {
+    throw new AppError('Song not found', 404);
+  }
+
+  // Update the most recent listen_history entry for this user/song
+  const historyEntry = await ListenHistoryModel.updateMostRecent(
+    userId,
+    songId,
+    durationPlayed
+  );
+
+  res.json({
     success: true,
     data: { historyEntry }
   });

@@ -260,6 +260,10 @@ class ApiService {
     return this.request('POST', '/history/track', data);
   }
 
+  async sendHeartbeat(data: { songId: number; durationPlayed: number }): Promise<ApiResponse<any>> {
+    return this.request('POST', '/history/heartbeat', data);
+  }
+
   async getUserHistory(params?: { limit?: number; offset?: number }): Promise<ApiResponse<{ history: ListenHistory[] }>> {
     const queryString = new URLSearchParams(params as any).toString();
     return this.request('GET', `/history${queryString ? `?${queryString}` : ''}`);

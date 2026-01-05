@@ -43,6 +43,47 @@ export class ListenHistoryModel {
     return history;
   }
 
+  async updateMostRecent(userId: number, songId: number, durationPlayed: number, completed?: boolean): Promise<ListenHistory | null> {
+    // Find the user's most recent listen history entry (regardless of song)
+    const lastUserEntry = await this.db.get<ListenHistory & { song_duration?: number }>(
+      `SELECT lh.*, s.duration as song_duration
+       FROM listen_history lh
+       JOIN songs s ON lh.song_id = s.id
+       WHERE lh.user_id = ?
+       ORDER BY lh.played_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+
+    // Calculate completion if not provided
+    // Consider completed if played >= 80% of song duration
+    let finalCompleted = completed;
+    if (finalCompleted === undefined) {
+      const songDuration = lastUserEntry?.song_duration || 0;
+      finalCompleted = songDuration > 0 && durationPlayed >= (songDuration * 0.8);
+    }
+
+    // If no entry exists, or last entry is for a different song, or last entry is completed
+    // -> Create a new entry
+    if (!lastUserEntry || lastUserEntry.song_id !== songId || lastUserEntry.completed === true) {
+      return await this.create({
+        user_id: userId,
+        song_id: songId,
+        duration_played: durationPlayed,
+        completed: finalCompleted
+      });
+    }
+
+    // Last entry is for the same song and not completed yet -> Update it
+    await this.db.run(
+      'UPDATE listen_history SET duration_played = ?, completed = ? WHERE id = ?',
+      [durationPlayed, finalCompleted, lastUserEntry.id]
+    );
+
+    const updated = await this.findById(lastUserEntry.id);
+    return updated;
+  }
+
   async findById(id: number): Promise<ListenHistory | null> {
     return await this.db.get<ListenHistory>(
       'SELECT * FROM listen_history WHERE id = ?',
