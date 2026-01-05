@@ -267,9 +267,6 @@ CREATE INDEX idx_song_artists_song ON song_artists(song_id);
 CREATE INDEX idx_song_artists_artist ON song_artists(artist_id);
 
 -- Unique constraints to prevent duplicates during concurrent scanning
-CREATE UNIQUE INDEX idx_songs_file_path_unique ON songs(file_path);
-CREATE UNIQUE INDEX idx_artists_name_unique ON artists(name COLLATE NOCASE);
-CREATE UNIQUE INDEX idx_albums_title_unique ON albums(title COLLATE NOCASE);
 CREATE INDEX idx_listen_history_user ON listen_history(user_id);
 CREATE INDEX idx_listen_history_song ON listen_history(song_id);
 CREATE INDEX idx_listen_history_played_at ON listen_history(played_at);
