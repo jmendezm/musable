@@ -116,6 +116,45 @@ export const getProfile = asyncHandler(async (req: AuthRequest, res: Response) =
   });
 });
 
+export const getUserProfile = asyncHandler(async (req: Request, res: Response) => {
+  const { username } = req.params;
+
+  const user = await UserModel.findByUsername(username);
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  const userWithoutPassword = {
+    id: user.id,
+    username: user.username,
+    profile_picture: user.profile_picture,
+    is_admin: user.is_admin,
+    created_at: user.created_at
+  };
+
+  res.json({
+    success: true,
+    data: {
+      user: userWithoutPassword
+    }
+  });
+});
+
+export const searchUsers = asyncHandler(async (req: Request, res: Response) => {
+  const { q: query } = req.query;
+
+  if (!query) {
+    throw new AppError('Search query is required', 400);
+  }
+
+  const users = await UserModel.searchUsers(query as string);
+
+  res.json({
+    success: true,
+    data: { users }
+  });
+});
+
 export const changePassword = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { error } = changePasswordSchema.validate(req.body);
   if (error) {

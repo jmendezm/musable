@@ -149,6 +149,18 @@ export class UserModel {
     );
     return result!.count;
   }
+
+  async searchUsers(query: string): Promise<UserWithoutPassword[]> {
+    const searchTerm = `%${query}%`;
+    return await this.db.query<UserWithoutPassword>(
+      `SELECT id, username, email, profile_picture, is_admin, created_at, updated_at, last_login
+       FROM users
+       WHERE username LIKE ?
+       ORDER BY username ASC
+       LIMIT 50`,
+      [searchTerm]
+    );
+  }
 }
 
 export default new UserModel();

@@ -102,7 +102,7 @@ export class PlaylistModel {
 
   async getPublicPlaylists(): Promise<PlaylistWithDetails[]> {
     return await this.db.query<PlaylistWithDetails>(
-      `SELECT 
+      `SELECT
         p.*,
         u.username,
         COUNT(ps.song_id) as song_count,
@@ -114,6 +114,24 @@ export class PlaylistModel {
        WHERE p.is_public = 1
        GROUP BY p.id
        ORDER BY p.updated_at DESC`
+    );
+  }
+
+  async getUserPublicPlaylists(userId: number): Promise<PlaylistWithDetails[]> {
+    return await this.db.query<PlaylistWithDetails>(
+      `SELECT
+        p.*,
+        u.username,
+        COUNT(ps.song_id) as song_count,
+        COALESCE(SUM(s.duration), 0) as total_duration
+       FROM playlists p
+       JOIN users u ON p.user_id = u.id
+       LEFT JOIN playlist_songs ps ON p.id = ps.playlist_id
+       LEFT JOIN songs s ON ps.song_id = s.id
+       WHERE p.user_id = ? AND p.is_public = 1
+       GROUP BY p.id
+       ORDER BY p.updated_at DESC`,
+      [userId]
     );
   }
 

@@ -102,6 +102,14 @@ class ApiService {
     return this.request('GET', '/auth/profile');
   }
 
+  async getUserProfile(username: string): Promise<ApiResponse<{ user: User }>> {
+    return this.request('GET', `/auth/profile/${username}`);
+  }
+
+  async searchUsers(query: string): Promise<ApiResponse<{ users: User[] }>> {
+    return this.request('GET', `/auth/search?q=${encodeURIComponent(query)}`);
+  }
+
   async changePassword(data: { currentPassword: string; newPassword: string }): Promise<ApiResponse<any>> {
     return this.request('PUT', '/auth/password', data);
   }
@@ -253,6 +261,10 @@ class ApiService {
 
   async searchPlaylists(query: string): Promise<ApiResponse<{ playlists: Playlist[] }>> {
     return this.request('GET', `/playlists/search?q=${encodeURIComponent(query)}`);
+  }
+
+  async getUserPublicPlaylists(username: string): Promise<ApiResponse<{ playlists: Playlist[] }>> {
+    return this.request('GET', `/playlists/user/${username}`);
   }
 
   // History endpoints

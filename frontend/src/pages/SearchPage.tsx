@@ -13,7 +13,7 @@ import EditSongModal from '../components/EditSongModal';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
 import { apiService } from '../services/api';
 import { searchExtensionManager, SearchResultItem } from '../services/searchExtensions';
-import { Song, Artist, Album } from '../types';
+import { Song, Artist, Album, User, Playlist } from '../types';
 import { useDebounce } from 'use-debounce';
 import clsx from 'clsx';
 
@@ -21,6 +21,8 @@ interface SearchResults {
   songs: Song[];
   artists: Artist[];
   albums: Album[];
+  users: User[];
+  playlists: Playlist[];
   extensionResults: Map<string, SearchResultItem[]>;
 }
 
@@ -40,11 +42,11 @@ const SearchPage: React.FC = () => {
     handleTouchMove,
     handleClick
   } = useContextMenu();
-  
+
   // Initialize state from URL params
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
-  const [selectedCategory, setSelectedCategory] = useState<'all' | 'songs' | 'artists' | 'albums'>(
-    (searchParams.get('category') as 'all' | 'songs' | 'artists' | 'albums') || 'all'
+  const [selectedCategory, setSelectedCategory] = useState<'all' | 'songs' | 'artists' | 'albums' | 'users' | 'playlists'>(
+    (searchParams.get('category') as 'all' | 'songs' | 'artists' | 'albums' | 'users' | 'playlists') || 'all'
   );
 
   const [debouncedQuery] = useDebounce(searchQuery, 300);
@@ -52,6 +54,8 @@ const SearchPage: React.FC = () => {
     songs: [],
     artists: [],
     albums: [],
+    users: [],
+    playlists: [],
     extensionResults: new Map()
   });
   const [isLocalLoading, setIsLocalLoading] = useState(false);
@@ -68,6 +72,8 @@ const SearchPage: React.FC = () => {
         songs: [],
         artists: [],
         albums: [],
+        users: [],
+        playlists: [],
         extensionResults: new Map()
       });
       return;
@@ -85,17 +91,21 @@ const SearchPage: React.FC = () => {
     // Load local results first (fast)
     setIsLocalLoading(true);
     try {
-      const [songsRes, artistsRes, albumsRes] = await Promise.all([
+      const [songsRes, artistsRes, albumsRes, usersRes, playlistsRes] = await Promise.all([
         apiService.getSongs({ search: query, limit: 20 }),
         apiService.getArtists(query),
-        apiService.getAlbums({ search: query })
+        apiService.getAlbums({ search: query }),
+        apiService.searchUsers(query),
+        apiService.searchPlaylists(query)
       ]);
 
       setResults(prev => ({
         ...prev,
         songs: songsRes.data.songs || [],
         artists: artistsRes.data.artists || [],
-        albums: albumsRes.data.albums || []
+        albums: albumsRes.data.albums || [],
+        users: usersRes.data.users || [],
+        playlists: playlistsRes.data.playlists || []
       }));
     } catch (error) {
       console.error('[SearchPage] ❌ Local search error:', error);
@@ -103,7 +113,9 @@ const SearchPage: React.FC = () => {
         ...prev,
         songs: [],
         artists: [],
-        albums: []
+        albums: [],
+        users: [],
+        playlists: []
       }));
     }
     setIsLocalLoading(false);
@@ -271,7 +283,9 @@ const SearchPage: React.FC = () => {
   const filteredResults = {
     songs: selectedCategory === 'all' || selectedCategory === 'songs' ? results.songs : [],
     artists: selectedCategory === 'all' || selectedCategory === 'artists' ? results.artists : [],
-    albums: selectedCategory === 'all' || selectedCategory === 'albums' ? results.albums : []
+    albums: selectedCategory === 'all' || selectedCategory === 'albums' ? results.albums : [],
+    users: selectedCategory === 'all' || selectedCategory === 'users' ? results.users : [],
+    playlists: selectedCategory === 'all' || selectedCategory === 'playlists' ? results.playlists : []
   };
 
   return (
@@ -287,7 +301,7 @@ const SearchPage: React.FC = () => {
         <MagnifyingGlassIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
         <input
           type="text"
-          placeholder="Search for songs, artists, or albums..."
+          placeholder="Search for songs, artists, albums, users, or playlists..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full pl-12 pr-4 py-3 md:py-4 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
@@ -298,16 +312,18 @@ const SearchPage: React.FC = () => {
       <div className="flex gap-2 md:gap-4 overflow-x-auto pb-2">
         {[
           { key: 'all', label: 'All', icon: MagnifyingGlassIcon },
-          { key: 'songs', label: 'Songs', icon: MusicalNoteIcon },
+          { key: 'users', label: 'Users', icon: UserIcon },
+          { key: 'playlists', label: 'Playlists', icon: MusicalNoteIcon },
+          { key: 'albums', label: 'Albums', icon: RectangleStackIcon },
           { key: 'artists', label: 'Artists', icon: UserIcon },
-          { key: 'albums', label: 'Albums', icon: RectangleStackIcon }
+          { key: 'songs', label: 'Songs', icon: MusicalNoteIcon }
         ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => {
-              const newCategory = key as 'all' | 'songs' | 'artists' | 'albums';
+              const newCategory = key as 'all' | 'songs' | 'artists' | 'albums' | 'users' | 'playlists';
               setSelectedCategory(newCategory);
-              
+
               // Update URL params immediately when category changes
               setSearchParams(prev => {
                 const newParams = new URLSearchParams(prev);
@@ -345,63 +361,143 @@ const SearchPage: React.FC = () => {
       {/* Search Results */}
       {!isLocalLoading && searchQuery && (
         <div className="space-y-6 md:space-y-8">
-          {/* Top Albums - Show smaller, more compact when available */}
-          {filteredResults.albums.length > 0 && selectedCategory === 'all' && (
+          {/* Users Section */}
+          {filteredResults.users.length > 0 && (selectedCategory === 'all' || selectedCategory === 'users') && (
             <div>
-              <h2 className="text-lg md:text-xl font-bold text-white mb-3 flex items-center gap-2">
-                <RectangleStackIcon className="w-5 h-5 text-primary" />
-                Top Albums
+              <h2 className="text-xl md:text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                <UserIcon className="w-6 h-6" />
+                Users ({filteredResults.users.length})
               </h2>
-              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-                {filteredResults.albums.slice(0, 4).map((album) => (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredResults.users.map((userItem) => (
                   <div
-                    key={album.id}
-                    className="bg-gray-800/50 p-2 md:p-3 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer group border border-gray-700 hover:border-primary/50"
-                    onClick={() => handleAlbumClick(album.id)}
+                    key={userItem.id}
+                    className="bg-gray-800/50 p-4 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer group"
+                    onClick={() => navigate(`/profile/${userItem.username}`)}
                   >
-                    <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-2 shadow-lg" style={{ paddingBottom: '100%' }}>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        {album.artwork_path ? (
+                    <div className="flex items-center space-x-4">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center flex-shrink-0">
+                        {userItem.profile_picture ? (
                           <img
-                            src={apiService.getArtworkUrl(album.artwork_path)}
-                            alt={album.title}
-                            className="w-full h-full object-cover"
+                            src={userItem.profile_picture}
+                            alt={userItem.username}
+                            className="w-full h-full rounded-full object-cover"
                           />
                         ) : (
-                          <MusicalNoteIcon className="w-6 h-6 text-gray-400" />
+                          <UserIcon className="w-8 h-8 text-white" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-white font-medium truncate">{userItem.username}</h3>
+                        {userItem.is_admin && (
+                          <span className="inline-block bg-primary/20 text-primary px-2 py-0.5 rounded text-xs font-medium">
+                            Admin
+                          </span>
                         )}
                       </div>
                     </div>
-                    <h3 className="text-white text-sm font-medium truncate">{album.title}</h3>
-                    <p className="text-gray-400 text-xs truncate">{album.artist_name}</p>
                   </div>
                 ))}
               </div>
-              {filteredResults.albums.length > 4 && (
-                <div className="mt-3">
-                  <button
-                    onClick={() => {
-                      setSelectedCategory('albums');
-                      setSearchParams(prev => {
-                        const newParams = new URLSearchParams(prev);
-                        if (searchQuery) {
-                          newParams.set('q', searchQuery);
-                        }
-                        newParams.set('category', 'albums');
-                        return newParams;
-                      });
-                    }}
-                    className="text-primary hover:text-secondary transition-colors text-sm font-medium"
+            </div>
+          )}
+
+          {/* Playlists Section */}
+          {filteredResults.playlists.length > 0 && (selectedCategory === 'all' || selectedCategory === 'playlists') && (
+            <div>
+              <h2 className="text-xl md:text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                <MusicalNoteIcon className="w-6 h-6" />
+                Playlists ({filteredResults.playlists.length})
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredResults.playlists.map((playlist) => (
+                  <div
+                    key={playlist.id}
+                    className="bg-gray-800/50 p-4 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer group"
+                    onClick={() => navigate(`/playlist/${playlist.id}`)}
                   >
-                    Show all {filteredResults.albums.length} albums
-                  </button>
+                    <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-3" style={{ paddingBottom: '100%' }}>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <MusicalNoteIcon className="w-12 h-12 text-gray-400" />
+                      </div>
+                    </div>
+                    <h3 className="text-white font-medium truncate">{playlist.name}</h3>
+                    <p className="text-gray-400 text-sm truncate">{playlist.username}</p>
+                    <p className="text-gray-500 text-xs">{playlist.song_count || 0} songs</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Albums and Artists - Responsive shared space */}
+          {(filteredResults.albums.length > 0 || filteredResults.artists.length > 0) && selectedCategory === 'all' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+              {/* Albums */}
+              {filteredResults.albums.length > 0 && (
+                <div>
+                  <h2 className="text-xl md:text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                    <RectangleStackIcon className="w-6 h-6" />
+                    Albums ({filteredResults.albums.length})
+                  </h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {filteredResults.albums.slice(0, 8).map((album) => (
+                      <div
+                        key={album.id}
+                        className="bg-gray-800/50 p-3 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer group"
+                        onClick={() => handleAlbumClick(album.id)}
+                      >
+                        <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-2" style={{ paddingBottom: '100%' }}>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            {album.artwork_path ? (
+                              <img
+                                src={apiService.getArtworkUrl(album.artwork_path)}
+                                alt={album.title}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <MusicalNoteIcon className="w-8 h-8 text-gray-400" />
+                            )}
+                          </div>
+                        </div>
+                        <h3 className="text-white text-sm font-medium truncate">{album.title}</h3>
+                        <p className="text-gray-400 text-xs truncate">{album.artist_name}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Artists */}
+              {filteredResults.artists.length > 0 && (
+                <div>
+                  <h2 className="text-xl md:text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                    <UserIcon className="w-6 h-6" />
+                    Artists ({filteredResults.artists.length})
+                  </h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {filteredResults.artists.slice(0, 8).map((artist) => (
+                      <div
+                        key={artist.id}
+                        className="bg-gray-800/50 p-3 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer group"
+                        onClick={() => handleArtistClick(artist.id)}
+                      >
+                        <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-2" style={{ paddingBottom: '100%' }}>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <UserIcon className="w-8 h-8 text-gray-400" />
+                          </div>
+                        </div>
+                        <h3 className="text-white text-sm font-medium truncate">{artist.name}</h3>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
           )}
 
           {/* Songs Section */}
-          {filteredResults.songs.length > 0 && (
+          {filteredResults.songs.length > 0 && (selectedCategory === 'all' || selectedCategory === 'songs') && (
             <div>
               <h2 className="text-xl md:text-2xl font-bold text-white mb-4 flex items-center gap-2">
                 <MusicalNoteIcon className="w-6 h-6" />
@@ -455,8 +551,46 @@ const SearchPage: React.FC = () => {
             </div>
           )}
 
-          {/* Artists Section */}
-          {filteredResults.artists.length > 0 && (
+          {/* Albums Section - Show when filtering specifically for albums */}
+          {filteredResults.albums.length > 0 && selectedCategory === 'albums' && (
+            <div>
+              <h2 className="text-xl md:text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                <RectangleStackIcon className="w-6 h-6" />
+                Albums ({filteredResults.albums.length})
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+                {filteredResults.albums.map((album) => (
+                  <div
+                    key={album.id}
+                    className="bg-gray-800/50 p-4 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer group"
+                    onClick={() => handleAlbumClick(album.id)}
+                  >
+                    <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-3" style={{ paddingBottom: '100%' }}>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        {album.artwork_path ? (
+                          <img
+                            src={apiService.getArtworkUrl(album.artwork_path)}
+                            alt={album.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <MusicalNoteIcon className="w-8 h-8 text-gray-400" />
+                        )}
+                      </div>
+                    </div>
+                    <h3 className="text-white font-medium truncate">{album.title}</h3>
+                    <p className="text-gray-400 text-sm truncate">{album.artist_name}</p>
+                    {album.release_year && (
+                      <p className="text-gray-500 text-xs">{album.release_year}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Artists Section - Show when filtering specifically for artists */}
+          {filteredResults.artists.length > 0 && selectedCategory === 'artists' && (
             <div>
               <h2 className="text-xl md:text-2xl font-bold text-white mb-4 flex items-center gap-2">
                 <UserIcon className="w-6 h-6" />
@@ -469,11 +603,13 @@ const SearchPage: React.FC = () => {
                     className="bg-gray-800/50 p-4 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer group"
                     onClick={() => handleArtistClick(artist.id)}
                   >
-                    <div className="w-full aspect-square rounded-full bg-gray-700 mb-3 flex items-center justify-center">
-                      <UserIcon className="w-8 h-8 text-gray-400" />
+                    <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-3" style={{ paddingBottom: '100%' }}>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <UserIcon className="w-8 h-8 text-gray-400" />
+                      </div>
                     </div>
-                    <h3 className="text-white font-medium text-center truncate">{artist.name}</h3>
-                    <p className="text-gray-400 text-sm text-center">
+                    <h3 className="text-white font-medium truncate">{artist.name}</h3>
+                    <p className="text-gray-400 text-sm">
                       {artist.song_count || 0} songs
                     </p>
                   </div>
@@ -482,7 +618,7 @@ const SearchPage: React.FC = () => {
             </div>
           )}
 
-          {/* Extension Results (YouTube Music, etc) */}
+          {/* Extension Results (Plugin songs) */}
           {selectedCategory === 'all' && (
             <>
               {/* Show loading state for extensions while they fetch */}
@@ -524,49 +660,11 @@ const SearchPage: React.FC = () => {
             </>
           )}
 
-          {/* Albums Section - Show when filtering specifically for albums */}
-          {filteredResults.albums.length > 0 && selectedCategory === 'albums' && (
-            <div>
-              <h2 className="text-xl md:text-2xl font-bold text-white mb-4 flex items-center gap-2">
-                <RectangleStackIcon className="w-6 h-6" />
-                Albums ({filteredResults.albums.length})
-              </h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-                {filteredResults.albums.map((album) => (
-                  <div
-                    key={album.id}
-                    className="bg-gray-800/50 p-4 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer group"
-                    onClick={() => handleAlbumClick(album.id)}
-                  >
-                    <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-3" style={{ paddingBottom: '100%' }}>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        {album.artwork_path ? (
-                          <img
-                            src={apiService.getArtworkUrl(album.artwork_path)}
-                            alt={album.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <MusicalNoteIcon className="w-8 h-8 text-gray-400" />
-                        )}
-                      </div>
-                    </div>
-                    <h3 className="text-white font-medium truncate">{album.title}</h3>
-                    <p className="text-gray-400 text-sm truncate">{album.artist_name}</p>
-                    {album.release_year && (
-                      <p className="text-gray-500 text-xs">{album.release_year}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
         </div>
       )}
 
       {/* No Results */}
-      {!isLocalLoading && !isLoadingExtensions && searchQuery && filteredResults.songs.length === 0 && filteredResults.artists.length === 0 && filteredResults.albums.length === 0 && Array.from(results.extensionResults.values()).every(results => results.length === 0) && (
+      {!isLocalLoading && !isLoadingExtensions && searchQuery && filteredResults.songs.length === 0 && filteredResults.artists.length === 0 && filteredResults.albums.length === 0 && filteredResults.users.length === 0 && filteredResults.playlists.length === 0 && Array.from(results.extensionResults.values()).every(results => results.length === 0) && (
         <div className="text-center py-12">
           <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">No results found</h3>
@@ -579,7 +677,7 @@ const SearchPage: React.FC = () => {
         <div className="text-center py-12">
           <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">Start searching</h3>
-          <p className="text-gray-400">Enter a song, artist, or album name above</p>
+          <p className="text-gray-400">Enter a song, artist, album, user, or playlist name above</p>
         </div>
       )}
 

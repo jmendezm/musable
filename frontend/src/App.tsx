@@ -25,6 +25,7 @@ import AlbumPage from './pages/AlbumPage';
 import PlaylistsPage from './pages/PlaylistsPage';
 import PlaylistDetailPage from './pages/PlaylistDetailPage';
 import HistoryPage from './pages/HistoryPage';
+import ProfilePage from './pages/ProfilePage';
 import SearchPage from './pages/SearchPage';
 import SettingsPage from './pages/SettingsPage';
 import AdminPage from './pages/admin/AdminPage';
@@ -170,6 +171,7 @@ const App: React.FC = () => {
                 <Route path="/playlists" element={<PlaylistsPage />} />
                 <Route path="/playlist/:id" element={<PlaylistDetailPage />} />
                 <Route path="/history" element={<HistoryPage />} />
+                <Route path="/profile/:username" element={<ProfilePage />} />
                 <Route path="/search" element={<SearchPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/rooms" element={<Rooms />} />

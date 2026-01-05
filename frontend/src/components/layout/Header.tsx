@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
+import {
   ChevronLeftIcon,
   ChevronRightIcon,
   UserCircleIcon,
+  UserIcon,
   ArrowLeftOnRectangleIcon,
   Cog6ToothIcon,
   Bars3Icon,
@@ -197,7 +198,18 @@ const Header: React.FC = () => {
               <p className="text-sm font-medium text-white">{user?.username}</p>
               <p className="text-xs text-gray-400">{user?.email}</p>
             </div>
-            
+
+            <button
+              onClick={() => {
+                navigate(`/profile/${user?.username}`);
+                setShowUserMenu(false);
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors flex items-center space-x-2"
+            >
+              <UserIcon className="w-4 h-4" />
+              <span>My Profile</span>
+            </button>
+
             <button
               onClick={() => {
                 navigate('/settings');
@@ -208,7 +220,7 @@ const Header: React.FC = () => {
               <Cog6ToothIcon className="w-4 h-4" />
               <span>Settings</span>
             </button>
-            
+
             <button
               onClick={handleLogout}
               className="w-full text-left px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-gray-700 transition-colors flex items-center space-x-2"

@@ -3,6 +3,7 @@ import Joi from 'joi';
 import PlaylistModel from '../models/Playlist';
 import PlaylistFollowsModel from '../models/PlaylistFollows';
 import SongModel from '../models/Song';
+import UserModel from '../models/User';
 import { AuthRequest } from '../middleware/auth';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
 
@@ -223,13 +224,29 @@ export const reorderPlaylistSongs = asyncHandler(async (req: AuthRequest, res: R
 
 export const searchPlaylists = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { q: query } = req.query;
-  
+
   if (!query) {
     throw new AppError('Search query is required', 400);
   }
 
   const userId = req.user?.id;
   const playlists = await PlaylistModel.searchPlaylists(query as string, userId);
+
+  res.json({
+    success: true,
+    data: { playlists }
+  });
+});
+
+export const getUserPublicPlaylists = asyncHandler(async (req: Request, res: Response) => {
+  const { username } = req.params;
+
+  const user = await UserModel.findByUsername(username);
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  const playlists = await PlaylistModel.getUserPublicPlaylists(user.id);
 
   res.json({
     success: true,

@@ -3,6 +3,8 @@ import {
   login,
   register,
   getProfile,
+  getUserProfile,
+  searchUsers,
   changePassword,
   logout,
   validateInvite,
@@ -19,6 +21,10 @@ router.post('/login', login);
 router.post('/register', register);
 
 router.get('/profile', authenticateToken, getProfile);
+
+router.get('/profile/:username', getUserProfile);
+
+router.get('/search', searchUsers);
 
 router.put('/password', authenticateToken, changePassword);
 

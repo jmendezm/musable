@@ -11,6 +11,7 @@ import {
   removeSongFromPlaylist,
   reorderPlaylistSongs,
   searchPlaylists,
+  getUserPublicPlaylists,
   followPlaylist,
   unfollowPlaylist,
   togglePlaylistFollow,
@@ -30,6 +31,7 @@ router.get('/all', authenticateToken, getAllPlaylists);
 router.get('/search', optionalAuth, searchPlaylists);
 router.get('/followed', authenticateToken, getFollowedPlaylists);
 router.get('/with-follow-status', authenticateToken, getPlaylistsWithFollowStatus);
+router.get('/user/:username', getUserPublicPlaylists);
 
 router.get('/:id', optionalAuth, getPlaylist);
 router.put('/:id', authenticateToken, updatePlaylist);
