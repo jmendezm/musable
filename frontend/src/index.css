@@ -230,6 +230,26 @@ code {
   }
 }
 
+/* Fade-in animation class */
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Slide-up animation for bottom sheet */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Slide-up animation class */
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 /* Prevent text selection on mobile to avoid interfering with touch interactions */
 @media (max-width: 768px) {
   * {
