@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { PlayIcon, MusicalNoteIcon, ClockIcon, CalendarIcon, HeartIcon, ArrowLeftIcon, ChevronDownIcon, ChevronUpIcon, EllipsisHorizontalIcon } from '@heroicons/react/24/outline';
 import { PlayIcon as PlayIconSolid, PauseIcon, HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
 import { usePlayerStore } from '../stores/playerStore';
@@ -14,6 +14,7 @@ import SongMenuBottomSheet from '../components/SongMenuBottomSheet';
 
 const AlbumPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { play, setQueue, addToQueue, currentSong, isPlaying } = usePlayerStore();
   const { isFollowing, toggleFollow, loadFollowedAlbums } = useFollowedAlbumsStore();
@@ -27,6 +28,7 @@ const AlbumPage: React.FC = () => {
   const [selectedSongForMenu, setSelectedSongForMenu] = useState<Song | null>(null);
   const [showSongMenu, setShowSongMenu] = useState(false);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
+  const [sharedSongId, setSharedSongId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -69,13 +71,46 @@ const AlbumPage: React.FC = () => {
     loadFollowedAlbums();
   }, [id, navigate, loadFollowedAlbums]);
 
+  // Handle ?song= parameter to highlight specific song from shared link
+  useEffect(() => {
+    const songId = searchParams.get('song');
+    if (songId && songs.length > 0) {
+      const songToHighlight = songs.find(s => s.id === Number(songId));
+      if (songToHighlight) {
+        // Set the shared song ID for highlighting
+        setSharedSongId(Number(songId));
+
+        // Scroll to the song after a short delay
+        setTimeout(() => {
+          const songElement = document.getElementById(`song-${Number(songId)}`);
+          if (songElement) {
+            songElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Add a flash animation
+            songElement.classList.add('ring-2', 'ring-primary', 'bg-gray-700');
+            setTimeout(() => {
+              songElement.classList.remove('ring-2', 'ring-primary', 'bg-gray-700');
+            }, 2000);
+          }
+        }, 500);
+        // Clear the parameter from URL
+        searchParams.delete('song');
+        navigate({ search: searchParams.toString() }, { replace: true });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songs, searchParams, navigate]);
+
   const handlePlayAlbum = () => {
+    // Clear the shared song highlight when user plays the album
+    setSharedSongId(null);
     if (songs.length > 0) {
       handleRoomAwarePlayback(songs[0], songs);
     }
   };
 
   const handlePlaySong = (song: Song, index: number) => {
+    // Clear the shared song highlight when user plays any song
+    setSharedSongId(null);
     handleRoomAwarePlayback(song, songs);
   };
 
@@ -183,20 +218,23 @@ const AlbumPage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-4 md:space-y-6 pb-24 md:pb-8">
+    <div className="space-y-4 md:space-y-6 pb-4">
       {/* Album Header */}
-      <div className="px-4 md:px-0">
+      {/* Back Button - Mobile - Positioned equally from top and left */}
+      <div className="absolute top-4 left-4 z-10 md:hidden">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center text-gray-400 hover:text-white bg-gray-900/50 rounded-full p-2 backdrop-blur-sm"
+        >
+          <ArrowLeftIcon className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="px-4 md:px-0 pt-16 md:pt-0">
+
         <div className="flex flex-col lg:flex-row lg:items-start gap-4 md:gap-6">
           {/* Album Info - Mobile First */}
           <div className="flex-1 text-center lg:text-left order-1 lg:order-2">
-            {/* Back Button - Mobile */}
-            <button
-              onClick={() => navigate('/library')}
-              className="lg:hidden flex items-center text-gray-400 hover:text-white mb-3"
-            >
-              <ArrowLeftIcon className="w-5 h-5 mr-2" />
-              Back to Library
-            </button>
             <p className="text-xs md:text-sm uppercase text-gray-400 tracking-wider mb-1 md:mb-2">Album</p>
 
             {/* Album Artwork - Mobile Only */}
@@ -371,17 +409,6 @@ const AlbumPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Desktop Back Button */}
-      <div className="px-4 md:px-0">
-        <button
-          onClick={() => navigate('/library')}
-          className="hidden lg:flex items-center text-gray-400 hover:text-white"
-        >
-          <ArrowLeftIcon className="w-5 h-5 mr-2" />
-          Back to Library
-        </button>
-      </div>
-
       {/* Songs List */}
       <div className="px-0 lg:px-4">
         {songs.length > 0 ? (
@@ -392,13 +419,16 @@ const AlbumPage: React.FC = () => {
                 {songs.map((song, index) => {
                   const isCurrentSong = currentSong?.id === song.id;
                   const isSongPlaying = isCurrentSong && isPlaying;
+                  const isSharedSong = sharedSongId === song.id;
 
                   return (
                     <div
                       key={song.id}
+                      id={`song-${song.id}`}
                       className={clsx(
-                        'flex items-center gap-3 md:gap-4 py-3 px-0 md:px-3 rounded-lg hover:bg-gray-800 transition-colors group cursor-pointer',
-                        isCurrentSong && 'bg-gray-800'
+                        'flex items-center gap-3 md:gap-4 py-3 px-0 md:px-3 rounded-lg hover:bg-gray-800 transition-all duration-300 group cursor-pointer',
+                        isCurrentSong && 'bg-gray-800',
+                        isSharedSong && 'bg-primary/20 ring-2 ring-primary'
                       )}
                       onClick={() => handlePlaySong(song, index)}
                     >
@@ -419,16 +449,23 @@ const AlbumPage: React.FC = () => {
                       </div>
 
                       {/* Song Info */}
-                      <div className="flex-1 min-w-0">
-                        <h3 className={clsx(
-                          'font-medium truncate text-sm md:text-base',
-                          isCurrentSong ? 'text-primary' : 'text-white'
-                        )}>
-                          {song.title}
-                        </h3>
-                        <p className="text-gray-400 text-xs md:text-sm truncate">
-                          {song.artist_name}
-                        </p>
+                      <div className="flex-1 min-w-0 flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          <h3 className={clsx(
+                            'font-medium truncate text-sm md:text-base',
+                            isCurrentSong ? 'text-primary' : 'text-white'
+                          )}>
+                            {song.title}
+                          </h3>
+                          <p className="text-gray-400 text-xs md:text-sm truncate">
+                            {song.artist_name}
+                          </p>
+                        </div>
+                        {isSharedSong && (
+                          <div className="flex-shrink-0 px-2 py-1 bg-primary text-white text-xs font-medium rounded-full">
+                            Shared
+                          </div>
+                        )}
                       </div>
 
                       {/* Duration */}

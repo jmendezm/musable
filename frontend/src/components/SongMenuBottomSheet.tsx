@@ -85,9 +85,27 @@ const SongMenuBottomSheet: React.FC<SongMenuBottomSheetProps> = ({
       await navigator.clipboard.writeText(response.data.shareUrl);
       showSuccess('Share link copied to clipboard!');
       onClose();
-    } catch (error) {
-      console.error('Failed to create share link:', error);
-      showError('Failed to copy share link');
+    } catch (error: any) {
+      // Check if public sharing is disabled
+      if (error?.response?.data?.error?.includes('Public sharing is disabled') ||
+          error?.message?.includes('Public sharing is disabled')) {
+        // Fall back to internal link
+        try {
+          const baseUrl = window.location.origin;
+          const internalUrl = song.album_id
+            ? `${baseUrl}/album/${song.album_id}?song=${song.id}`
+            : `${baseUrl}/song/${song.id}`;
+          await navigator.clipboard.writeText(internalUrl);
+          showSuccess('Internal link copied to clipboard!');
+          onClose();
+        } catch (clipboardError) {
+          console.error('Failed to copy internal link:', clipboardError);
+          showError('Failed to copy link');
+        }
+      } else {
+        console.error('Failed to create share link:', error);
+        showError('Failed to copy share link');
+      }
     }
   };
 
