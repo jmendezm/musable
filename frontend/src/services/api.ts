@@ -358,8 +358,11 @@ class ApiService {
     return this.request('PUT', `/admin/songs/${id}`, data);
   }
 
-  async deleteSong(id: number): Promise<ApiResponse<any>> {
-    return this.request('DELETE', `/admin/songs/${id}`);
+  async deleteSong(id: number, deleteFile?: boolean): Promise<ApiResponse<any>> {
+    const url = deleteFile
+      ? `/admin/songs/${id}?deleteFile=true`
+      : `/admin/songs/${id}`;
+    return this.request('DELETE', url);
   }
 
   async getLibraryPaths(): Promise<ApiResponse<{ paths: any[] }>> {

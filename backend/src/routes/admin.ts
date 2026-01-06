@@ -32,7 +32,8 @@ import {
   clearAllSongsAndRescan,
   resetAllUserData,
   getCurrentlyPlaying,
-  getActiveRooms
+  getActiveRooms,
+  getDuplicateSongs
 } from '../controllers/adminController';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 
@@ -60,6 +61,7 @@ router.get('/stats/listening', getListeningStats);
 
 router.put('/songs/:id', updateSong);
 router.delete('/songs/:id', deleteSong);
+router.get('/songs/duplicates', getDuplicateSongs);
 
 router.get('/library/paths', getLibraryPaths);
 router.post('/library/paths', addLibraryPath);

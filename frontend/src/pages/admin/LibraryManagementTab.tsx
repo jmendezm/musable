@@ -11,7 +11,8 @@ import {
   XCircleIcon,
   DocumentTextIcon,
   ClockIcon,
-  XCircleIcon as XCircleIconSolid
+  XCircleIcon as XCircleIconSolid,
+  DocumentDuplicateIcon
 } from '@heroicons/react/24/outline';
 import { apiService } from '../../services/api';
 import { Song, ScanProgress } from '../../types';
@@ -20,6 +21,14 @@ import EditSongModal from '../../components/EditSongModal';
 import ScanReportModal from '../../components/ScanReportModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { useToast } from '../../contexts/ToastContext';
+
+type LibrarySubTab = 'overview' | 'duplicates';
+
+interface DuplicateGroup {
+  title: string;
+  artist: string;
+  songs: Song[];
+}
 
 interface LibraryPath {
   id: number;
@@ -40,8 +49,387 @@ interface LibraryPath {
   };
 }
 
+// Duplicates Tab Component
+interface DuplicatesTabContentProps {
+  songs: Song[];
+  setSongs: React.Dispatch<React.SetStateAction<Song[]>>;
+  onEditSong: (song: Song) => void;
+  onDeleteSong: (song: Song) => void;
+  refreshKey: number;
+  showSuccess: (message: string) => void;
+  showError: (message: string) => void;
+}
+
+const DuplicatesTabContent: React.FC<DuplicatesTabContentProps> = ({
+  onEditSong,
+  onDeleteSong,
+  refreshKey,
+  showSuccess,
+  showError
+}) => {
+  const [duplicates, setDuplicates] = useState<DuplicateGroup[]>([]);
+  const [allDuplicates, setAllDuplicates] = useState<DuplicateGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [totalDuplicates, setTotalDuplicates] = useState(0);
+  const [totalDuplicateSongs, setTotalDuplicateSongs] = useState(0);
+  const [excludeGenericTracks, setExcludeGenericTracks] = useState(true);
+  const [excludeUntitled, setExcludeUntitled] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const duplicatesPerPage = 10;
+
+  useEffect(() => {
+    fetchDuplicates();
+  }, [refreshKey]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [excludeGenericTracks, excludeUntitled]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [excludeGenericTracks, excludeUntitled, allDuplicates]);
+
+  const applyFilters = () => {
+    let filtered = [...allDuplicates];
+
+    // Filter out generic track names
+    if (excludeGenericTracks) {
+      const genericPatterns = [
+        /^track\s*\d+$/i,
+        /^audiotrack\s*\d+$/i,
+        /^track\s*[a-z]?$/i,
+        /^audio\s*\d+$/i,
+        /^untitled\s*\d*$/i,
+        /^unknown\s*\d*$/i,
+        /^new track$/i,
+        /^new recording$/i
+      ];
+
+      filtered = filtered.filter(group => {
+        return !genericPatterns.some(pattern => pattern.test(group.title));
+      });
+    }
+
+    // Filter out untitled/unknown songs
+    if (excludeUntitled) {
+      filtered = filtered.filter(group => {
+        const title = group.title.toLowerCase().trim();
+        const artist = group.artist.toLowerCase().trim();
+        return title !== '' &&
+               title !== 'untitled' &&
+               title !== 'unknown' &&
+               artist !== 'unknown artist' &&
+               artist !== 'unknown';
+      });
+    }
+
+    setDuplicates(filtered);
+
+    // Recalculate totals
+    const totalDup = filtered.length;
+    const totalSongs = filtered.reduce((sum, group) => sum + group.songs.length, 0);
+    setTotalDuplicates(totalDup);
+    setTotalDuplicateSongs(totalSongs);
+  };
+
+  const fetchDuplicates = async () => {
+    try {
+      setLoading(true);
+      const response = await apiService.request('GET', '/admin/songs/duplicates') as {
+        data: {
+          duplicates: Song[][];
+          total: number;
+          totalDuplicateSongs: number;
+        }
+      };
+
+      // Convert array of song arrays to DuplicateGroup format
+      const duplicateGroups: DuplicateGroup[] = response.data.duplicates.map(group => {
+        const title = group[0].title;
+        const artist = group[0].artist_name || 'Unknown';
+        return { title, artist, songs: group };
+      });
+
+      setAllDuplicates(duplicateGroups);
+      setDuplicates(duplicateGroups); // Initial set, will be filtered by useEffect
+    } catch (err: any) {
+      console.error('Failed to fetch duplicates:', err);
+      showError(err.message || 'Failed to fetch duplicate songs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSong = (song: Song, e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    onDeleteSong(song);
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    // Scroll to top of duplicates list
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Calculate pagination
+  const totalPages = Math.ceil(duplicates.length / duplicatesPerPage);
+  const startIndex = (currentPage - 1) * duplicatesPerPage;
+  const endIndex = startIndex + duplicatesPerPage;
+  const displayedDuplicates = duplicates.slice(startIndex, endIndex);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Filter Options */}
+      <div className="bg-gray-800 rounded-lg p-4">
+        <h3 className="text-white font-semibold mb-3 flex items-center">
+          <MagnifyingGlassIcon className="w-5 h-5 mr-2" />
+          Filter Options
+        </h3>
+        <div className="space-y-3">
+          <label className="flex items-center space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={excludeGenericTracks}
+              onChange={(e) => setExcludeGenericTracks(e.target.checked)}
+              className="w-4 h-4 text-primary bg-gray-700 border-gray-600 rounded focus:ring-primary focus:ring-2"
+            />
+            <div className="flex-1">
+              <span className="text-white font-medium">Exclude generic track names</span>
+              <p className="text-gray-400 text-sm">Filters out "Track 1", "AudioTrack 2", etc.</p>
+            </div>
+          </label>
+
+          <label className="flex items-center space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={excludeUntitled}
+              onChange={(e) => setExcludeUntitled(e.target.checked)}
+              className="w-4 h-4 text-primary bg-gray-700 border-gray-600 rounded focus:ring-primary focus:ring-2"
+            />
+            <div className="flex-1">
+              <span className="text-white font-medium">Exclude untitled/unknown songs</span>
+              <p className="text-gray-400 text-sm">Filters out songs with no title or unknown artist</p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-gray-800 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-400 text-sm">Duplicate Groups</p>
+              <p className="text-white text-2xl font-bold">{totalDuplicates}</p>
+            </div>
+            <DocumentDuplicateIcon className="w-8 h-8 text-primary" />
+          </div>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-400 text-sm">Total Duplicate Songs</p>
+              <p className="text-white text-2xl font-bold">{totalDuplicateSongs}</p>
+            </div>
+            <MusicalNoteIcon className="w-8 h-8 text-yellow-400" />
+          </div>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-400 text-sm">Potential Space Saved</p>
+              <p className="text-white text-2xl font-bold">{totalDuplicateSongs - totalDuplicates}</p>
+            </div>
+            <TrashIcon className="w-8 h-8 text-red-400" />
+          </div>
+        </div>
+      </div>
+
+      {/* Duplicates List */}
+      {duplicates.length === 0 ? (
+        <div className="bg-gray-800 rounded-lg p-12 text-center">
+          <DocumentDuplicateIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+          <h3 className="text-white text-xl font-semibold mb-2">No Duplicates Found</h3>
+          <p className="text-gray-400">Your library is clean! No duplicate songs were detected.</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Results Info */}
+          <div className="flex items-center justify-between text-sm text-gray-400">
+            <span>
+              Showing {startIndex + 1} to {Math.min(endIndex, duplicates.length)} of {duplicates.length} duplicate groups
+            </span>
+          </div>
+
+          {/* Duplicate Groups */}
+          <div className="space-y-4">
+            {displayedDuplicates.map((group, groupIndex) => (
+              <div key={groupIndex} className="bg-gray-800 rounded-lg p-4">
+                {/* Group Header */}
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-700">
+                  <div>
+                    <h4 className="text-white font-semibold text-lg">{group.title}</h4>
+                    <p className="text-gray-400 text-sm">by {group.artist}</p>
+                  </div>
+                  <span className="bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-full text-sm font-medium">
+                    {group.songs.length} duplicates
+                  </span>
+                </div>
+
+                {/* Duplicate Songs */}
+                <div className="space-y-2">
+                  {group.songs.map((song, songIndex) => (
+                  <div
+                    key={song.id}
+                    className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {song.artwork_path ? (
+                        <img
+                          src={apiService.getArtworkUrl(song.artwork_path)}
+                          alt=""
+                          className="w-12 h-12 rounded object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 bg-gray-600 rounded flex items-center justify-center flex-shrink-0">
+                          <MusicalNoteIcon className="w-6 h-6 text-gray-400" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium truncate">{song.title}</p>
+                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                          <span className="truncate">{song.album_title || 'Unknown Album'}</span>
+                          {song.duration && (
+                            <>
+                              <span>•</span>
+                              <span>{Math.floor(song.duration / 60)}:{String(song.duration % 60).padStart(2, '0')}</span>
+                            </>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 truncate">{song.file_path}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 ml-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onEditSong(song);
+                        }}
+                        className="p-2 text-gray-400 hover:text-primary transition-colors"
+                        title="Edit song"
+                      >
+                        <PencilIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDeleteSong(song, e);
+                        }}
+                        className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                        title="Delete song"
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4 border-t border-gray-700">
+              <div className="text-sm text-gray-400">
+                Page {currentPage} of {totalPages}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePageChange(currentPage - 1);
+                  }}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+
+                <div className="flex gap-1">
+                  {/* Show page numbers */}
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+
+                    return (
+                      <button
+                        key={pageNum}
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handlePageChange(pageNum);
+                        }}
+                        className={clsx(
+                          'px-3 py-2 rounded-lg transition-colors',
+                          currentPage === pageNum
+                            ? 'bg-primary text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        )}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePageChange(currentPage + 1);
+                  }}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const LibraryManagementTab: React.FC = () => {
+  const [activeSubTab, setActiveSubTab] = useState<LibrarySubTab>('overview');
   const [songs, setSongs] = useState<Song[]>([]);
+  const [duplicatesRefreshKey, setDuplicatesRefreshKey] = useState(0);
   const [libraryPaths, setLibraryPaths] = useState<LibraryPath[]>([]);
   const [scanStatus, setScanStatus] = useState<ScanProgress | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,6 +446,7 @@ const LibraryManagementTab: React.FC = () => {
   const [reportToDelete, setReportToDelete] = useState<{ id: number; path: string } | null>(null);
   const [deleteSongDialogOpen, setDeleteSongDialogOpen] = useState(false);
   const [songToDelete, setSongToDelete] = useState<Song | null>(null);
+  const [deleteFileToo, setDeleteFileToo] = useState(false);
   const [rescanAllDialogOpen, setRescanAllDialogOpen] = useState(false);
 
   // New states for path selector
@@ -470,6 +859,7 @@ const LibraryManagementTab: React.FC = () => {
 
   const handleDeleteSong = (song: Song) => {
     setSongToDelete(song);
+    setDeleteFileToo(false); // Reset checkbox
     setDeleteSongDialogOpen(true);
   };
 
@@ -477,15 +867,20 @@ const LibraryManagementTab: React.FC = () => {
     if (!songToDelete) return;
 
     try {
-      await apiService.deleteSong(songToDelete.id);
+      await apiService.deleteSong(songToDelete.id, deleteFileToo);
       await fetchSongs(currentPage, searchQuery);
-      showSuccess('Song deleted successfully');
+      // Trigger duplicates refresh if we're on the duplicates tab
+      if (activeSubTab === 'duplicates') {
+        setDuplicatesRefreshKey(prev => prev + 1);
+      }
+      showSuccess(deleteFileToo ? 'Song and file deleted successfully' : 'Song deleted successfully');
     } catch (err: any) {
       console.error('Failed to delete song:', err);
       showError(err.message || 'Failed to delete song');
     } finally {
       setDeleteSongDialogOpen(false);
       setSongToDelete(null);
+      setDeleteFileToo(false);
     }
   };
 
@@ -530,12 +925,44 @@ const LibraryManagementTab: React.FC = () => {
         <p className="text-gray-400">Manage music library paths and scan for new content</p>
       </div>
 
+      {/* Sub-Tab Navigation */}
+      <div className="border-b border-gray-700 pt-2">
+        <nav className="flex space-x-8">
+          <button
+            onClick={() => setActiveSubTab('overview')}
+            className={clsx(
+              'flex items-center space-x-2 py-3 px-1 border-b-2 font-medium text-sm transition-colors',
+              activeSubTab === 'overview'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+            )}
+          >
+            <FolderIcon className="w-5 h-5" />
+            <span>Overview</span>
+          </button>
+          <button
+            onClick={() => setActiveSubTab('duplicates')}
+            className={clsx(
+              'flex items-center space-x-2 py-3 px-1 border-b-2 font-medium text-sm transition-colors',
+              activeSubTab === 'duplicates'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+            )}
+          >
+            <DocumentDuplicateIcon className="w-5 h-5" />
+            <span>Duplicates</span>
+          </button>
+        </nav>
+      </div>
+
       {error && (
         <div className="bg-red-900/20 border border-red-500 rounded-lg p-4">
           <p className="text-red-400">{error}</p>
         </div>
       )}
 
+      {activeSubTab === 'overview' && (
+      <>
       {/* Library Paths Section */}
       <div className="bg-gray-800 rounded-lg p-6">
         <div className="flex items-center justify-between mb-4">
@@ -1095,6 +1522,20 @@ const LibraryManagementTab: React.FC = () => {
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {activeSubTab === 'duplicates' && (
+        <DuplicatesTabContent
+          songs={songs}
+          setSongs={setSongs}
+          onEditSong={handleEditSong}
+          onDeleteSong={handleDeleteSong}
+          refreshKey={duplicatesRefreshKey}
+          showSuccess={showSuccess}
+          showError={showError}
+        />
+      )}
 
       {/* Edit Song Modal */}
       <EditSongModal
@@ -1144,33 +1585,83 @@ const LibraryManagementTab: React.FC = () => {
       />
 
       {/* Delete Song Confirmation Dialog */}
-      <ConfirmDialog
-        isOpen={deleteSongDialogOpen}
-        onClose={() => setDeleteSongDialogOpen(false)}
-        onConfirm={handleConfirmDeleteSong}
-        title="Delete Song"
-        message={
-          songToDelete ? (
-            <div>
-              <p className="mb-2">Are you sure you want to delete this song?</p>
-              <p className="text-sm text-gray-400">
-                {songToDelete.title} by {songToDelete.artist_name}
+      {songToDelete && (
+        <div className={`fixed inset-0 z-50 flex items-center justify-center ${deleteSongDialogOpen ? 'block' : 'hidden'}`}>
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black bg-opacity-50"
+            onClick={() => setDeleteSongDialogOpen(false)}
+          />
+
+          {/* Dialog */}
+          <div className="relative bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-white mb-4">Delete Song</h3>
+
+            <div className="mb-4">
+              <p className="text-white mb-2">
+                Are you sure you want to delete <span className="font-semibold">{songToDelete.title}</span> by <span className="font-semibold">{songToDelete.artist_name}</span>?
               </p>
-              <p className="text-yellow-400 text-sm mt-1">
-                This will remove it from the database but will NOT delete the actual file.
+              <p className="text-gray-400 text-sm mb-4">
+                File path: <span className="font-mono text-xs">{songToDelete.file_path}</span>
               </p>
-              <p className="text-red-400 text-sm mt-3">
-                This action cannot be undone.
-              </p>
+
+              {/* Checkbox for deleting file */}
+              <label className="flex items-start space-x-3 cursor-pointer p-3 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={deleteFileToo}
+                  onChange={(e) => setDeleteFileToo(e.target.checked)}
+                  className="w-4 h-4 text-primary bg-gray-600 border-gray-500 rounded focus:ring-primary focus:ring-2 mt-1"
+                />
+                <div className="flex-1">
+                  <span className="text-white font-medium">Also delete the audio file</span>
+                  <p className="text-gray-400 text-sm mt-1">
+                    {deleteFileToo
+                      ? '⚠️ The file will be permanently deleted from your disk. This cannot be undone!'
+                      : 'Only the database entry will be removed. The file will remain on disk.'}
+                  </p>
+                </div>
+              </label>
+
+              {deleteFileToo && (
+                <div className="mt-3 p-3 bg-red-900/20 border border-red-500/50 rounded-lg">
+                  <p className="text-red-400 text-sm">
+                    <span className="font-semibold">Warning:</span> You are about to permanently delete the file <span className="font-mono text-xs">"{songToDelete.file_path}"</span>. This action cannot be undone!
+                  </p>
+                </div>
+              )}
             </div>
-          ) : (
-            'Are you sure you want to delete this song? This will remove it from the database but not delete the file.'
-          )
-        }
-        confirmText="Delete Song"
-        cancelText="Cancel"
-        type="danger"
-      />
+
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setDeleteSongDialogOpen(false);
+                }}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleConfirmDeleteSong();
+                }}
+                className={clsx(
+                  'px-4 py-2 rounded-lg transition-colors',
+                  deleteFileToo
+                    ? 'bg-red-600 text-white hover:bg-red-700'
+                    : 'bg-yellow-600 text-white hover:bg-yellow-700'
+                )}
+              >
+                {deleteFileToo ? 'Delete Song + File' : 'Delete Song Only'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Rescan All Libraries Confirmation Dialog */}
       <ConfirmDialog

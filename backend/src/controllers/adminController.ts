@@ -267,6 +267,7 @@ export const getListeningStats = asyncHandler(async (req: AuthRequest, res: Resp
 
 export const deleteSong = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
+  const { deleteFile } = req.query;
   const songId = parseInt(id);
 
   const song = await SongModel.findById(songId);
@@ -274,11 +275,30 @@ export const deleteSong = asyncHandler(async (req: AuthRequest, res: Response) =
     throw new AppError('Song not found', 404);
   }
 
+  // Delete the file from disk if requested
+  if (deleteFile === 'true' && song.file_path) {
+    const fs = await import('fs');
+    const path = await import('path');
+
+    try {
+      if (fs.existsSync(song.file_path)) {
+        fs.unlinkSync(song.file_path);
+      }
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      // Continue with database deletion even if file deletion fails
+    }
+  }
+
   await SongModel.deleteSong(songId);
 
   res.json({
     success: true,
-    data: { message: 'Song deleted successfully' }
+    data: {
+      message: deleteFile === 'true'
+        ? 'Song and file deleted successfully'
+        : 'Song deleted successfully'
+    }
   });
 });
 
@@ -1194,5 +1214,41 @@ export const getActiveRooms = asyncHandler(async (req: AuthRequest, res: Respons
       error: { message: 'Failed to fetch active rooms' }
     });
   }
+});
+
+export const getDuplicateSongs = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const allSongs = await SongModel.getAllWithDetails();
+
+  // Group songs by title and artist
+  const duplicateGroups: { [key: string]: SongWithDetails[] } = {};
+
+  for (const song of allSongs) {
+    // Normalize title and artist name for comparison
+    const normalizedTitle = song.title.toLowerCase().trim();
+    const normalizedArtist = song.artist_name?.toLowerCase().trim() || 'unknown';
+
+    // Create a composite key for grouping
+    const key = `${normalizedTitle}|${normalizedArtist}`;
+
+    if (!duplicateGroups[key]) {
+      duplicateGroups[key] = [];
+    }
+
+    duplicateGroups[key].push(song);
+  }
+
+  // Filter only groups with duplicates
+  const duplicates = Object.values(duplicateGroups)
+    .filter(group => group.length > 1)
+    .sort((a, b) => b.length - a.length); // Sort by number of duplicates
+
+  res.json({
+    success: true,
+    data: {
+      duplicates,
+      total: duplicates.length,
+      totalDuplicateSongs: duplicates.reduce((sum, group) => sum + group.length, 0)
+    }
+  });
 });
 
