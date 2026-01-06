@@ -34,12 +34,19 @@ import {
   getCurrentlyPlaying,
   getActiveRooms,
   getDuplicateSongs,
+  splitSongArtists,
+  batchSplitSongArtists,
   getAllArtists,
   searchArtistImages,
   saveArtistImage,
   cropArtistImage,
-  uploadArtistImage as uploadArtistImageHandler
+  uploadArtistImage as uploadArtistImageHandler,
+  getAllIgnoreFilters,
+  createIgnoreFilter,
+  updateIgnoreFilter,
+  deleteIgnoreFilter
 } from '../controllers/adminController';
+import { getAllSongs } from '../controllers/libraryController';
 import multer from 'multer';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 
@@ -82,7 +89,10 @@ router.get('/stats/listening', getListeningStats);
 
 router.put('/songs/:id', updateSong);
 router.delete('/songs/:id', deleteSong);
+router.get('/songs', getAllSongs);
 router.get('/songs/duplicates', getDuplicateSongs);
+router.post('/songs/:id/split-artists', splitSongArtists);
+router.post('/songs/batch-split-artists', batchSplitSongArtists);
 
 // Artist image management routes
 router.get('/artists', getAllArtists);
@@ -115,5 +125,11 @@ router.put('/settings/:key', setSystemSetting);
 // User profile picture management routes
 router.put('/users/:userId/profile-picture', adminUploadProfilePicture.single('profilePicture'), updateUserProfilePicture);
 router.delete('/users/:userId/profile-picture', deleteUserProfilePicture);
+
+// Artist split ignore filters routes
+router.get('/artist-split-ignore-filters', getAllIgnoreFilters);
+router.post('/artist-split-ignore-filters', createIgnoreFilter);
+router.put('/artist-split-ignore-filters/:id', updateIgnoreFilter);
+router.delete('/artist-split-ignore-filters/:id', deleteIgnoreFilter);
 
 export default router;

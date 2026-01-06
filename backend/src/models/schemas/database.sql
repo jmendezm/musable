@@ -382,3 +382,18 @@ CREATE INDEX IF NOT EXISTS idx_library_path_scan_reports_scan_id
 
 CREATE INDEX IF NOT EXISTS idx_library_path_scan_errors_report_id
   ON library_path_scan_errors(scan_report_id);
+
+-- Artist splitting ignore filters table
+-- Stores patterns/keywords to ignore when showing songs for artist splitting
+CREATE TABLE IF NOT EXISTS artist_split_ignore_filters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pattern TEXT NOT NULL,
+  created_by INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+  updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Index for ignore filters
+CREATE INDEX IF NOT EXISTS idx_artist_split_ignore_filters_pattern
+  ON artist_split_ignore_filters(pattern);

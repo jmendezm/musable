@@ -460,6 +460,173 @@ async function saveArtworkFromUrl(albumId: number, imageUrl: string): Promise<st
   }
 }
 
+// Split artists for a single song
+export const splitSongArtists = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const { artists } = req.body;
+
+  if (!Array.isArray(artists) || artists.length === 0) {
+    throw new AppError('Artists array is required', 400);
+  }
+
+  const songId = parseInt(id);
+  const song = await SongModel.findById(songId);
+  if (!song) {
+    throw new AppError('Song not found', 404);
+  }
+
+  try {
+    // Filter out empty/invalid artist names and clean them
+    const validArtists = artists
+      .map(a => a.trim())
+      .filter(a => a.length > 0)
+      .map(a => {
+        // Remove common suffixes like "feat", "ft", etc.
+        const cleanName = a
+          .replace(/\s*\(?feat\.?.*?\)?\s*$/gi, '')
+          .replace(/\s*\(?ft\.?.*?\)?\s*$/gi, '')
+          .replace(/\s*\(?featuring.*?\)?\s*$/gi, '')
+          .trim();
+        return cleanName;
+      })
+      .filter(a => a.length > 0);
+
+    if (validArtists.length === 0) {
+      throw new AppError('No valid artists provided after filtering', 400);
+    }
+
+    // Find or create each artist
+    const artistIds: number[] = [];
+    for (const artistName of validArtists) {
+      const artist = await ArtistModel.findOrCreate(artistName);
+      artistIds.push(artist.id);
+    }
+
+    // Set the artists via junction table
+    await SongModel.setArtists(songId, artistIds);
+
+    // Fetch updated song
+    const updatedSong = await SongModel.findWithDetails(songId);
+
+    res.json({
+      success: true,
+      data: {
+        message: `Successfully split artists`,
+        song: updatedSong
+      }
+    });
+  } catch (error: any) {
+    console.error('Error splitting artists:', error);
+    throw new AppError('Failed to split artists', 500);
+  }
+});
+
+// Batch split artists for multiple songs
+export const batchSplitSongArtists = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { songIds, separators } = req.body;
+
+  if (!Array.isArray(songIds) || songIds.length === 0) {
+    throw new AppError('Song IDs array is required', 400);
+  }
+
+  if (!Array.isArray(separators) || separators.length === 0) {
+    throw new AppError('Separators array is required', 400);
+  }
+
+  try {
+    let processedCount = 0;
+    let skippedCount = 0;
+    const errors: { songId: number; error: string }[] = [];
+
+    for (const songId of songIds) {
+      try {
+        const song = await SongModel.findById(parseInt(songId));
+        if (!song) {
+          errors.push({ songId, error: 'Song not found' });
+          continue;
+        }
+
+        // Get current artists from junction table
+        const currentArtists = await SongModel.getArtists(parseInt(songId));
+
+        // If no artists in junction table, try using artist_name from songs table
+        let artistNames: string[] = [];
+        if (currentArtists.length > 0) {
+          // Extract names from current artists
+          artistNames = currentArtists.map(a => a.name);
+        } else if (song.artist_name) {
+          // Fallback to artist_name if junction table is empty
+          artistNames = [song.artist_name];
+        } else {
+          errors.push({ songId, error: 'No artists found' });
+          continue;
+        }
+
+        // Split each artist name using the separators
+        let splitNames: string[] = [];
+        artistNames.forEach(name => {
+          let parts = [name];
+          separators.forEach(separator => {
+            const newParts: string[] = [];
+            parts.forEach(part => {
+              const splitParts = part.split(separator);
+              newParts.push(...splitParts.map(p => p.trim()));
+            });
+            parts = newParts;
+          });
+          splitNames.push(...parts);
+        });
+
+        // Clean up artist names (remove feat, ft, etc.)
+        splitNames = splitNames
+          .filter(name => name.length > 0)
+          .map(name => {
+            const cleanName = name
+              .replace(/\s*\(?feat\.?.*?\)?\s*$/gi, '')
+              .replace(/\s*\(?ft\.?.*?\)?\s*$/gi, '')
+              .replace(/\s*\(?featuring.*?\)?\s*$/gi, '')
+              .trim();
+            return cleanName;
+          })
+          .filter(name => name.length > 0);
+
+        // Find or create each artist
+        const artistIds: number[] = [];
+        for (const artistName of splitNames) {
+          const artist = await ArtistModel.findOrCreate(artistName);
+          artistIds.push(artist.id);
+        }
+
+        if (artistIds.length === 0) {
+          skippedCount++;
+          continue;
+        }
+
+        // Set the artists via junction table
+        await SongModel.setArtists(parseInt(songId), artistIds);
+
+        processedCount++;
+      } catch (error: any) {
+        errors.push({ songId, error: error.message });
+        console.error(`Error processing song ${songId}:`, error);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        message: `Processed ${processedCount} songs, skipped ${skippedCount}`,
+        processed: processedCount,
+        skipped: skippedCount,
+        errors
+      }
+    });
+  } catch (error: any) {
+    console.error('Error in batch split:', error);
+    throw new AppError('Failed to batch split artists', 500);
+  }
+});
+
 export const cleanupExpiredInvites = asyncHandler(async (req: AuthRequest, res: Response) => {
   const deletedCount = await InviteModel.cleanupExpiredInvites();
 
@@ -1543,3 +1710,64 @@ export const getAllArtists = asyncHandler(async (req: AuthRequest, res: Response
   });
 });
 
+// Artist Split Ignore Filters
+import artistSplitIgnoreFiltersModel from '../models/ArtistSplitIgnoreFilters';
+
+export const getAllIgnoreFilters = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const filters = await artistSplitIgnoreFiltersModel.getAll();
+
+  res.json({
+    success: true,
+    data: { filters }
+  });
+});
+
+export const createIgnoreFilter = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { pattern } = req.body;
+
+  if (!pattern || typeof pattern !== 'string' || pattern.trim().length === 0) {
+    throw new AppError('Pattern is required', 400);
+  }
+
+  // Check if pattern already exists
+  const existing = await artistSplitIgnoreFiltersModel.getByPattern(pattern.trim());
+  if (existing) {
+    throw new AppError('This pattern already exists', 400);
+  }
+
+  const filter = await artistSplitIgnoreFiltersModel.create(pattern.trim(), req.user!.id);
+
+  res.json({
+    success: true,
+    data: { filter }
+  });
+});
+
+export const updateIgnoreFilter = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const { pattern } = req.body;
+
+  if (!pattern || typeof pattern !== 'string' || pattern.trim().length === 0) {
+    throw new AppError('Pattern is required', 400);
+  }
+
+  const filterId = parseInt(id);
+  const filter = await artistSplitIgnoreFiltersModel.update(filterId, pattern.trim());
+
+  res.json({
+    success: true,
+    data: { filter }
+  });
+});
+
+export const deleteIgnoreFilter = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const filterId = parseInt(id);
+
+  await artistSplitIgnoreFiltersModel.delete(filterId);
+
+  res.json({
+    success: true,
+    data: { message: 'Ignore filter deleted successfully' }
+  });
+});

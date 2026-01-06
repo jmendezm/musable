@@ -45,14 +45,23 @@ export class ArtistModel {
   }
 
   async findOrCreate(name: string): Promise<Artist> {
-    // Try to insert first (atomic operation with UNIQUE constraint)
-    await this.db.run(
-      'INSERT OR IGNORE INTO artists (name) VALUES (?)',
+    // First, try to find case-insensitively
+    let artist = await this.db.get<Artist>(
+      'SELECT * FROM artists WHERE LOWER(name) = LOWER(?)',
       [name]
     );
 
-    // Now fetch the artist (it either existed or was just created)
-    const artist = await this.findByName(name);
+    // If not found, try to insert
+    if (!artist) {
+      const result = await this.db.run(
+        'INSERT INTO artists (name) VALUES (?)',
+        [name]
+      );
+
+      // Fetch the newly created artist
+      artist = await this.findById(result.lastID!);
+    }
+
     if (!artist) {
       throw new Error('Failed to find or create artist');
     }

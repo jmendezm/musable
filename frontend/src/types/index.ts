@@ -316,3 +316,11 @@ export interface HeaderAction {
   icon: React.ComponentType<any>;
   action: () => void;
 }
+
+export interface ArtistSplitIgnoreFilter {
+  id: number;
+  pattern: string;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}

@@ -16,7 +16,7 @@ import {
   ArrowUpTrayIcon
 } from '@heroicons/react/24/outline';
 import { apiService } from '../../services/api';
-import { Song, ScanProgress } from '../../types';
+import { Song, ScanProgress, ArtistSplitIgnoreFilter } from '../../types';
 import clsx from 'clsx';
 import EditSongModal from '../../components/EditSongModal';
 import ScanReportModal from '../../components/ScanReportModal';
@@ -24,7 +24,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import { useToast } from '../../contexts/ToastContext';
 import { getBackendUrl } from '../../config/config';
 
-type LibrarySubTab = 'overview' | 'duplicates' | 'artist-images';
+type LibrarySubTab = 'overview' | 'duplicates' | 'artist-images' | 'artist-splitting';
 
 interface DuplicateGroup {
   title: string;
@@ -1080,6 +1080,964 @@ const DuplicatesTabContent: React.FC<DuplicatesTabContentProps> = ({
   );
 };
 
+// Artist Splitting Tab Component
+interface ArtistSplittingTabContentProps {
+  showSuccess: (message: string) => void;
+  showError: (message: string) => void;
+}
+
+interface ArtistSplitSong {
+  id: number;
+  title: string;
+  artist_name: string;
+  album_title?: string;
+  artwork_path?: string;
+}
+
+const ArtistSplittingTabContent: React.FC<ArtistSplittingTabContentProps> = ({
+  showSuccess,
+  showError
+}) => {
+  const [songs, setSongs] = useState<ArtistSplitSong[]>([]);
+  const [filteredSongs, setFilteredSongs] = useState<ArtistSplitSong[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [processing, setProcessing] = useState(false);
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const songsPerPage = 50;
+
+  // Separators configuration
+  const [separators] = useState<string[]>([
+    ' & ',
+    ', ',
+    ' ft. ',
+    ' ft ',
+    ' feat. ',
+    ' feat ',
+    ' featuring ',
+    ' x ',
+    ' vs. ',
+    ' vs ',
+    ' with '
+  ]);
+
+  const [customSeparator, setCustomSeparator] = useState('');
+  const [selectedSeparators, setSelectedSeparators] = useState<string[]>([' & ', ', ']);
+  const [allSongs, setAllSongs] = useState<Song[]>([]);
+  const [disabledSplits, setDisabledSplits] = useState<Map<number, Set<number>>>(new Map());
+
+  // Ignore filters state
+  const [ignoreFilters, setIgnoreFilters] = useState<ArtistSplitIgnoreFilter[]>([]);
+  const [newIgnorePattern, setNewIgnorePattern] = useState('');
+
+  useEffect(() => {
+    fetchSongs();
+    fetchIgnoreFilters();
+  }, []);
+
+  // Re-filter songs when separators or ignore filters change
+  useEffect(() => {
+    if (allSongs.length === 0) return;
+
+    if (selectedSeparators.length === 0) {
+      // Show all songs when no separators selected
+      setSongs(allSongs.map(s => ({
+        id: s.id,
+        title: s.title,
+        artist_name: s.artist_name || '',
+        album_title: s.album_title,
+        artwork_path: s.artwork_path
+      })));
+    } else {
+      // Filter songs that need splitting
+      const filtered = allSongs.filter(song => {
+        const artistName = song.artist_name || '';
+        const hasSeparator = selectedSeparators.some(separator => artistName.includes(separator));
+
+        // Check if song has artists from junction table
+        // @ts-ignore - backend returns artists array
+        const junctionArtists = song.artists || [];
+
+        // Don't show if already has 2+ artists in junction table (already split)
+        if (junctionArtists.length >= 2) {
+          return false;
+        }
+
+        // Split the artist name
+        const { artists: splitArtists, separators } = splitArtistName(artistName);
+
+        // Apply ignore filters to see how many badges would actually be shown
+        const forcedMergeGroups: number[][] = [];
+        ignoreFilters.forEach(filter => {
+          const pattern = filter.pattern;
+          const patternLower = pattern.toLowerCase();
+
+          // Try to match the pattern against consecutive artists
+          for (let startIdx = 0; startIdx < splitArtists.length; startIdx++) {
+            let reconstructed = '';
+            const groupIndices: number[] = [];
+
+            for (let i = startIdx; i < splitArtists.length; i++) {
+              // Add separator before this artist (except first)
+              if (i > startIdx && i - 1 < separators.length) {
+                reconstructed += separators[i - 1];
+              }
+              reconstructed += splitArtists[i];
+              groupIndices.push(i);
+
+              // Check if reconstructed equals the pattern
+              if (reconstructed.toLowerCase() === patternLower && groupIndices.length > 1) {
+                // Exact match! Add this group
+                forcedMergeGroups.push([...groupIndices]);
+                break;
+              }
+            }
+          }
+        });
+
+        // Calculate final badge count after applying ignore filters
+        let badgeCount = splitArtists.length;
+        // Subtract the number of merges (each merge reduces count by group length - 1)
+        forcedMergeGroups.forEach(group => {
+          badgeCount -= (group.length - 1);
+        });
+
+        // Don't show if only 1 badge would be shown (already fine, even with ignore filters)
+        if (badgeCount <= 1) {
+          return false;
+        }
+
+        return hasSeparator;
+      });
+
+      setSongs(filtered.map(s => ({
+        id: s.id,
+        title: s.title,
+        artist_name: s.artist_name || '',
+        album_title: s.album_title,
+        artwork_path: s.artwork_path
+      })));
+    }
+  }, [selectedSeparators, allSongs, ignoreFilters]);
+
+  useEffect(() => {
+    if (searchQuery) {
+      const filtered = songs.filter(song =>
+        song.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        song.artist_name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredSongs(filtered);
+    } else {
+      setFilteredSongs(songs);
+    }
+    // Reset to page 1 when search query changes
+    setCurrentPage(1);
+  }, [searchQuery, songs]);
+
+  const fetchSongs = async () => {
+    try {
+      setLoading(true);
+      const response = await apiService.request('GET', '/admin/songs?limit=999999') as {
+        data: { songs: Song[] }
+      };
+
+      // Store all songs
+      setAllSongs(response.data.songs);
+
+      // Filter songs that need splitting
+      const songsNeedingSplit = response.data.songs.filter(song => {
+        const artistName = song.artist_name || '';
+        const hasSeparator = selectedSeparators.some(separator => artistName.includes(separator));
+
+        // Check if song has artists from junction table
+        // @ts-ignore - backend returns artists array
+        const junctionArtists = song.artists || [];
+
+        // Don't show if already has 2+ artists in junction table (already split)
+        if (junctionArtists.length >= 2) {
+          return false;
+        }
+
+        // Split the artist name
+        const { artists: splitArtists, separators } = splitArtistName(artistName);
+
+        // Apply ignore filters to see how many badges would actually be shown
+        const forcedMergeGroups: number[][] = [];
+        ignoreFilters.forEach(filter => {
+          const pattern = filter.pattern;
+          const patternLower = pattern.toLowerCase();
+
+          // Try to match the pattern against consecutive artists
+          for (let startIdx = 0; startIdx < splitArtists.length; startIdx++) {
+            let reconstructed = '';
+            const groupIndices: number[] = [];
+
+            for (let i = startIdx; i < splitArtists.length; i++) {
+              // Add separator before this artist (except first)
+              if (i > startIdx && i - 1 < separators.length) {
+                reconstructed += separators[i - 1];
+              }
+              reconstructed += splitArtists[i];
+              groupIndices.push(i);
+
+              // Check if reconstructed equals the pattern
+              if (reconstructed.toLowerCase() === patternLower && groupIndices.length > 1) {
+                // Exact match! Add this group
+                forcedMergeGroups.push([...groupIndices]);
+                break;
+              }
+            }
+          }
+        });
+
+        // Calculate final badge count after applying ignore filters
+        let badgeCount = splitArtists.length;
+        // Subtract the number of merges (each merge reduces count by group length - 1)
+        forcedMergeGroups.forEach(group => {
+          badgeCount -= (group.length - 1);
+        });
+
+        // Don't show if only 1 badge would be shown (already fine, even with ignore filters)
+        if (badgeCount <= 1) {
+          return false;
+        }
+
+        return hasSeparator;
+      });
+
+      setSongs(songsNeedingSplit.map(s => ({
+        id: s.id,
+        title: s.title,
+        artist_name: s.artist_name || '',
+        album_title: s.album_title,
+        artwork_path: s.artwork_path
+      })));
+
+      setFilteredSongs(songsNeedingSplit.map(s => ({
+        id: s.id,
+        title: s.title,
+        artist_name: s.artist_name || '',
+        album_title: s.album_title,
+        artwork_path: s.artwork_path
+      })));
+    } catch (err: any) {
+      console.error('Failed to fetch songs:', err);
+      showError(err.message || 'Failed to fetch songs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  interface ArtistSplitResult {
+    artists: string[];
+    separators: string[]; // The separator used AFTER each artist (length = artists.length - 1)
+  }
+
+  const splitArtistName = (artistName: string): ArtistSplitResult => {
+    let parts = [artistName];
+    let separators: string[] = [];
+
+    // Apply each separator in sequence
+    selectedSeparators.forEach(separator => {
+      const newParts: string[] = [];
+      const newSeparators: string[] = [];
+
+      parts.forEach((part, partIdx) => {
+        const splitResult = part.split(separator);
+        splitResult.forEach((subPart, subIdx) => {
+          const trimmed = subPart.trim();
+          if (trimmed) {
+            newParts.push(trimmed);
+            // The separator after this part is 'separator' unless it's the last sub-part
+            if (subIdx < splitResult.length - 1) {
+              newSeparators.push(separator);
+            } else if (partIdx < parts.length && separators.length > partIdx) {
+              // Keep existing separator for the last sub-part
+              newSeparators.push(separators[partIdx]);
+            }
+          }
+        });
+      });
+
+      parts = newParts;
+      separators = newSeparators;
+    });
+
+    // Clean up artist names
+    const cleanedArtists = parts.map(name =>
+      name.replace(/\s*\(?feat\.?.*?\)?\s*$/gi, '')
+          .replace(/\s*\(?ft\.?.*?\)?\s*$/gi, '')
+          .replace(/\s*\(?featuring.*?\)?\s*$/gi, '')
+          .trim()
+    ).filter(name => name.length > 0);
+
+    return { artists: cleanedArtists, separators };
+  };
+
+  const getFinalSplitArtists = (songId: number, artistName: string): { artists: string[], merged: boolean[], mergeGroups: number[][], separators: string[] } => {
+    const { artists: allArtists, separators: allSeparators } = splitArtistName(artistName);
+    const disabledSet = disabledSplits.get(songId) || new Set();
+
+    // Track which artists are first in a merge group
+    const merged: boolean[] = new Array(allArtists.length).fill(false);
+    const mergeGroups: number[][] = [];
+
+    // Build merge groups from disabled splits
+    const groups: number[][] = [];
+    let currentGroup: number[] = [0];
+
+    for (let i = 0; i < allArtists.length - 1; i++) {
+      if (disabledSet.has(i)) {
+        // Merge i with i+1, add i+1 to current group
+        currentGroup.push(i + 1);
+      } else {
+        // Split here, start a new group
+        groups.push([...currentGroup]);
+        currentGroup = [i + 1];
+      }
+    }
+    groups.push(currentGroup);
+
+    // Build final artists and mark first in each group
+    const finalArtists: string[] = [];
+    groups.forEach(group => {
+      if (group.length > 1) {
+        const mergedArtist = group.map(idx => allArtists[idx]).join(' & ');
+        finalArtists.push(mergedArtist);
+        merged[group[0]] = true;
+        mergeGroups.push(group);
+      } else {
+        finalArtists.push(allArtists[group[0]]);
+      }
+    });
+
+    return { artists: finalArtists, merged, mergeGroups, separators: allSeparators };
+  };
+
+  const toggleSplit = (songId: number, splitIndex: number) => {
+    setDisabledSplits(prev => {
+      const newMap = new Map(prev);
+      const disabledSet = newMap.get(songId) || new Set();
+      const newSet = new Set(disabledSet);
+
+      // Find the merge groups to determine if we're merging at a group boundary
+      // We need to get the current state of the song
+      const song = songs.find(s => s.id === songId);
+      if (!song) return prev;
+
+      const { mergeGroups } = getFinalSplitArtists(songId, song.artist_name);
+
+      // Check if this splitIndex is at the end of a merge group
+      let groupEndIndex = -1;
+      for (const group of mergeGroups) {
+        if (group.length > 1 && group[group.length - 1] === splitIndex) {
+          groupEndIndex = group[0]; // Store the start of this group
+          break;
+        }
+      }
+
+      if (newSet.has(splitIndex)) {
+        // Split is currently disabled (merged), remove it to enable split
+        // If it's at the end of a group, we need to remove the split that created this group
+        if (groupEndIndex >= 0) {
+          newSet.delete(groupEndIndex);
+        } else {
+          newSet.delete(splitIndex);
+        }
+      } else {
+        // Split is currently enabled, disable it to merge
+        // If we're at the end of a group, merge the entire group with the next artist
+        if (groupEndIndex >= 0) {
+          // Add split at the end of the group to merge it with next artist
+          newSet.add(splitIndex);
+        } else {
+          newSet.add(splitIndex);
+        }
+      }
+
+      if (newSet.size === 0) {
+        newMap.delete(songId);
+      } else {
+        newMap.set(songId, newSet);
+      }
+
+      return newMap;
+    });
+  };
+
+  const undoSplit = (songId: number, splitIndex: number, mergeGroup?: number[]) => {
+    setDisabledSplits(prev => {
+      const newMap = new Map(prev);
+      const disabledSet = newMap.get(songId) || new Set();
+      const newSet = new Set(disabledSet);
+
+      // If a merge group is provided, remove all splits that created it
+      if (mergeGroup && mergeGroup.length > 1) {
+        // Remove all split points that are part of this merge group
+        // For group [0,1,2], the splits are at indices 0 and 1
+        for (let i = 0; i < mergeGroup.length - 1; i++) {
+          newSet.delete(mergeGroup[i]);
+        }
+      } else {
+        // Otherwise just remove the single split
+        newSet.delete(splitIndex);
+      }
+
+      if (newSet.size === 0) {
+        newMap.delete(songId);
+      } else {
+        newMap.set(songId, newSet);
+      }
+
+      return newMap;
+    });
+  };
+
+  const handleSplit = async (songId: number, artistName: string) => {
+    const { artists } = getFinalSplitArtists(songId, artistName);
+
+    if (artists.length <= 1) {
+      showError('This artist name cannot be split with the current separators');
+      return;
+    }
+
+    try {
+      setProcessing(true);
+      await apiService.request('POST', `/admin/songs/${songId}/split-artists`, {
+        artists
+      });
+
+      showSuccess(`Successfully split "${artistName}" into ${artists.length} artists`);
+
+      // Clear disabled splits for this song
+      setDisabledSplits(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(songId);
+        return newMap;
+      });
+
+      // Remove the song from the list locally instead of refreshing
+      setAllSongs(prev => prev.filter(s => s.id !== songId));
+      setSongs(prev => prev.filter(s => s.id !== songId));
+      setFilteredSongs(prev => prev.filter(s => s.id !== songId));
+    } catch (err: any) {
+      console.error('Failed to split artists:', err);
+      showError(err.message || 'Failed to split artists');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleSplitAll = async () => {
+    if (filteredSongs.length === 0) {
+      showError('No songs to split');
+      return;
+    }
+
+    try {
+      setProcessing(true);
+      const response = await apiService.request('POST', '/admin/songs/batch-split-artists', {
+        songIds: filteredSongs.map(s => s.id),
+        separators: selectedSeparators
+      }) as {
+        data: { processed: number; skipped: number; errors: any[] }
+      };
+
+      const processedCount = response.data?.processed || filteredSongs.length;
+      showSuccess(`Successfully processed ${processedCount} songs`);
+
+      // Clear the entire list since all songs were processed
+      setAllSongs([]);
+      setSongs([]);
+      setFilteredSongs([]);
+    } catch (err: any) {
+      console.error('Failed to batch split artists:', err);
+      showError(err.message || 'Failed to split artists');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const addCustomSeparator = () => {
+    if (customSeparator && !selectedSeparators.includes(customSeparator)) {
+      setSelectedSeparators([...selectedSeparators, customSeparator]);
+      setCustomSeparator('');
+    }
+  };
+
+  const removeSeparator = (separator: string) => {
+    setSelectedSeparators(selectedSeparators.filter(s => s !== separator));
+  };
+
+  const toggleSeparator = (separator: string) => {
+    if (selectedSeparators.includes(separator)) {
+      removeSeparator(separator);
+    } else {
+      setSelectedSeparators([...selectedSeparators, separator]);
+    }
+  };
+
+  // Ignore filters functions
+  const fetchIgnoreFilters = async () => {
+    try {
+      const response = await apiService.request('GET', '/admin/artist-split-ignore-filters') as {
+        data: { filters: ArtistSplitIgnoreFilter[] }
+      };
+      setIgnoreFilters(response.data.filters);
+    } catch (error: any) {
+      console.error('Failed to fetch ignore filters:', error);
+      showError('Failed to load ignore filters');
+    }
+  };
+
+  const addIgnoreFilter = async () => {
+    if (!newIgnorePattern.trim()) return;
+
+    try {
+      await apiService.request('POST', '/admin/artist-split-ignore-filters', {
+        pattern: newIgnorePattern.trim()
+      });
+
+      showSuccess(`Ignore filter "${newIgnorePattern.trim()}" added`);
+      setNewIgnorePattern('');
+      await fetchIgnoreFilters();
+    } catch (error: any) {
+      console.error('Failed to add ignore filter:', error);
+      showError(error.message || 'Failed to add ignore filter');
+    }
+  };
+
+  const deleteIgnoreFilter = async (id: number) => {
+    try {
+      await apiService.request('DELETE', `/admin/artist-split-ignore-filters/${id}`);
+      showSuccess('Ignore filter deleted');
+      await fetchIgnoreFilters();
+    } catch (error: any) {
+      console.error('Failed to delete ignore filter:', error);
+      showError('Failed to delete ignore filter');
+    }
+  };
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredSongs.length / songsPerPage);
+  const startIndex = (currentPage - 1) * songsPerPage;
+  const endIndex = startIndex + songsPerPage;
+  const paginatedSongs = filteredSongs.slice(startIndex, endIndex);
+
+  return (
+    <div className="space-y-6">
+      {/* Separator Configuration */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Separator Configuration</h3>
+        <p className="text-gray-400 text-sm mb-4">
+          Select the separators to use when splitting artist names. Songs containing these separators will be shown below.
+        </p>
+
+        {/* Common Separators */}
+        <div className="mb-4">
+          <label className="text-white text-sm font-medium mb-2 block">Common Separators</label>
+          <div className="flex flex-wrap gap-2">
+            {separators.map(separator => (
+              <button
+                key={separator}
+                type="button"
+                onClick={() => toggleSeparator(separator)}
+                className={clsx(
+                  'px-3 py-1 rounded-full text-sm transition-colors',
+                  selectedSeparators.includes(separator)
+                    ? 'bg-primary text-white'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                )}
+              >
+                {`"${separator}"`}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Custom Separator */}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={customSeparator}
+            onChange={(e) => setCustomSeparator(e.target.value)}
+            placeholder="Add custom separator (e.g., ' & ')"
+            className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary"
+          />
+          <button
+            type="button"
+            onClick={addCustomSeparator}
+            disabled={!customSeparator}
+            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Add
+          </button>
+        </div>
+
+        {/* Selected Separators */}
+        {selectedSeparators.length > 0 && (
+          <div className="mt-4">
+            <label className="text-white text-sm font-medium mb-2 block">Active Separators</label>
+            <div className="flex flex-wrap gap-2">
+              {selectedSeparators.map(separator => (
+                <span
+                  key={separator}
+                  className="px-3 py-1 bg-gray-700 text-gray-300 rounded-full text-sm flex items-center gap-2"
+                >
+                  {`"${separator}"`}
+                  <button
+                    type="button"
+                    onClick={() => removeSeparator(separator)}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    <XCircleIcon className="w-4 h-4" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Ignore Filters */}
+        <div className="mt-6 pt-6 border-t border-gray-700">
+          <label className="text-white text-sm font-medium mb-2 block">Ignore Filters</label>
+          <p className="text-gray-400 text-sm mb-3">
+            Add patterns to ignore. Artist names matching these patterns will skip splitting and remain unchanged.
+          </p>
+
+          {/* Add new ignore filter */}
+          <div className="flex gap-2 mb-3">
+            <input
+              type="text"
+              value={newIgnorePattern}
+              onChange={(e) => setNewIgnorePattern(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && addIgnoreFilter()}
+              placeholder="Add pattern to ignore (e.g., 'Various Artists')"
+              className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary"
+            />
+            <button
+              type="button"
+              onClick={addIgnoreFilter}
+              disabled={!newIgnorePattern.trim()}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Add Filter
+            </button>
+          </div>
+
+          {/* List of ignore filters */}
+          {ignoreFilters.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {ignoreFilters.map(filter => (
+                <span
+                  key={filter.id}
+                  className="px-3 py-1 bg-red-900/30 text-red-400 rounded-full text-sm flex items-center gap-2 border border-red-800"
+                >
+                  {filter.pattern}
+                  <button
+                    type="button"
+                    onClick={() => deleteIgnoreFilter(filter.id)}
+                    className="text-red-400 hover:text-red-300"
+                    title="Remove filter"
+                  >
+                    <XCircleIcon className="w-4 h-4" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Songs List */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white flex items-center">
+            <MusicalNoteIcon className="w-5 h-5 mr-2" />
+            Songs with Multiple Artists ({filteredSongs.length})
+          </h3>
+          <button
+            type="button"
+            onClick={handleSplitAll}
+            disabled={processing || filteredSongs.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {processing ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                Processing...
+              </>
+            ) : (
+              <>
+                <ArrowPathIcon className="w-4 h-4" />
+                Split All ({filteredSongs.length})
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="relative mb-4">
+          <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search songs..."
+            className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary"
+          />
+        </div>
+
+        {/* Loading */}
+        {loading ? (
+          <div className="flex justify-center items-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          </div>
+        ) : (
+          <>
+            {/* Songs List */}
+            {filteredSongs.length > 0 ? (
+              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                {paginatedSongs.map(song => {
+                  const { artists: splitArtists, separators: allSeparators } = splitArtistName(song.artist_name);
+                  const { artists: finalArtists, merged, mergeGroups, separators } = getFinalSplitArtists(song.id, song.artist_name);
+                  const disabledSet = disabledSplits.get(song.id) || new Set();
+                  const hasModifications = disabledSet.size > 0;
+
+                  return (
+                    <div
+                      key={song.id}
+                      className="flex items-center gap-4 p-3 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      {/* Album Art */}
+                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-600 flex-shrink-0">
+                        {song.artwork_path ? (
+                          <img
+                            src={apiService.getArtworkUrl(song.artwork_path)}
+                            alt={song.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <MusicalNoteIcon className="w-6 h-6 text-gray-400" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Song Info */}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-white font-medium truncate">{song.title}</h4>
+                        <p className="text-gray-400 text-sm truncate">{song.artist_name}</p>
+                        {song.album_title && (
+                          <p className="text-gray-500 text-xs truncate">{song.album_title}</p>
+                        )}
+                      </div>
+
+                      {/* Preview */}
+                      {splitArtists.length > 1 ? (
+                        <div className={clsx(
+                          "flex-1 min-w-0",
+                          hasModifications && "bg-yellow-500/5 p-2 -m-2 rounded"
+                        )}>
+                          <p className="text-gray-500 text-xs mb-1">
+                            Will be split into:
+                            {hasModifications && <span className="text-yellow-500 ml-1">(modified)</span>}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-1">
+                            {(() => {
+                              // Build forced merge groups from ignore filters
+                              const forcedMergeGroups: number[][] = [];
+
+                              // For each ignore filter, find matching consecutive artists
+                              ignoreFilters.forEach(filter => {
+                                const pattern = filter.pattern;
+                                const patternLower = pattern.toLowerCase();
+
+                                // Try to match the pattern against consecutive artists
+                                for (let startIdx = 0; startIdx < splitArtists.length; startIdx++) {
+                                  let reconstructed = '';
+                                  const groupIndices: number[] = [];
+
+                                  for (let i = startIdx; i < splitArtists.length; i++) {
+                                    // Add separator before this artist (except first)
+                                    if (i > startIdx && i - 1 < separators.length) {
+                                      reconstructed += separators[i - 1];
+                                    }
+                                    reconstructed += splitArtists[i];
+                                    groupIndices.push(i);
+
+                                    // Check if reconstructed equals the pattern
+                                    if (reconstructed.toLowerCase() === patternLower && groupIndices.length > 1) {
+                                      // Exact match! Add this group
+                                      forcedMergeGroups.push([...groupIndices]);
+                                      break;
+                                    }
+                                  }
+                                }
+                              });
+
+                              // Merge with user-created groups
+                              const allMergeGroups = [...mergeGroups];
+                              forcedMergeGroups.forEach(forced => {
+                                const exists = allMergeGroups.some(g =>
+                                  g.length === forced.length && g.every((idx, i) => idx === forced[i])
+                                );
+                                if (!exists) {
+                                  allMergeGroups.push(forced);
+                                }
+                              });
+
+                              // Render
+                              return splitArtists.map((artist, index) => {
+                                const mergeGroup = allMergeGroups.find(g => g.includes(index));
+                                const isFirstInGroup = mergeGroup && mergeGroup[0] === index;
+
+                                if (!isFirstInGroup && mergeGroup) return null;
+
+                                const groupSize = mergeGroup ? mergeGroup.length : 1;
+                                const splitPointIndex = index + groupSize - 1;
+
+                                // Build display text
+                                let displayText = artist;
+                                if (mergeGroup) {
+                                  displayText = mergeGroup.map((groupIdx, i) => {
+                                    const artistName = splitArtists[groupIdx];
+                                    if (i < mergeGroup!.length - 1 && groupIdx < separators.length) {
+                                      return artistName + separators[groupIdx];
+                                    }
+                                    return artistName;
+                                  }).join('');
+                                }
+
+                                // Check if from ignore filter
+                                const isIgnored = mergeGroup && forcedMergeGroups.some(fg =>
+                                  fg.length === mergeGroup.length && fg.every((idx, i) => idx === mergeGroup![i])
+                                );
+
+                                return (
+                                  <React.Fragment key={index}>
+                                    {mergeGroup ? (
+                                      isIgnored ? (
+                                        <span className="px-2 py-1 text-xs rounded bg-primary/20 text-primary">
+                                          {displayText}
+                                        </span>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => undoSplit(song.id, index, mergeGroup)}
+                                          className="px-2 py-1 text-xs rounded bg-yellow-500/30 text-yellow-500 border border-yellow-500 hover:bg-yellow-500/40 transition-colors cursor-pointer"
+                                          title="Click to undo merge"
+                                        >
+                                          {displayText}
+                                        </button>
+                                      )
+                                    ) : (
+                                      <span className="px-2 py-1 text-xs rounded bg-primary/20 text-primary">
+                                        {artist}
+                                      </span>
+                                    )}
+
+                                    {index + groupSize < splitArtists.length && (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleSplit(song.id, splitPointIndex)}
+                                        className={clsx(
+                                          "px-1 py-1 text-xs font-mono rounded transition-colors",
+                                          disabledSet.has(splitPointIndex)
+                                            ? "bg-yellow-500 text-white hover:bg-yellow-600"
+                                            : "bg-gray-600 text-gray-300 hover:bg-gray-500"
+                                        )}
+                                        title={disabledSet.has(splitPointIndex)
+                                          ? "Click to enable split"
+                                          : "Click to disable split"}
+                                      >
+                                        |
+                                      </button>
+                                    )}
+                                  </React.Fragment>
+                                );
+                              });
+                            })()}
+                          </div>
+                        </div>
+                      ) : (
+                        // Single artist - no split needed
+                        <div className="flex-1 min-w-0">
+                          <p className="text-gray-500 text-xs">Single artist</p>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <button
+                        type="button"
+                        onClick={() => handleSplit(song.id, song.artist_name)}
+                        disabled={
+                          processing ||
+                          finalArtists.length <= 1
+                        }
+                        className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                      >
+                        {processing ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        ) : (
+                          <>
+                            <PencilIcon className="w-4 h-4" />
+                            Split
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <MusicalNoteIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-white mb-2">No songs found</h3>
+                <p className="text-gray-400">
+                  {searchQuery
+                    ? 'No songs match your search. Try a different search term.'
+                    : 'No songs with multiple artists found. Add more separators or check your library.'}
+                </p>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="mt-4 flex items-center justify-between border-t border-gray-700 pt-4">
+                <div className="text-sm text-gray-400">
+                  Showing {startIndex + 1}-{Math.min(endIndex, filteredSongs.length)} of {filteredSongs.length} songs
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-white">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const LibraryManagementTab: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<LibrarySubTab>('overview');
   const [songs, setSongs] = useState<Song[]>([]);
@@ -1617,6 +2575,18 @@ const LibraryManagementTab: React.FC = () => {
           >
             <MusicalNoteIcon className="w-5 h-5" />
             <span>Artist Images</span>
+          </button>
+          <button
+            onClick={() => setActiveSubTab('artist-splitting')}
+            className={clsx(
+              'flex items-center space-x-2 py-3 px-1 border-b-2 font-medium text-sm transition-colors',
+              activeSubTab === 'artist-splitting'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+            )}
+          >
+            <PencilIcon className="w-5 h-5" />
+            <span>Artist Splitting</span>
           </button>
         </nav>
       </div>
@@ -2205,6 +3175,13 @@ const LibraryManagementTab: React.FC = () => {
 
       {activeSubTab === 'artist-images' && (
         <ArtistImagesTabContent
+          showSuccess={showSuccess}
+          showError={showError}
+        />
+      )}
+
+      {activeSubTab === 'artist-splitting' && (
+        <ArtistSplittingTabContent
           showSuccess={showSuccess}
           showError={showError}
         />
