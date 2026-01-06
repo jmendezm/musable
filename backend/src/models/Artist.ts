@@ -3,6 +3,7 @@ import Database from '../config/database';
 export interface Artist {
   id: number;
   name: string;
+  image_path?: string;
   created_at: string;
   updated_at: string;
 }
@@ -93,10 +94,33 @@ export class ArtistModel {
     );
   }
 
-  async update(id: number, name: string): Promise<void> {
+  async update(id: number, data: { name?: string; image_path?: string }): Promise<void> {
+    const updates: string[] = [];
+    const values: any[] = [];
+
+    if (data.name !== undefined) {
+      updates.push('name = ?');
+      values.push(data.name);
+    }
+    if (data.image_path !== undefined) {
+      updates.push('image_path = ?');
+      values.push(data.image_path);
+    }
+
+    if (updates.length === 0) {
+      return;
+    }
+
+    values.push(id);
     await this.db.run(
-      'UPDATE artists SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [name, id]
+      `UPDATE artists SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      values
+    );
+  }
+
+  async getAllArtists(): Promise<Artist[]> {
+    return await this.db.query<Artist>(
+      'SELECT * FROM artists ORDER BY name'
     );
   }
 

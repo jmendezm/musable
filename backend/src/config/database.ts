@@ -24,6 +24,14 @@ export class Database {
         logger.info('Connected to SQLite database:', fullPath);
         this.db.run('PRAGMA foreign_keys = ON');
         this.db.run('PRAGMA journal_mode = WAL');
+
+        // Add image_path column to artists table if it doesn't exist
+        this.db.run(`ALTER TABLE artists ADD COLUMN image_path TEXT`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            // Column already exists, which is fine
+            logger.debug('artists.image_path column check:', err.message);
+          }
+        });
       }
     });
   }

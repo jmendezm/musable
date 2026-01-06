@@ -33,9 +33,30 @@ import {
   resetAllUserData,
   getCurrentlyPlaying,
   getActiveRooms,
-  getDuplicateSongs
+  getDuplicateSongs,
+  getAllArtists,
+  searchArtistImages,
+  saveArtistImage,
+  cropArtistImage,
+  uploadArtistImage as uploadArtistImageHandler
 } from '../controllers/adminController';
+import multer from 'multer';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
+
+// Configure multer for artist image uploads
+const uploadArtistImage = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
 
 const router = Router();
 
@@ -62,6 +83,13 @@ router.get('/stats/listening', getListeningStats);
 router.put('/songs/:id', updateSong);
 router.delete('/songs/:id', deleteSong);
 router.get('/songs/duplicates', getDuplicateSongs);
+
+// Artist image management routes
+router.get('/artists', getAllArtists);
+router.get('/artists/search-images', searchArtistImages);
+router.post('/artists/:artistId/image', saveArtistImage);
+router.post('/artists/:artistId/crop', cropArtistImage);
+router.post('/artists/:artistId/upload', uploadArtistImage.single('image'), uploadArtistImageHandler);
 
 router.get('/library/paths', getLibraryPaths);
 router.post('/library/paths', addLibraryPath);

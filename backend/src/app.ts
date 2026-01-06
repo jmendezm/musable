@@ -96,6 +96,15 @@ app.use('/uploads/artwork', express.static(path.join(process.cwd(), 'uploads', '
   }
 }));
 
+// Serve artist images with CORS
+app.use('/uploads/artists', express.static(path.join(process.cwd(), 'uploads', 'artists'), {
+  setHeaders: (res, filePath, stat) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
+}));
+
 app.use(helmet({
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: false, // Disable CORP to allow cross-origin static files

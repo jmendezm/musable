@@ -12,7 +12,8 @@ import {
   DocumentTextIcon,
   ClockIcon,
   XCircleIcon as XCircleIconSolid,
-  DocumentDuplicateIcon
+  DocumentDuplicateIcon,
+  ArrowUpTrayIcon
 } from '@heroicons/react/24/outline';
 import { apiService } from '../../services/api';
 import { Song, ScanProgress } from '../../types';
@@ -21,8 +22,9 @@ import EditSongModal from '../../components/EditSongModal';
 import ScanReportModal from '../../components/ScanReportModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { useToast } from '../../contexts/ToastContext';
+import { getBackendUrl } from '../../config/config';
 
-type LibrarySubTab = 'overview' | 'duplicates';
+type LibrarySubTab = 'overview' | 'duplicates' | 'artist-images';
 
 interface DuplicateGroup {
   title: string;
@@ -48,6 +50,658 @@ interface LibraryPath {
     progress: number;
   };
 }
+
+// Artist Images Tab Component
+interface Artist {
+  id: number;
+  name: string;
+  image_path?: string;
+}
+
+interface ArtistImagesTabContentProps {
+  showSuccess: (message: string) => void;
+  showError: (message: string) => void;
+}
+
+const ArtistImagesTabContent: React.FC<ArtistImagesTabContentProps> = ({
+  showSuccess,
+  showError
+}) => {
+  const [artists, setArtists] = useState<Artist[]>([]);
+  const [filteredArtists, setFilteredArtists] = useState<Artist[]>([]);
+  const [selectedArtist, setSelectedArtist] = useState<Artist | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [artistSearchQuery, setArtistSearchQuery] = useState('');
+  const [imageResults, setImageResults] = useState<any[]>([]);
+  const [searchingImages, setSearchingImages] = useState(false);
+  const [savingImage, setSavingImage] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Pagination for artists
+  const [currentPage, setCurrentPage] = useState(1);
+  const artistsPerPage = 50;
+
+  // Image crop modal
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState('');
+  const [cropArea, setCropArea] = useState({ x: 0, y: 0, size: 200 });
+  const [zoom, setZoom] = useState(1);
+  const [maxZoom, setMaxZoom] = useState(3);
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const imageCanvasRef = useRef<HTMLDivElement>(null);
+
+  // Fetch artists on mount
+  useEffect(() => {
+    fetchArtists();
+  }, []);
+
+  // Filter artists based on search
+  useEffect(() => {
+    if (artistSearchQuery) {
+      const filtered = artists.filter(artist =>
+        artist.name.toLowerCase().includes(artistSearchQuery.toLowerCase())
+      );
+      setFilteredArtists(filtered);
+      setCurrentPage(1); // Reset to page 1 when searching
+    } else {
+      setFilteredArtists(artists);
+    }
+  }, [artistSearchQuery, artists]);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredArtists.length / artistsPerPage);
+  const startIndex = (currentPage - 1) * artistsPerPage;
+  const endIndex = startIndex + artistsPerPage;
+  const displayedArtists = filteredArtists.slice(startIndex, endIndex);
+
+  const fetchArtists = async () => {
+    try {
+      const response = await apiService.request('GET', '/admin/artists') as {
+        data: { artists: Artist[] }
+      };
+      setArtists(response.data.artists);
+      setFilteredArtists(response.data.artists);
+    } catch (err: any) {
+      console.error('Failed to fetch artists:', err);
+      showError(err.message || 'Failed to fetch artists');
+    }
+  };
+
+  const searchArtistImages = async (query: string) => {
+    if (!query.trim()) {
+      showError('Please enter a search term');
+      return;
+    }
+
+    try {
+      setSearchingImages(true);
+      const response = await apiService.request('GET', `/admin/artists/search-images?artistName=${encodeURIComponent(query)}`) as {
+        data: { results: any[] }
+      };
+      setImageResults(response.data.results);
+    } catch (err: any) {
+      console.error('Failed to search artist images:', err);
+      showError(err.message || 'Failed to search artist images');
+    } finally {
+      setSearchingImages(false);
+    }
+  };
+
+  const handleArtistSelect = (artist: Artist) => {
+    setSelectedArtist(artist);
+    // Set the search query to artist name and auto-search
+    setSearchQuery(artist.name);
+    setImageResults([]); // Clear previous results
+    // Auto-search for images
+    searchArtistImages(artist.name);
+  };
+
+  const openCropModal = (imageUrl: string) => {
+    setSelectedImageUrl(imageUrl);
+    setCropModalOpen(true);
+    setZoom(1);
+    setCropArea({ x: 0, y: 0, size: 200 });
+
+    // Load image to get dimensions
+    const img = new Image();
+    img.onload = () => {
+      setImageSize({ width: img.width, height: img.height });
+      // Center crop area
+      const minDimension = Math.min(img.width, img.height);
+      setCropArea({
+        x: (img.width - minDimension) / 2,
+        y: (img.height - minDimension) / 2,
+        size: minDimension
+      });
+      // Calculate max zoom: allow zooming in until we'd sample less than 50px
+      const maxZoomValue = Math.min(minDimension / 50, 5); // Cap at 5x for usability
+      setMaxZoom(maxZoomValue);
+    };
+    img.src = imageUrl;
+  };
+
+  const handleCropAndSave = async () => {
+    if (!selectedArtist || !selectedImageUrl) return;
+
+    try {
+      setSavingImage(true);
+
+      // Send image URL and crop data to backend
+      const response = await apiService.request('POST', `/admin/artists/${selectedArtist.id}/crop`, {
+        imageUrl: selectedImageUrl,
+        cropArea: cropArea,
+        zoom: zoom
+      });
+
+      if (response.success) {
+        showSuccess('Artist image cropped and saved successfully');
+        setCropModalOpen(false);
+        await fetchArtists();
+
+        // Refresh selected artist
+        const updatedArtists = await apiService.request('GET', '/admin/artists') as {
+          data: { artists: Artist[] }
+        };
+        const updated = updatedArtists.data.artists.find(a => a.id === selectedArtist.id);
+        if (updated) {
+          setSelectedArtist(updated);
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to crop and save image:', err);
+      showError(err.message || 'Failed to crop and save image');
+    } finally {
+      setSavingImage(false);
+    }
+  };
+
+  const handleImageClick = (imageUrl: string) => {
+    openCropModal(imageUrl);
+  };
+
+  const handleSaveImage = async (imageUrl: string) => {
+    if (!selectedArtist) return;
+
+    try {
+      setSavingImage(true);
+      await apiService.request('POST', `/admin/artists/${selectedArtist.id}/image`, {
+        imageUrl
+      });
+      showSuccess('Artist image saved successfully');
+      // Refresh artists to show updated image
+      await fetchArtists();
+      // Refresh selected artist
+      const updatedArtists = await apiService.request('GET', '/admin/artists') as {
+        data: { artists: Artist[] }
+      };
+      const updated = updatedArtists.data.artists.find(a => a.id === selectedArtist.id);
+      if (updated) {
+        setSelectedArtist(updated);
+      }
+    } catch (err: any) {
+      console.error('Failed to save artist image:', err);
+      showError(err.message || 'Failed to save artist image');
+    } finally {
+      setSavingImage(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0] || !selectedArtist) return;
+
+    try {
+      setUploadingImage(true);
+      const file = e.target.files[0];
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const response = await fetch(`/api/admin/artists/${selectedArtist.id}/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload image');
+      }
+
+      showSuccess('Artist image uploaded successfully');
+      // Refresh artists
+      await fetchArtists();
+      // Clear file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (err: any) {
+      console.error('Failed to upload artist image:', err);
+      showError(err.message || 'Failed to upload artist image');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Search and Select Artist */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-white font-semibold mb-4 flex items-center">
+          <MusicalNoteIcon className="w-5 h-5 mr-2" />
+          Select Artist
+        </h3>
+
+        <div className="space-y-4">
+          {/* Search Input */}
+          <div className="relative">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              value={artistSearchQuery}
+              onChange={(e) => setArtistSearchQuery(e.target.value)}
+              placeholder="Search artists..."
+              className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary"
+            />
+          </div>
+
+          {/* Artist Grid with Pagination */}
+          <div className="space-y-4">
+            <div className="grid grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+              {displayedArtists.map(artist => (
+                <div key={artist.id} className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleArtistSelect(artist)}
+                    className={clsx(
+                      'w-full rounded-lg overflow-hidden transition-all hover:scale-105 relative',
+                      selectedArtist?.id === artist.id
+                        ? 'ring-2 ring-primary ring-offset-2 ring-offset-gray-800'
+                        : 'hover:ring-2 hover:ring-gray-600'
+                    )}
+                    style={{ paddingBottom: '100%' }}
+                  >
+                    <div className="absolute inset-0">
+                      {artist.image_path ? (
+                        <img
+                          src={`${getBackendUrl()}/${artist.image_path}`}
+                          alt={artist.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gray-700 flex items-center justify-center">
+                          <MusicalNoteIcon className="w-8 h-8 text-gray-500" />
+                        </div>
+                      )}
+                      {selectedArtist?.id === artist.id && (
+                        <div className="absolute inset-0 bg-primary bg-opacity-30 flex items-center justify-center">
+                          <CheckCircleIcon className="w-8 h-8 text-white" />
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                  <p className="text-xs text-gray-400 text-center break-words px-1" title={artist.name}>
+                    {artist.name}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-2 border-t border-gray-700">
+                <div className="text-sm text-gray-400">
+                  Page {currentPage} of {totalPages} ({filteredArtists.length} artists)
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setCurrentPage(Math.max(1, currentPage - 1));
+                    }}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  >
+                    Previous
+                  </button>
+
+                  <div className="flex gap-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+
+                      return (
+                        <button
+                          key={pageNum}
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setCurrentPage(pageNum);
+                          }}
+                          className={clsx(
+                            'px-3 py-1 rounded text-sm',
+                            currentPage === pageNum
+                              ? 'bg-primary text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          )}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setCurrentPage(Math.min(totalPages, currentPage + 1));
+                    }}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Image Search Results */}
+      {selectedArtist && (
+        <div className="bg-gray-800 rounded-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white font-semibold flex items-center">
+              <DocumentDuplicateIcon className="w-5 h-5 mr-2" />
+              Images for "{selectedArtist.name}"
+            </h3>
+
+            {/* Upload Button */}
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingImage}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 transition-colors"
+              >
+                {uploadingImage ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <ArrowUpTrayIcon className="w-4 h-4" />
+                    Upload Image
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Current Image */}
+          {selectedArtist.image_path && (
+            <div className="mb-4 p-4 bg-gray-700 rounded-lg">
+              <p className="text-gray-400 text-sm mb-2">Current image:</p>
+              <img
+                src={`${getBackendUrl()}/${selectedArtist.image_path}`}
+                alt={selectedArtist.name}
+                className="w-24 h-24 rounded-lg object-cover"
+              />
+            </div>
+          )}
+
+          {/* Search Box */}
+          <div className="mb-4 flex gap-2">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  searchArtistImages(searchQuery);
+                }
+              }}
+              placeholder="Search for images..."
+              className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary"
+            />
+            <button
+              type="button"
+              onClick={() => searchArtistImages(searchQuery)}
+              disabled={searchingImages}
+              className="flex items-center gap-2 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {searchingImages ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Searching...
+                </>
+              ) : (
+                <>
+                  <MagnifyingGlassIcon className="w-4 h-4" />
+                  Search
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Search Loading */}
+          {searchingImages && (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+              <span className="ml-3 text-gray-400">Searching for images...</span>
+            </div>
+          )}
+
+          {/* Image Results Grid */}
+          {!searchingImages && imageResults.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {imageResults.map((image, index) => (
+                <div
+                  key={index}
+                  className="group relative aspect-square rounded-lg overflow-hidden bg-gray-700 cursor-pointer"
+                  onClick={() => handleImageClick(image.url)}
+                >
+                  <img
+                    src={image.url}
+                    alt={`Result ${index + 1}`}
+                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center">
+                    <CheckCircleIcon className="w-12 h-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* No Results */}
+          {!searchingImages && imageResults.length === 0 && (
+            <div className="text-center py-8">
+              <DocumentDuplicateIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+              <p className="text-gray-400">
+                {searchQuery
+                  ? 'No images found. Try a different search term or upload a custom image.'
+                  : 'Enter a search term above or upload a custom image.'}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Image Crop Modal */}
+      {cropModalOpen && selectedImageUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-white">Crop Image</h3>
+              <button
+                type="button"
+                onClick={() => setCropModalOpen(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <XCircleIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Image Canvas with Crop Area */}
+            <div className="mb-4 flex justify-center">
+              <div
+                ref={imageCanvasRef}
+                className="relative border-2 border-gray-600 rounded overflow-hidden"
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '400px'
+                }}
+              >
+                <img
+                  src={selectedImageUrl}
+                  alt="To crop"
+                  className="block"
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '400px'
+                  }}
+                />
+
+                {/* Crop Area Overlay */}
+                <div
+                  className="absolute border-2 border-white shadow-lg box-content"
+                  style={{
+                    left: `${(cropArea.x / imageSize.width) * 100}%`,
+                    top: `${(cropArea.y / imageSize.height) * 100}%`,
+                    width: `${((cropArea.size / zoom) / imageSize.width) * 100}%`,
+                    height: `${((cropArea.size / zoom) / imageSize.height) * 100}%`,
+                    cursor: 'move',
+                    boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)'
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    const startCropArea = { ...cropArea };
+
+                    const handleMouseMove = (moveEvent: MouseEvent) => {
+                      const deltaX = moveEvent.clientX - startX;
+                      const deltaY = moveEvent.clientY - startY;
+
+                      // Get the current displayed element for proper scaling
+                      const target = e.target as HTMLElement;
+                      const imageRect = target.parentElement?.getBoundingClientRect();
+                      if (!imageRect) return;
+
+                      const scaleX = imageSize.width / imageRect.width;
+                      const scaleY = imageSize.height / imageRect.height;
+
+                      // Calculate new position with proper scaling
+                      let newX = startCropArea.x + deltaX * scaleX;
+                      let newY = startCropArea.y + deltaY * scaleY;
+
+                      // Constrain to image bounds (accounting for zoom)
+                      const maxDimension = Math.min(imageSize.width, imageSize.height);
+                      const effectiveSize = cropArea.size / zoom;
+
+                      newX = Math.max(0, Math.min(imageSize.width - effectiveSize, newX));
+                      newY = Math.max(0, Math.min(imageSize.height - effectiveSize, newY));
+
+                      setCropArea(prev => ({ ...prev, x: newX, y: newY }));
+                    };
+
+                    const handleMouseUp = () => {
+                      document.removeEventListener('mousemove', handleMouseMove);
+                      document.removeEventListener('mouseup', handleMouseUp);
+                    };
+
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Zoom Slider */}
+            <div className="mb-4 flex justify-center">
+              <div className="flex items-center gap-4 w-full max-w-[400px]">
+                <label className="text-white text-sm font-medium whitespace-nowrap">Zoom:</label>
+                <input
+                  type="range"
+                  min="1"
+                  max={maxZoom}
+                  step="0.1"
+                  value={zoom}
+                  onChange={(e) => {
+                    const newZoom = parseFloat(e.target.value);
+                    // Keep crop area centered when zooming
+                    const centerSize = cropArea.size / zoom;
+                    const newCenterSize = cropArea.size / newZoom;
+                    const centerOffset = (centerSize - newCenterSize) / 2;
+
+                    setCropArea(prev => ({
+                      ...prev,
+                      x: prev.x + centerOffset,
+                      y: prev.y + centerOffset
+                    }));
+                    setZoom(newZoom);
+                  }}
+                  className="flex-1"
+                />
+                <span className="text-gray-400 text-sm whitespace-nowrap">{Math.round(zoom * 100)}%</span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setCropModalOpen(false)}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCropAndSave}
+                disabled={savingImage}
+                className="flex items-center gap-2 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {savingImage ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircleIcon className="w-4 h-4" />
+                    Crop & Save
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Duplicates Tab Component
 interface DuplicatesTabContentProps {
@@ -952,6 +1606,18 @@ const LibraryManagementTab: React.FC = () => {
             <DocumentDuplicateIcon className="w-5 h-5" />
             <span>Duplicates</span>
           </button>
+          <button
+            onClick={() => setActiveSubTab('artist-images')}
+            className={clsx(
+              'flex items-center space-x-2 py-3 px-1 border-b-2 font-medium text-sm transition-colors',
+              activeSubTab === 'artist-images'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+            )}
+          >
+            <MusicalNoteIcon className="w-5 h-5" />
+            <span>Artist Images</span>
+          </button>
         </nav>
       </div>
 
@@ -1532,6 +2198,13 @@ const LibraryManagementTab: React.FC = () => {
           onEditSong={handleEditSong}
           onDeleteSong={handleDeleteSong}
           refreshKey={duplicatesRefreshKey}
+          showSuccess={showSuccess}
+          showError={showError}
+        />
+      )}
+
+      {activeSubTab === 'artist-images' && (
+        <ArtistImagesTabContent
           showSuccess={showSuccess}
           showError={showError}
         />

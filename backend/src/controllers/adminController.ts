@@ -1252,3 +1252,294 @@ export const getDuplicateSongs = asyncHandler(async (req: AuthRequest, res: Resp
   });
 });
 
+// Search for artist images using Google Images
+export const searchArtistImages = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { artistName } = req.query;
+
+  if (!artistName || typeof artistName !== 'string') {
+    throw new AppError('Artist name is required', 400);
+  }
+
+  try {
+    const { GOOGLE_IMG_SCRAP } = require('google-img-scrap');
+
+    const searchResults = await GOOGLE_IMG_SCRAP({
+      search: `${artistName} Cover`
+    });
+
+    // Return only the first 12 results
+    const results = searchResults.result.slice(0, 12);
+
+    res.json({
+      success: true,
+      data: {
+        results,
+        query: artistName
+      }
+    });
+  } catch (error: any) {
+    console.error('Error searching artist images:', error);
+    throw new AppError('Failed to search artist images', 500);
+  }
+});
+
+// Download and save artist image from URL
+export const saveArtistImage = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { artistId } = req.params;
+  const { imageUrl } = req.body;
+
+  if (!imageUrl) {
+    throw new AppError('Image URL is required', 400);
+  }
+
+  const artist = await ArtistModel.findById(parseInt(artistId));
+  if (!artist) {
+    throw new AppError('Artist not found', 404);
+  }
+
+  try {
+    // Create uploads/artists directory if it doesn't exist
+    const artistsDir = path.join(process.cwd(), 'uploads', 'artists');
+    if (!fs.existsSync(artistsDir)) {
+      fs.mkdirSync(artistsDir, { recursive: true });
+    }
+
+    // Download image
+    const response = await axios.default.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 10000
+    });
+
+    // Determine file extension from content-type
+    const contentType = response.headers['content-type'];
+    let ext = 'jpg';
+    if (contentType === 'image/png') ext = 'png';
+    else if (contentType === 'image/webp') ext = 'webp';
+    else if (contentType === 'image/jpeg') ext = 'jpg';
+
+    // Generate filename
+    const filename = `artist_${artist.id}_${Date.now()}.${ext}`;
+    const filepath = path.join(artistsDir, filename);
+
+    // Save file
+    fs.writeFileSync(filepath, response.data);
+
+    // Delete old image if exists
+    if (artist.image_path) {
+      const oldPath = path.join(process.cwd(), artist.image_path);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    // Update artist in database
+    await ArtistModel.update(artist.id, {
+      image_path: `uploads/artists/${filename}`
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Artist image saved successfully',
+        imagePath: `uploads/artists/${filename}`
+      }
+    });
+  } catch (error: any) {
+    console.error('Error saving artist image:', error);
+    throw new AppError('Failed to save artist image', 500);
+  }
+});
+
+// Crop and save artist image from URL
+export const cropArtistImage = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { artistId } = req.params;
+  const { imageUrl, cropArea, zoom } = req.body;
+
+  if (!imageUrl) {
+    throw new AppError('Image URL is required', 400);
+  }
+
+  if (!cropArea || typeof cropArea.x !== 'number' || typeof cropArea.y !== 'number' || typeof cropArea.size !== 'number') {
+    throw new AppError('Invalid crop area data', 400);
+  }
+
+  if (!zoom || typeof zoom !== 'number') {
+    throw new AppError('Invalid zoom value', 400);
+  }
+
+  const artist = await ArtistModel.findById(parseInt(artistId));
+  if (!artist) {
+    throw new AppError('Artist not found', 404);
+  }
+
+  try {
+    // Create uploads/artists directory if it doesn't exist
+    const artistsDir = path.join(process.cwd(), 'uploads', 'artists');
+    if (!fs.existsSync(artistsDir)) {
+      fs.mkdirSync(artistsDir, { recursive: true });
+    }
+
+    console.log(`Downloading image from: ${imageUrl}`);
+    console.log(`Crop data: x=${cropArea.x}, y=${cropArea.y}, size=${cropArea.size}, zoom=${zoom}`);
+
+    // Download image
+    const response = await axios.default.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    // Load image with sharp
+    const image = sharp(response.data);
+    const metadata = await image.metadata();
+
+    console.log(`Image dimensions: ${metadata.width}x${metadata.height}`);
+
+    // Calculate the actual area to extract based on zoom
+    const extractSize = Math.round(cropArea.size / zoom);
+    const extractX = Math.round(cropArea.x);
+    const extractY = Math.round(cropArea.y);
+
+    console.log(`Extracting: x=${extractX}, y=${extractY}, size=${extractSize}`);
+
+    // Validate extract bounds
+    if (extractX < 0 || extractY < 0 || extractSize <= 0) {
+      throw new Error('Invalid crop parameters');
+    }
+
+    if (!metadata.width || !metadata.height) {
+      throw new Error('Could not determine image dimensions');
+    }
+
+    if (extractX + extractSize > metadata.width || extractY + extractSize > metadata.height) {
+      throw new Error(`Crop area (${extractX + extractSize}x${extractY + extractSize}) exceeds image dimensions (${metadata.width}x${metadata.height})`);
+    }
+
+    // Extract and resize to cropArea.size (output size)
+    const processedImage = image
+      .extract({
+        left: extractX,
+        top: extractY,
+        width: extractSize,
+        height: extractSize
+      })
+      .resize(cropArea.size, cropArea.size, {
+        fit: 'cover',
+        position: 'center'
+      });
+
+    // Generate filename
+    const filename = `artist_${artist.id}_${Date.now()}.jpg`;
+    const filepath = path.join(artistsDir, filename);
+
+    // Save processed image
+    await processedImage.toFormat('jpeg', { quality: 95 }).toFile(filepath);
+
+    console.log(`Saved cropped image to: ${filepath}`);
+
+    // Delete old image if exists
+    if (artist.image_path) {
+      const oldPath = path.join(process.cwd(), artist.image_path);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+        console.log(`Deleted old image: ${oldPath}`);
+      }
+    }
+
+    // Update artist in database
+    await ArtistModel.update(artist.id, {
+      image_path: `uploads/artists/${filename}`
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Artist image cropped and saved successfully',
+        imagePath: `uploads/artists/${filename}`
+      }
+    });
+  } catch (error: any) {
+    console.error('Error cropping artist image:', error);
+    throw new AppError(`Failed to crop artist image: ${error.message}`, 500);
+  }
+});
+
+// Upload custom artist image
+export const uploadArtistImage = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { artistId } = req.params;
+
+  const artist = await ArtistModel.findById(parseInt(artistId));
+  if (!artist) {
+    throw new AppError('Artist not found', 404);
+  }
+
+  if (!req.file) {
+    throw new AppError('No file uploaded', 400);
+  }
+
+  try {
+    const fs = await import('fs');
+    const path = await import('path');
+
+    // Create uploads/artists directory if it doesn't exist
+    const artistsDir = path.join(process.cwd(), 'uploads', 'artists');
+    if (!fs.existsSync(artistsDir)) {
+      fs.mkdirSync(artistsDir, { recursive: true });
+    }
+
+    // Generate filename
+    const ext = path.extname(req.file.originalname);
+    const filename = `artist_${artist.id}_${Date.now()}${ext}`;
+    const filepath = path.join(artistsDir, filename);
+
+    // Save file
+    fs.writeFileSync(filepath, req.file.buffer);
+
+    // Delete old image if exists
+    if (artist.image_path) {
+      const oldPath = path.join(process.cwd(), artist.image_path);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    // Update artist in database
+    await ArtistModel.update(artist.id, {
+      image_path: `uploads/artists/${filename}`
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Artist image uploaded successfully',
+        imagePath: `uploads/artists/${filename}`
+      }
+    });
+  } catch (error: any) {
+    console.error('Error uploading artist image:', error);
+    throw new AppError('Failed to upload artist image', 500);
+  }
+});
+
+// Get all artists
+export const getAllArtists = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { search } = req.query;
+
+  let artists = await ArtistModel.getAllArtists();
+
+  // Filter by search query if provided
+  if (search && typeof search === 'string') {
+    const searchLower = search.toLowerCase();
+    artists = artists.filter(artist =>
+      artist.name.toLowerCase().includes(searchLower)
+    );
+  }
+
+  res.json({
+    success: true,
+    data: { artists }
+  });
+});
+
