@@ -9,6 +9,7 @@ import { useToast } from '../contexts/ToastContext';
 import { apiService } from '../services/api';
 import { Artist, Song, Album } from '../types';
 import clsx from 'clsx';
+import { getBackendUrl } from '../config/config';
 
 const ArtistPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -111,9 +112,17 @@ const ArtistPage: React.FC = () => {
         {/* Artist Image */}
         <div className="w-48 h-48 md:w-64 md:h-64 mx-auto md:mx-0 flex-shrink-0">
           <div className="w-full h-full rounded-full overflow-hidden bg-gray-800 shadow-2xl">
-            <div className="w-full h-full flex items-center justify-center">
-              <UserIcon className="w-16 h-16 md:w-20 md:h-20 text-gray-400" />
-            </div>
+            {artist.image_path ? (
+              <img
+                src={`${getBackendUrl()}/${artist.image_path}`}
+                alt={artist.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <UserIcon className="w-16 h-16 md:w-20 md:h-20 text-gray-400" />
+              </div>
+            )}
           </div>
         </div>
 
