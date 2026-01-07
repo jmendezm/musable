@@ -90,6 +90,12 @@ export const useAuthStore = create<AuthStore>()(
         // Call API logout endpoint (fire and forget)
         apiService.logout().catch(console.error);
 
+        // Clear the player when logging out
+        const { usePlayerStore } = require('../stores/playerStore');
+        const playerStore = usePlayerStore.getState();
+        playerStore.stop();
+        playerStore.clearQueue();
+
         set({
           user: null,
           token: null,
