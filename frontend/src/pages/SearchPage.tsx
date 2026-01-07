@@ -379,7 +379,7 @@ const SearchPage: React.FC = () => {
                       <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center flex-shrink-0">
                         {userItem.profile_picture ? (
                           <img
-                            src={userItem.profile_picture}
+                            src={apiService.getArtworkUrl(userItem.profile_picture)}
                             alt={userItem.username}
                             className="w-full h-full rounded-full object-cover"
                           />
