@@ -264,7 +264,6 @@ const setupAudioEffectsForElement = async (
 
   // Create MediaElementAudioSourceNode from our custom audio element
   const mediaElementSource = ctx.createMediaElementSource(audioElement);
-  console.log('✅ MediaElementAudioSourceNode created for custom audio element');
 
   // Create EQ filter nodes
   const filters: BiquadFilterNode[] = EQ_FREQUENCIES.map((freq, index) => {
@@ -511,8 +510,6 @@ const setupAudioEffects = async (
     // Already disconnected
   }
 
-  console.log('🎵 Setting up audio effects with Web Audio API');
-
   // Create EQ filter nodes
   const filters: BiquadFilterNode[] = EQ_FREQUENCIES.map((freq, index) => {
     const filter = ctx.createBiquadFilter();
@@ -689,7 +686,6 @@ export const usePlayerStore = create<PlayerStore>()(
             // Resume current song
             if (!state.isPlaying) {
               if (state.customAudioElement && state.customAudioElement.paused) {
-                console.log('🎵 Resuming custom audio element (no song param)');
                 set({ isPlaying: true });
                 state.customAudioElement.play().catch(err => {
                   console.error('❌ Error resuming audio:', err);
@@ -711,6 +707,13 @@ export const usePlayerStore = create<PlayerStore>()(
 
         // If a new song is provided, update current song and queue, OR if no howl exists
         if (song && (song.id !== state.currentSong?.id || !state.howl)) {
+          // CRITICAL: Stop the old custom audio element before starting a new song
+          if (state.customAudioElement) {
+            state.customAudioElement.pause();
+            state.customAudioElement.currentTime = 0;
+            // Note: We don't remove the element reference as it will be replaced
+          }
+
           if (state.howl) {
             stopHeartbeat(); // Stop heartbeat before unloading
             state.howl.unload();
@@ -745,8 +748,6 @@ export const usePlayerStore = create<PlayerStore>()(
           audioElement.preload = 'metadata';
           audioElement.src = urlWithToken;
 
-          console.log('✅ Created custom audio element with CORS:', audioElement.crossOrigin);
-
           // Set initial volume
           audioElement.volume = state.isMuted ? 0 : (isMobile ? 1.0 : state.volume);
 
@@ -770,7 +771,6 @@ export const usePlayerStore = create<PlayerStore>()(
           // This must be done before the audio element starts playing
           const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
           const mediaElementSource = ctx.createMediaElementSource(audioElement);
-          console.log('✅ MediaElementAudioSourceNode created ONCE');
 
           // Store these immediately so they can be reused when toggling effects
           set({
@@ -780,8 +780,6 @@ export const usePlayerStore = create<PlayerStore>()(
 
           // Setup audio effects when audio element can play
           audioElement.addEventListener('canplay', async () => {
-            console.log('✅ Audio can play - setting up effects');
-
             try {
               const currentState = get();
 
@@ -814,8 +812,6 @@ export const usePlayerStore = create<PlayerStore>()(
                 isLoading: false,
                 duration: audioElement.duration
               });
-
-              console.log('✅ Audio effects setup complete');
             } catch (error) {
               console.error('❌ Error setting up audio effects:', error);
               set({ isLoading: false });
@@ -888,7 +884,6 @@ export const usePlayerStore = create<PlayerStore>()(
 
         } else if (state.currentSong && song.id === state.currentSong.id) {
           // Same song already playing - do nothing
-          console.log('🎵 Same song already playing/loaded');
         }
       },
 
