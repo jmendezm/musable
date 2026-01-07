@@ -95,7 +95,7 @@ const Header: React.FC = () => {
   const canGoForward = false; // Browser history doesn't expose forward capability
 
   return (
-    <header className="bg-black/50 backdrop-blur-sm border-b border-gray-800 px-4 sm:px-6 py-4 flex items-center justify-between">
+    <header className="bg-black/50 backdrop-blur-sm border-b border-gray-800 px-4 sm:px-6 py-4 flex items-center justify-between relative z-50">
       {/* Mobile menu button + Navigation buttons */}
       <div className="flex items-center space-x-2">
         {/* Mobile menu button (visible on mobile only) */}
@@ -193,7 +193,7 @@ const Header: React.FC = () => {
 
         {/* Dropdown menu */}
         {showUserMenu && (
-          <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-2 z-50">
+          <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-2" style={{ zIndex: 9999 }}>
             <div className="px-4 py-2 border-b border-gray-700">
               <p className="text-sm font-medium text-white">{user?.username}</p>
               <p className="text-xs text-gray-400">{user?.email}</p>
