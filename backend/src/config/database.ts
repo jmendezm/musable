@@ -2,17 +2,16 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 import logger from '../utils/logger';
-
-const dbPath = process.env.DATABASE_PATH || './musable.db';
+import config from './config';
 
 export class Database {
   private static instance: Database;
   private db: sqlite3.Database;
 
   private constructor() {
-    const fullPath = path.resolve(dbPath);
+    const fullPath = path.resolve(config.databasePath);
     const dbDir = path.dirname(fullPath);
-    
+
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
     }

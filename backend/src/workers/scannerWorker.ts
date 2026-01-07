@@ -1,3 +1,4 @@
+import config from '../config/config';
 import { parentPort } from 'worker_threads';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -283,7 +284,7 @@ async function scanFile(filePath: string): Promise<ScanFileResult> {
 
 async function saveAlbumArtwork(albumId: number, picture: any): Promise<string | null> {
   try {
-    const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+    const artworkDir = path.join(config.uploadsDir, 'artwork');
     if (!fs.existsSync(artworkDir)) {
       fs.mkdirSync(artworkDir, { recursive: true });
     }

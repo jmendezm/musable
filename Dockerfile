@@ -18,7 +18,12 @@ RUN addgroup -g 1001 -S nodejs && \
 WORKDIR /app
 
 # Create necessary directories with correct permissions BEFORE copying files
-RUN mkdir -p /app/uploads/profile-pictures /app/uploads/artwork /app/data /music && \
+RUN mkdir -p /app/backend/data/uploads/profile-pictures \
+    /app/backend/data/uploads/artwork \
+    /app/backend/data/uploads/artists \
+    /app/backend/data/logs \
+    /app/backend/data/yt-downloads \
+    /music && \
     chown -R musable:nodejs /app /music
 
 # Copy package files first (for better caching)

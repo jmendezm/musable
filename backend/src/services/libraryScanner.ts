@@ -475,7 +475,7 @@ export class LibraryScanner {
 
   private async saveAlbumArtwork(albumId: number, picture: any): Promise<string | null> {
     try {
-      const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+      const artworkDir = path.join(config.uploadsDir, 'artwork');
       if (!fs.existsSync(artworkDir)) {
         fs.mkdirSync(artworkDir, { recursive: true });
       }

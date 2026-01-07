@@ -18,29 +18,27 @@ services:
 
       # Force rebuild on startup (set to 'true' to force reinstall and rebuild)
       # Only set to true if you need to force a rebuild, otherwise leave as 'false'
-      - FORCE_REBUILD=${FORCE_REBUILD:-false}
+      - FORCE_REBUILD=false
 
       # Frontend Configuration
+      # Change localhost to your server's IP or domain name
       - REACT_APP_BASE_URL=http://localhost:3000
       - REACT_APP_API_BASE_URL=http://localhost:3001/api
       - REACT_APP_WEBSOCKET_URL=ws://localhost:3001
 
-      # Database
-      - DATABASE_PATH=/app/data/musable.db
-
       # JWT Secret (CHANGE THIS!)
-      - JWT_SECRET=${JWT_SECRET:-change-this-super-secret-jwt-key-in-production}
+      - JWT_SECRET=change-this-super-secret-jwt-key-in-production
       - JWT_EXPIRES_IN=7d
 
       # Session Secret (CHANGE THIS!)
-      - SESSION_SECRET=${SESSION_SECRET:-change-this-super-secret-session-key-in-production}
+      - SESSION_SECRET=change-this-super-secret-session-key-in-production
 
       # Library Settings
       - SUPPORTED_FORMATS=["mp3","flac","wav","m4a","aac","ogg"]
 
       # Admin Settings (CHANGE THESE!)
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@admin.com}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - ADMIN_EMAIL=admin@admin.com
+      - ADMIN_PASSWORD=admin123
 
       # Rate Limiting
       - RATE_LIMIT_WINDOW_MS=900000
@@ -53,15 +51,17 @@ services:
       - LOG_LEVEL=info
 
     volumes:
-      # Mount your existing music library (read-only for safety)
-      # Change the path before the colon to your music folder
-      # Example (Windows): C:\Users\YourName\Music:/music:ro
-      # Example (Linux/Mac): /home/user/Music:/music:ro
-      - ${MUSIC_PATH:-./music}:/music:ro
+      # ================================
+      # CONFIGURE YOUR PATHS BELOW
+      # ================================
 
-      # Persistent data storage
-      - musable_data:/app/data
-      - musable_uploads:/app/uploads
+      # Your music library
+      # Change ./music to where your music files are stored on your host
+      - ./music:/music:ro
+
+      # ALL application data (database, uploads, logs, yt-downloads, sessions)
+      # Change ./musable-data to wherever you want your data stored
+      - ./musable-data:/app/backend/data
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
@@ -69,11 +69,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-volumes:
-  musable_data:
-    driver: local
-  musable_uploads:
-    driver: local
-  musable_yt_downloads:
-    driver: local

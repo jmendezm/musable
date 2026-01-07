@@ -1,3 +1,4 @@
+import config from '../config/config';
 import { Request, Response, NextFunction } from 'express';
 import Joi from 'joi';
 import multer from 'multer';
@@ -213,7 +214,7 @@ export const validateInvite = asyncHandler(async (req: Request, res: Response) =
 // Multer configuration for profile picture uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const profilePicturesDir = path.join(process.cwd(), 'uploads', 'profile-pictures');
+    const profilePicturesDir = path.join(config.uploadsDir, 'profile-pictures');
     if (!fs.existsSync(profilePicturesDir)) {
       fs.mkdirSync(profilePicturesDir, { recursive: true });
     }

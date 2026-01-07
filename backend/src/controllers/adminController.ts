@@ -16,6 +16,7 @@ import LibraryPathScanReportModel from '../models/LibraryPathScanReport';
 import getScannerWorkerService from '../services/scannerWorkerService';
 import { Database } from '../config/database';
 import { RoomModel } from '../models/Room';
+import config from '../config/config';
 
 // Get the singleton instance (lazy initialization)
 const scannerWorkerService = getScannerWorkerService();
@@ -440,7 +441,7 @@ async function saveArtworkFromBase64(albumId: number, dataUrl: string): Promise<
     const base64Data = matches[2];
     const buffer = Buffer.from(base64Data, 'base64');
 
-    const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+    const artworkDir = path.join(config.uploadsDir, 'artwork');
     if (!fs.existsSync(artworkDir)) {
       fs.mkdirSync(artworkDir, { recursive: true });
     }
@@ -470,7 +471,7 @@ async function saveArtworkFromUrl(albumId: number, imageUrl: string): Promise<st
 
     const buffer = Buffer.from(response.data);
 
-    const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+    const artworkDir = path.join(config.uploadsDir, 'artwork');
     if (!fs.existsSync(artworkDir)) {
       fs.mkdirSync(artworkDir, { recursive: true });
     }
@@ -1111,7 +1112,7 @@ export const getAllSystemSettings = asyncHandler(async (req: AuthRequest, res: R
 // Multer configuration for admin profile picture uploads
 const adminProfilePictureStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadsDir = path.join(process.cwd(), 'uploads', 'profile-pictures');
+    const uploadsDir = path.join(config.uploadsDir, 'profile-pictures');
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
@@ -1516,7 +1517,7 @@ export const saveArtistImage = asyncHandler(async (req: AuthRequest, res: Respon
 
   try {
     // Create uploads/artists directory if it doesn't exist
-    const artistsDir = path.join(process.cwd(), 'uploads', 'artists');
+    const artistsDir = path.join(config.uploadsDir, 'artists');
     if (!fs.existsSync(artistsDir)) {
       fs.mkdirSync(artistsDir, { recursive: true });
     }
@@ -1591,7 +1592,7 @@ export const cropArtistImage = asyncHandler(async (req: AuthRequest, res: Respon
 
   try {
     // Create uploads/artists directory if it doesn't exist
-    const artistsDir = path.join(process.cwd(), 'uploads', 'artists');
+    const artistsDir = path.join(config.uploadsDir, 'artists');
     if (!fs.existsSync(artistsDir)) {
       fs.mkdirSync(artistsDir, { recursive: true });
     }
@@ -1701,7 +1702,7 @@ export const uploadArtistImage = asyncHandler(async (req: AuthRequest, res: Resp
     const path = await import('path');
 
     // Create uploads/artists directory if it doesn't exist
-    const artistsDir = path.join(process.cwd(), 'uploads', 'artists');
+    const artistsDir = path.join(config.uploadsDir, 'artists');
     if (!fs.existsSync(artistsDir)) {
       fs.mkdirSync(artistsDir, { recursive: true });
     }
@@ -1830,7 +1831,7 @@ export const saveAlbumImage = asyncHandler(async (req: AuthRequest, res: Respons
 
   try {
     // Create uploads/artwork directory if it doesn't exist
-    const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+    const artworkDir = path.join(config.uploadsDir, 'artwork');
     if (!fs.existsSync(artworkDir)) {
       fs.mkdirSync(artworkDir, { recursive: true });
     }
@@ -1912,7 +1913,7 @@ export const cropAlbumImage = asyncHandler(async (req: AuthRequest, res: Respons
 
   try {
     // Create uploads/artwork directory if it doesn't exist
-    const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+    const artworkDir = path.join(config.uploadsDir, 'artwork');
     if (!fs.existsSync(artworkDir)) {
       fs.mkdirSync(artworkDir, { recursive: true });
     }
@@ -2014,7 +2015,7 @@ export const uploadAlbumImage = asyncHandler(async (req: AuthRequest, res: Respo
 
   try {
     // Create uploads/artwork directory if it doesn't exist
-    const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+    const artworkDir = path.join(config.uploadsDir, 'artwork');
     if (!fs.existsSync(artworkDir)) {
       fs.mkdirSync(artworkDir, { recursive: true });
     }

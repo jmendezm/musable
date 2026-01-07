@@ -18,10 +18,17 @@ if (!result.error) {
   }
 }
 
+// Base data directory - all application data goes here
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+
 interface Config {
   port: number;
   nodeEnv: string;
   databasePath: string;
+  dataDir: string;
+  uploadsDir: string;
+  logsDir: string;
+  ytDownloadsDir: string;
   jwtSecret: string;
   jwtExpiresIn: string;
   sessionSecret: string;
@@ -37,7 +44,11 @@ interface Config {
 const config: Config = {
   port: parseInt(process.env.BACKEND_PORT || '3001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
-  databasePath: process.env.DATABASE_PATH || './musable.db',
+  databasePath: path.join(DATA_DIR, 'musable.db'), // Always in data folder
+  dataDir: DATA_DIR,
+  uploadsDir: path.join(DATA_DIR, 'uploads'),
+  logsDir: path.join(DATA_DIR, 'logs'),
+  ytDownloadsDir: path.join(DATA_DIR, 'yt-downloads'),
   jwtSecret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   sessionSecret: process.env.SESSION_SECRET || 'your-super-secret-session-key',

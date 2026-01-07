@@ -66,20 +66,41 @@ app.set('io', io);
 
 const SQLiteStore = require('connect-sqlite3')(session);
 
+// Create data directory and subdirectories
+if (!fs.existsSync(config.dataDir)) {
+  fs.mkdirSync(config.dataDir, { recursive: true });
+}
+
 // Create profile pictures directory for user uploads
-const profilePicturesDir = path.join(process.cwd(), 'uploads', 'profile-pictures');
+const profilePicturesDir = path.join(config.uploadsDir, 'profile-pictures');
 if (!fs.existsSync(profilePicturesDir)) {
   fs.mkdirSync(profilePicturesDir, { recursive: true });
 }
 
 // Create artwork directory for album covers
-const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+const artworkDir = path.join(config.uploadsDir, 'artwork');
 if (!fs.existsSync(artworkDir)) {
   fs.mkdirSync(artworkDir, { recursive: true });
 }
 
+// Create artists directory for artist images
+const artistsDir = path.join(config.uploadsDir, 'artists');
+if (!fs.existsSync(artistsDir)) {
+  fs.mkdirSync(artistsDir, { recursive: true });
+}
+
+// Create logs directory
+if (!fs.existsSync(config.logsDir)) {
+  fs.mkdirSync(config.logsDir, { recursive: true });
+}
+
+// Create yt-downloads directory
+if (!fs.existsSync(config.ytDownloadsDir)) {
+  fs.mkdirSync(config.ytDownloadsDir, { recursive: true });
+}
+
 // Serve profile pictures with CORS
-app.use('/uploads/profile-pictures', express.static(path.join(process.cwd(), 'uploads', 'profile-pictures'), {
+app.use('/uploads/profile-pictures', express.static(profilePicturesDir, {
   setHeaders: (res, filePath, stat) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
@@ -88,7 +109,7 @@ app.use('/uploads/profile-pictures', express.static(path.join(process.cwd(), 'up
 }));
 
 // Serve album artwork with CORS
-app.use('/uploads/artwork', express.static(path.join(process.cwd(), 'uploads', 'artwork'), {
+app.use('/uploads/artwork', express.static(artworkDir, {
   setHeaders: (res, filePath, stat) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
@@ -97,7 +118,7 @@ app.use('/uploads/artwork', express.static(path.join(process.cwd(), 'uploads', '
 }));
 
 // Serve artist images with CORS
-app.use('/uploads/artists', express.static(path.join(process.cwd(), 'uploads', 'artists'), {
+app.use('/uploads/artists', express.static(artistsDir, {
   setHeaders: (res, filePath, stat) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
