@@ -22,7 +22,23 @@ const ArtistPage: React.FC = () => {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'songs' | 'albums'>('songs');
+  const [activeTab, setActiveTab] = useState<'songs' | 'albums'>(() => {
+    // Restore tab state from sessionStorage on component mount
+    if (id) {
+      const savedTab = sessionStorage.getItem(`artist-tab-${id}`);
+      if (savedTab === 'songs' || savedTab === 'albums') {
+        return savedTab;
+      }
+    }
+    return 'songs';
+  });
+
+  // Save tab state to sessionStorage whenever it changes
+  useEffect(() => {
+    if (id) {
+      sessionStorage.setItem(`artist-tab-${id}`, activeTab);
+    }
+  }, [activeTab, id]);
 
   useEffect(() => {
     if (!id) {
@@ -35,7 +51,7 @@ const ArtistPage: React.FC = () => {
         setIsLoading(true);
         setError(null);
         const response = await apiService.getArtist(Number(id));
-        
+
         if (response.success) {
           setArtist(response.data.artist);
           setSongs(response.data.songs);
