@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Song } from '../types';
+import { Song, Album, Playlist } from '../types';
 import apiService from '../services/api';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
@@ -28,7 +28,9 @@ import {
   Bars3Icon,
   CheckIcon,
   PlusIcon,
-  ListBulletIcon
+  ListBulletIcon,
+  ArrowsRightLeftIcon,
+  PhotoIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartIconSolid, CheckIcon as CheckIconSolid } from '@heroicons/react/24/solid';
 
@@ -47,6 +49,21 @@ interface VirtualFolder {
 
 const VIRTUAL_FOLDERS: VirtualFolder[] = [
   {
+    id: 'all-albums',
+    name: 'All Albums',
+    icon: PhotoIcon
+  },
+  {
+    id: 'random-songs',
+    name: 'Random Songs',
+    icon: ArrowsRightLeftIcon
+  },
+  {
+    id: 'all-playlists',
+    name: 'All Playlists',
+    icon: ListBulletIcon
+  },
+  {
     id: 'recently-added',
     name: 'Recently Added',
     icon: ClockIcon
@@ -57,6 +74,8 @@ const LibraryPage: React.FC = () => {
   const navigate = useNavigate();
   const [allSongs, setAllSongs] = useState<Song[]>([]);
   const [folders, setFolders] = useState<FolderNode[]>([]);
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [allPlaylists, setAllPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [addToPlaylistModalOpen, setAddToPlaylistModalOpen] = useState(false);
@@ -77,7 +96,16 @@ const LibraryPage: React.FC = () => {
 
   // Pagination state
   const [page, setPage] = useState(1);
+  const [albumsPage, setAlbumsPage] = useState(1);
+  const [playlistsPage, setPlaylistsPage] = useState(1);
   const perPage = 50;
+  const albumsPerPage = 100;
+  const playlistsPerPage = 100;
+
+  // Refs for scrollable containers
+  const albumsScrollRef = useRef<HTMLDivElement>(null);
+  const playlistsScrollRef = useRef<HTMLDivElement>(null);
+  const songsScrollRef = useRef<HTMLDivElement>(null);
 
   const { play, setQueue, currentSong, addToQueue } = usePlayerStore();
   const { user } = useAuthStore();
@@ -109,7 +137,31 @@ const LibraryPage: React.FC = () => {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
+    setAlbumsPage(1);
+    setPlaylistsPage(1);
   }, [currentFolder, currentVirtualFolder, searchQuery]);
+
+  // Scroll to top when switching between folders
+  useEffect(() => {
+    // Small delay to ensure DOM has updated with new content
+    setTimeout(() => {
+      if (currentVirtualFolder === 'all-albums') {
+        albumsScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (currentVirtualFolder === 'all-playlists') {
+        playlistsScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (currentVirtualFolder === 'recently-added' || currentVirtualFolder === 'random-songs' || !currentVirtualFolder) {
+        // For songs views
+        songsScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 0);
+  }, [currentVirtualFolder, currentFolder]);
+
+  // Fetch playlists when user changes (for admin vs non-admin view)
+  useEffect(() => {
+    if (user) {
+      fetchPlaylists();
+    }
+  }, [user]);
 
   const fetchUserFavorites = async () => {
     try {
@@ -147,11 +199,39 @@ const LibraryPage: React.FC = () => {
 
       const folderTree = buildFolderTree(allSongsData);
       setFolders(folderTree);
+
+      // Fetch albums and playlists
+      fetchAlbums();
+      fetchPlaylists();
     } catch (error) {
       console.error('Error fetching library data:', error);
       showError('Failed to load library');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAlbums = async () => {
+    try {
+      const response: any = await apiService.getAlbums();
+      setAlbums(response.data.albums || []);
+    } catch (error) {
+      console.error('Error fetching albums:', error);
+    }
+  };
+
+  const fetchPlaylists = async () => {
+    try {
+      const response: any = await apiService.getAllPlaylists();
+      // Filter playlists based on user role
+      let playlists = response.data.playlists || [];
+      if (user && !user.is_admin) {
+        // Non-admins only see public playlists
+        playlists = playlists.filter((p: Playlist) => p.is_public);
+      }
+      setAllPlaylists(playlists);
+    } catch (error) {
+      console.error('Error fetching playlists:', error);
     }
   };
 
@@ -231,6 +311,9 @@ const LibraryPage: React.FC = () => {
       result = [...result].sort((a, b) =>
         new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
       );
+    } else if (currentVirtualFolder === 'random-songs') {
+      // Shuffle songs randomly
+      result = [...result].sort(() => Math.random() - 0.5);
     }
 
     if (currentFolder && !currentVirtualFolder) {
@@ -242,7 +325,7 @@ const LibraryPage: React.FC = () => {
       });
     }
 
-    if (searchQuery) {
+    if (searchQuery && currentVirtualFolder !== 'all-albums' && currentVirtualFolder !== 'all-playlists') {
       const query = searchQuery.toLowerCase();
       result = result.filter(song =>
         song.title?.toLowerCase().includes(query) ||
@@ -262,6 +345,24 @@ const LibraryPage: React.FC = () => {
   }, [filteredSongs, page, perPage]);
 
   const totalPages = Math.ceil(filteredSongs.length / perPage);
+
+  // Apply pagination for albums
+  const paginatedAlbums = useMemo(() => {
+    const startIndex = (albumsPage - 1) * albumsPerPage;
+    const endIndex = startIndex + albumsPerPage;
+    return albums.slice(startIndex, endIndex);
+  }, [albums, albumsPage]);
+
+  const totalAlbumsPages = Math.ceil(albums.length / albumsPerPage);
+
+  // Apply pagination for playlists
+  const paginatedPlaylists = useMemo(() => {
+    const startIndex = (playlistsPage - 1) * playlistsPerPage;
+    const endIndex = startIndex + playlistsPerPage;
+    return allPlaylists.slice(startIndex, endIndex);
+  }, [allPlaylists, playlistsPage]);
+
+  const totalPlaylistsPages = Math.ceil(allPlaylists.length / playlistsPerPage);
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -577,6 +678,12 @@ const LibraryPage: React.FC = () => {
                     >
                       <Icon className="w-5 h-5" />
                       <span className="flex-1 text-sm">{folder.name}</span>
+                      {folder.id === 'all-albums' && (
+                        <span className="text-xs text-gray-400">{albums.length}</span>
+                      )}
+                      {folder.id === 'all-playlists' && (
+                        <span className="text-xs text-gray-400">{allPlaylists.length}</span>
+                      )}
                     </div>
                   );
                 })}
@@ -647,36 +754,45 @@ const LibraryPage: React.FC = () => {
                   ? currentFolder.split('/').pop()
                   : 'All Music'}
               </h1>
-              <p className="text-gray-400 mt-1">{filteredSongs.length} songs</p>
+              <p className="text-gray-400 mt-1">
+                {currentVirtualFolder === 'all-albums' ? `${albums.length} albums` :
+                 currentVirtualFolder === 'all-playlists' ? `${allPlaylists.length} playlists` :
+                 `${filteredSongs.length} songs`}
+              </p>
             </div>
 
-            {/* Search Bar */}
-            <div className="relative w-48 lg:w-80">
-              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors text-sm lg:text-base"
-              />
-            </div>
+            {/* Search Bar - Only show for songs views */}
+            {currentVirtualFolder !== 'all-albums' && currentVirtualFolder !== 'all-playlists' && (
+              <div className="relative w-48 lg:w-80">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors text-sm lg:text-base"
+                />
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Mobile Search Bar */}
-        <div className="lg:hidden relative flex-shrink-0">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search songs..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors text-sm"
-          />
-        </div>
+        {/* Mobile Search Bar - Only show for songs views */}
+        {currentVirtualFolder !== 'all-albums' && currentVirtualFolder !== 'all-playlists' && (
+          <div className="lg:hidden relative flex-shrink-0">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search songs..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+            />
+          </div>
+        )}
 
-        {/* Selection Mode Toggle & Bulk Actions */}
+        {/* Selection Mode Toggle & Bulk Actions - Only show for songs views */}
+        {currentVirtualFolder !== 'all-albums' && currentVirtualFolder !== 'all-playlists' && (
         <div className="flex items-center justify-between flex-shrink-0 gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             <button
@@ -753,20 +869,178 @@ const LibraryPage: React.FC = () => {
             </div>
           )}
         </div>
+        )}
 
-        {/* Songs List */}
-        <div className="bg-gray-800 rounded-lg overflow-hidden flex flex-col flex-1 min-h-0">
-          <div className="flex-1 overflow-y-auto min-h-0" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-            {paginatedSongs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20">
-                <MusicalNoteIcon className="w-12 h-12 lg:w-16 lg:h-16 text-gray-600 mb-4" />
-                <p className="text-gray-400 text-sm lg:text-base">
-                  {searchQuery ? 'No songs match your search' : 'No songs in this folder'}
-                </p>
+        {/* Content Area - Songs, Albums, or Playlists */}
+        {currentVirtualFolder === 'all-albums' ? (
+          <div className="bg-gray-800 rounded-lg overflow-hidden flex flex-col flex-1 min-h-0">
+            <div ref={albumsScrollRef} className="flex-1 overflow-y-auto min-h-0 p-4 lg:p-6">
+              {albums.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <PhotoIcon className="w-12 h-12 lg:w-16 lg:h-16 text-gray-600 mb-4" />
+                  <p className="text-gray-400 text-sm lg:text-base">No albums found</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                  {paginatedAlbums.map((album) => (
+                    <div
+                      key={album.id}
+                      onClick={() => navigate(`/album/${album.id}`)}
+                      className="group cursor-pointer"
+                    >
+                      <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-2" style={{ paddingBottom: '100%' }}>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          {album.artwork_path ? (
+                            <img
+                              src={apiService.getArtworkUrl(album.artwork_path)}
+                              alt={album.title}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <MusicalNoteIcon className="w-12 h-12 text-gray-400" />
+                          )}
+                        </div>
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
+                          <PlayIcon className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transform scale-50 group-hover:scale-100 transition-all" />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-white text-sm font-medium truncate">{album.title}</h3>
+                          <p className="text-gray-400 text-xs truncate">{album.artist_name}</p>
+                        </div>
+                        <span className="text-gray-500 text-xs ml-2 flex-shrink-0">{album.song_count || 0}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Pagination Controls for Albums */}
+            {totalAlbumsPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-700">
+                <button
+                  onClick={() => {
+                    setAlbumsPage(p => Math.max(1, p - 1));
+                    albumsScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  disabled={albumsPage === 1}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                >
+                  <ChevronLeftIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">Previous</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400 text-sm">
+                    Page {albumsPage} of {totalAlbumsPages}
+                  </span>
+                  <span className="text-gray-500 text-xs hidden sm:inline">
+                    ({(albumsPage - 1) * albumsPerPage + 1}-{Math.min(albumsPage * albumsPerPage, albums.length)} of {albums.length})
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setAlbumsPage(p => Math.min(totalAlbumsPages, p + 1));
+                    albumsScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  disabled={albumsPage === totalAlbumsPages}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                >
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRightIcon className="w-4 h-4" />
+                </button>
               </div>
-            ) : (
-              <div>
-                {paginatedSongs.map((song) => {
+            )}
+          </div>
+        ) : currentVirtualFolder === 'all-playlists' ? (
+          <div className="bg-gray-800 rounded-lg overflow-hidden flex flex-col flex-1 min-h-0">
+            <div ref={playlistsScrollRef} className="flex-1 overflow-y-auto min-h-0 p-4 lg:p-6">
+              {allPlaylists.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <ListBulletIcon className="w-12 h-12 lg:w-16 lg:h-16 text-gray-600 mb-4" />
+                  <p className="text-gray-400 text-sm lg:text-base">No playlists found</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                  {paginatedPlaylists.map((playlist) => (
+                    <div
+                      key={playlist.id}
+                      onClick={() => navigate(`/playlist/${playlist.id}`)}
+                      className="group cursor-pointer"
+                    >
+                      <div className="relative aspect-square bg-gradient-to-br from-gray-700 to-gray-800 rounded-md overflow-hidden mb-2 flex items-center justify-center">
+                        <ListBulletIcon className="w-16 h-16 text-gray-500" />
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
+                          <PlayIcon className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transform scale-50 group-hover:scale-100 transition-all" />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-white text-sm font-medium truncate">{playlist.name}</h3>
+                          <p className="text-gray-400 text-xs">{playlist.song_count || 0} songs</p>
+                        </div>
+                        <span className="text-gray-500 text-xs ml-2 flex-shrink-0">{playlist.song_count || 0}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Pagination Controls for Playlists */}
+            {totalPlaylistsPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-700">
+                <button
+                  onClick={() => {
+                    setPlaylistsPage(p => Math.max(1, p - 1));
+                    playlistsScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  disabled={playlistsPage === 1}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                >
+                  <ChevronLeftIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">Previous</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400 text-sm">
+                    Page {playlistsPage} of {totalPlaylistsPages}
+                  </span>
+                  <span className="text-gray-500 text-xs hidden sm:inline">
+                    ({(playlistsPage - 1) * playlistsPerPage + 1}-{Math.min(playlistsPage * playlistsPerPage, allPlaylists.length)} of {allPlaylists.length})
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setPlaylistsPage(p => Math.min(totalPlaylistsPages, p + 1));
+                    playlistsScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  disabled={playlistsPage === totalPlaylistsPages}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                >
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRightIcon className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-gray-800 rounded-lg overflow-hidden flex flex-col flex-1 min-h-0">
+            <div ref={songsScrollRef} className="flex-1 overflow-y-auto min-h-0" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+              {paginatedSongs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <MusicalNoteIcon className="w-12 h-12 lg:w-16 lg:h-16 text-gray-600 mb-4" />
+                  <p className="text-gray-400 text-sm lg:text-base">
+                    {searchQuery ? 'No songs match your search' : 'No songs in this folder'}
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  {paginatedSongs.map((song) => {
                   const isSelected = selectedSongs.has(song.id);
                   return (
                     <div
@@ -867,7 +1141,10 @@ const LibraryPage: React.FC = () => {
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-gray-700">
               <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
+                onClick={() => {
+                  setPage(p => Math.max(1, p - 1));
+                  songsScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
                 disabled={page === 1}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
               >
@@ -885,7 +1162,10 @@ const LibraryPage: React.FC = () => {
               </div>
 
               <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                onClick={() => {
+                  setPage(p => Math.min(totalPages, p + 1));
+                  songsScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
                 disabled={page === totalPages}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
               >
@@ -895,6 +1175,7 @@ const LibraryPage: React.FC = () => {
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Context Menu */}
