@@ -397,3 +397,5 @@ CREATE TABLE IF NOT EXISTS artist_split_ignore_filters (
 -- Index for ignore filters
 CREATE INDEX IF NOT EXISTS idx_artist_split_ignore_filters_pattern
   ON artist_split_ignore_filters(pattern);
+-- Add image_path column to artists table
+ALTER TABLE artists ADD COLUMN image_path VARCHAR(500);

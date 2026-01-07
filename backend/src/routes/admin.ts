@@ -12,6 +12,7 @@ import {
   updateSong,
   deleteSong,
   cleanupExpiredInvites,
+  cleanupEmptyArtists,
   getUserActivity,
   getLibraryPaths,
   addLibraryPath,
@@ -44,7 +45,11 @@ import {
   getAllIgnoreFilters,
   createIgnoreFilter,
   updateIgnoreFilter,
-  deleteIgnoreFilter
+  deleteIgnoreFilter,
+  getLogs,
+  clearLogs,
+  setLogSettings,
+  getLogSettings
 } from '../controllers/adminController';
 import { getAllSongs } from '../controllers/libraryController';
 import multer from 'multer';
@@ -83,6 +88,15 @@ router.post('/invites', createInvite);
 router.get('/invites', getAllInvites);
 router.delete('/invites/:id', revokeInvite);
 router.post('/invites/cleanup', cleanupExpiredInvites);
+
+// Maintenance jobs
+router.post('/jobs/cleanup-empty-artists', cleanupEmptyArtists);
+
+// Logs routes
+router.get('/logs', getLogs);
+router.delete('/logs', clearLogs);
+router.get('/logs/settings', getLogSettings);
+router.put('/logs/settings', setLogSettings);
 
 router.get('/history', getAllHistory);
 router.get('/stats/listening', getListeningStats);

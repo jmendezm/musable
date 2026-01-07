@@ -484,7 +484,19 @@ const SearchPage: React.FC = () => {
                       >
                         <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-2" style={{ paddingBottom: '100%' }}>
                           <div className="absolute inset-0 flex items-center justify-center">
-                            <UserIcon className="w-8 h-8 text-gray-400" />
+                            {artist.image_path ? (
+                              <img
+                                src={apiService.getArtistImageUrl(artist.image_path)}
+                                alt={artist.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  console.error('Failed to load artist image:', artist.image_path);
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <UserIcon className="w-8 h-8 text-gray-400" />
+                            )}
                           </div>
                         </div>
                         <h3 className="text-white text-sm font-medium truncate">{artist.name}</h3>
@@ -605,7 +617,19 @@ const SearchPage: React.FC = () => {
                   >
                     <div className="relative w-full rounded-lg overflow-hidden bg-gray-700 mb-3" style={{ paddingBottom: '100%' }}>
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <UserIcon className="w-8 h-8 text-gray-400" />
+                        {artist.image_path ? (
+                          <img
+                            src={apiService.getArtistImageUrl(artist.image_path)}
+                            alt={artist.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              console.error('Failed to load artist image:', artist.image_path);
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <UserIcon className="w-8 h-8 text-gray-400" />
+                        )}
                       </div>
                     </div>
                     <h3 className="text-white font-medium truncate">{artist.name}</h3>

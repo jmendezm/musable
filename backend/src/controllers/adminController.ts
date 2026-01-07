@@ -627,6 +627,26 @@ export const batchSplitSongArtists = asyncHandler(async (req: AuthRequest, res: 
   }
 });
 
+export const cleanupEmptyArtists = asyncHandler(async (req: AuthRequest, res: Response) => {
+  // Find all artists that have no songs in the junction table
+  const artistsWithoutSongs = await ArtistModel.getArtistsWithoutSongs();
+
+  const deletedIds: number[] = [];
+  for (const artist of artistsWithoutSongs) {
+    await ArtistModel.delete(artist.id);
+    deletedIds.push(artist.id);
+  }
+
+  res.json({
+    success: true,
+    data: {
+      message: `Deleted ${deletedIds.length} empty artists`,
+      deletedCount: deletedIds.length,
+      deletedArtists: deletedIds
+    }
+  });
+});
+
 export const cleanupExpiredInvites = asyncHandler(async (req: AuthRequest, res: Response) => {
   const deletedCount = await InviteModel.cleanupExpiredInvites();
 
@@ -1769,5 +1789,65 @@ export const deleteIgnoreFilter = asyncHandler(async (req: AuthRequest, res: Res
   res.json({
     success: true,
     data: { message: 'Ignore filter deleted successfully' }
+  });
+});
+
+// Logs endpoints
+export const getLogs = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const logger = require('../utils/logger').default;
+  const logs = logger.getLogs();
+
+  res.json({
+    success: true,
+    data: { logs }
+  });
+});
+
+export const clearLogs = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const logger = require('../utils/logger').default;
+  logger.clearLogs();
+
+  res.json({
+    success: true,
+    data: { message: 'Logs cleared successfully' }
+  });
+});
+
+export const setLogSettings = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { fileLoggingEnabled, logFilePath } = req.body;
+
+  const logger = require('../utils/logger').default;
+
+  if (typeof fileLoggingEnabled !== 'boolean') {
+    throw new AppError('fileLoggingEnabled must be a boolean', 400);
+  }
+
+  const filePath = logFilePath || path.join(process.cwd(), 'logs', 'musable.log');
+  logger.setFileLogging(fileLoggingEnabled, filePath);
+
+  // Save to system settings
+  await SettingsModel.setSetting('log_file_enabled', fileLoggingEnabled.toString());
+  if (fileLoggingEnabled && filePath) {
+    await SettingsModel.setSetting('log_file_path', filePath);
+  }
+
+  const status = logger.getFileLoggingStatus();
+
+  res.json({
+    success: true,
+    data: {
+      message: 'Log settings updated',
+      settings: status
+    }
+  });
+});
+
+export const getLogSettings = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const logger = require('../utils/logger').default;
+  const status = logger.getFileLoggingStatus();
+
+  res.json({
+    success: true,
+    data: { settings: status }
   });
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Cog6ToothIcon,
   ServerIcon,
@@ -8,7 +8,8 @@ import {
   ArrowPathIcon,
   ExclamationTriangleIcon,
   CheckCircleIcon,
-  TrashIcon
+  TrashIcon,
+  DocumentTextIcon
 } from '@heroicons/react/24/outline';
 import { apiService } from '../../services/api';
 import { useToast } from '../../contexts/ToastContext';
@@ -51,6 +52,255 @@ interface SystemStatus {
   message: string;
 }
 
+interface LogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+  args?: any[];
+  formatted: string;
+}
+
+const LogsTabContent: React.FC = () => {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [fileLoggingEnabled, setFileLoggingEnabled] = useState(false);
+  const [logFilePath, setLogFilePath] = useState('logs/musable.log');
+  const logViewerRef = useRef<HTMLDivElement>(null);
+  const { showSuccess, showError } = useToast();
+
+  const fetchLogs = async () => {
+    try {
+      const response = await apiService.request('GET', '/admin/logs') as {
+        data: { logs: LogEntry[] }
+      };
+
+      setLogs(response.data.logs);
+      setLoading(false);
+    } catch (error: any) {
+      console.error('Failed to fetch logs:', error);
+      showError('Failed to fetch logs');
+      setLoading(false);
+    }
+  };
+
+  const fetchLogSettings = async () => {
+    try {
+      const response = await apiService.request('GET', '/admin/logs/settings') as {
+        data: { settings: { enabled: boolean; filePath: string | null } }
+      };
+      setFileLoggingEnabled(response.data.settings.enabled);
+      if (response.data.settings.filePath) {
+        setLogFilePath(response.data.settings.filePath);
+      }
+    } catch (error) {
+      console.error('Failed to fetch log settings:', error);
+    }
+  };
+
+  const saveLogSettings = async () => {
+    try {
+      await apiService.request('PUT', '/admin/logs/settings', {
+        fileLoggingEnabled,
+        logFilePath
+      });
+    } catch (error) {
+      console.error('Failed to save log settings:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+    fetchLogSettings();
+  }, []);
+
+  // Scroll to bottom on initial load
+  useEffect(() => {
+    if (logViewerRef.current && logs.length > 0) {
+      logViewerRef.current.scrollTop = logViewerRef.current.scrollHeight;
+    }
+  }, [loading]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(fetchLogs, 2000); // Refresh every 2 seconds
+    return () => clearInterval(interval);
+  }, [autoRefresh]);
+
+  // Auto-scroll to bottom when new logs are added (only if already at bottom)
+  useEffect(() => {
+    if (logViewerRef.current && logs.length > 0) {
+      const container = logViewerRef.current;
+      const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50;
+
+      // Only auto-scroll if user is already near the bottom
+      if (isAtBottom) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+  }, [logs]);
+
+  const handleClearLogs = async () => {
+    try {
+      await apiService.request('DELETE', '/admin/logs');
+      showSuccess('Logs cleared successfully');
+      setLogs([]);
+    } catch (error) {
+      showError('Failed to clear logs');
+    }
+  };
+
+  const handleToggleAutoRefresh = async () => {
+    setAutoRefresh(!autoRefresh);
+  };
+
+  const handleToggleFileLogging = async () => {
+    const newValue = !fileLoggingEnabled;
+    setFileLoggingEnabled(newValue);
+    await apiService.request('PUT', '/admin/logs/settings', {
+      fileLoggingEnabled: newValue,
+      logFilePath
+    });
+    showSuccess(`File logging ${newValue ? 'enabled' : 'disabled'}`);
+  };
+
+  const renderLogEntry = (log: LogEntry) => {
+    // Convert ANSI colors to HTML with brighter colors
+    const ansiToHtml = require('ansi-to-html');
+    const converter = new ansiToHtml({
+      colors: {
+        0: '#2d3748',    // black (dark gray)
+        1: '#fc8181',    // red (bright)
+        2: '#68d391',    // green (bright)
+        3: '#f6e05e',    // yellow (bright)
+        4: '#63b3ed',    // blue (bright pastel)
+        5: '#b794f4',    // magenta (bright)
+        6: '#4fd1c5',    // cyan (bright)
+        7: '#ffffff',    // white
+        8: '#718096',    // bright black (gray)
+        9: '#fc8181',    // bright red
+        10: '#68d391',   // bright green
+        11: '#f6e05e',   // bright yellow
+        12: '#63b3ed',   // bright blue
+        13: '#b794f4',   // bright magenta
+        14: '#4fd1c5',   // bright cyan
+        15: '#ffffff',   // bright white
+      }
+    });
+    const html = converter.toHtml(log.formatted);
+
+    return (
+      <div
+        key={`${log.timestamp}-${log.level}-${log.message}`}
+        className="font-mono text-xs whitespace-pre-wrap break-words"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Log Settings */}
+      <div className="bg-gray-700 rounded-lg p-4">
+        <h4 className="text-white font-medium mb-4 flex items-center">
+          <Cog6ToothIcon className="w-4 h-4 mr-2" />
+          Log Settings
+        </h4>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-white font-medium">Auto-refresh</p>
+              <p className="text-gray-400 text-sm">Automatically refresh logs every 2 seconds</p>
+            </div>
+            <button
+              onClick={handleToggleAutoRefresh}
+              className={clsx(
+                'px-4 py-2 rounded-lg transition-colors',
+                autoRefresh ? 'bg-primary text-white' : 'bg-gray-600 text-white hover:bg-gray-500'
+              )}
+            >
+              {autoRefresh ? 'Enabled' : 'Disabled'}
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-white font-medium">File Logging</p>
+              <p className="text-gray-400 text-sm">Save logs to file</p>
+            </div>
+            <button
+              onClick={handleToggleFileLogging}
+              className={clsx(
+                'px-4 py-2 rounded-lg transition-colors',
+                fileLoggingEnabled ? 'bg-primary text-white' : 'bg-gray-600 text-white hover:bg-gray-500'
+              )}
+            >
+              {fileLoggingEnabled ? 'Enabled' : 'Disabled'}
+            </button>
+          </div>
+
+          {fileLoggingEnabled && (
+            <div>
+              <label className="text-white text-sm font-medium block mb-2">Log File Path</label>
+              <input
+                type="text"
+                value={logFilePath}
+                onChange={async (e) => {
+                  const newPath = e.target.value;
+                  setLogFilePath(newPath);
+                  await saveLogSettings();
+                }}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-primary"
+                placeholder="logs/musable.log"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Log Viewer */}
+      <div className="bg-gray-900 rounded-lg overflow-hidden">
+        <div className="bg-gray-800 px-4 py-3 flex items-center justify-between border-b border-gray-700">
+          <h4 className="text-white font-medium">System Logs</h4>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchLogs}
+              className="p-2 text-gray-400 hover:text-white transition-colors"
+              title="Refresh logs"
+            >
+              <ArrowPathIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleClearLogs}
+              className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+              title="Clear logs"
+            >
+              <TrashIcon className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 bg-black max-h-[600px] overflow-y-auto" ref={logViewerRef}>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <ArrowPathIcon className="w-6 h-6 text-gray-400 animate-spin" />
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="text-center py-8">
+              <DocumentTextIcon className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+              <p className="text-gray-400">No logs available</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {logs.map((log) => renderLogEntry(log))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const SystemSettingsTab: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings | null>(null);
@@ -62,7 +312,7 @@ const SystemSettingsTab: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'general' | 'library' | 'security' | 'maintenance'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'library' | 'security' | 'maintenance' | 'logs'>('general');
   const [scanStatus, setScanStatus] = useState<any>(null);
   const { showSuccess, showError } = useToast();
 
@@ -70,7 +320,7 @@ const SystemSettingsTab: React.FC = () => {
     fetchSystemSettings();
   }, []);
 
-  const handleTabClick = (tab: 'general' | 'library' | 'security' | 'maintenance') => {
+  const handleTabClick = (tab: 'general' | 'library' | 'security' | 'maintenance' | 'logs') => {
     setActiveTab(tab);
     if (tab === 'general') {
       fetchSystemSettings();
@@ -334,7 +584,8 @@ const SystemSettingsTab: React.FC = () => {
               { id: 'general', label: 'General', icon: Cog6ToothIcon },
               { id: 'library', label: 'Library', icon: MusicalNoteIcon },
               { id: 'security', label: 'Security', icon: ShieldCheckIcon },
-              { id: 'maintenance', label: 'Maintenance', icon: CircleStackIcon }
+              { id: 'maintenance', label: 'Maintenance', icon: CircleStackIcon },
+              { id: 'logs', label: 'Logs', icon: DocumentTextIcon }
             ].map((tab) => {
               const Icon = tab.icon;
               return (
@@ -707,6 +958,8 @@ const SystemSettingsTab: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {activeTab === 'logs' && <LogsTabContent />}
 
             </>
           )}

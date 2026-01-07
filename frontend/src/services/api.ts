@@ -544,6 +544,16 @@ class ApiService {
     return `${backendUrl}${normalizedPath}`;
   }
 
+  getArtistImageUrl(path: string): string {
+    if (!path) return '';
+
+    // Use backend URL for static files (uploads, artwork, etc)
+    const backendUrl = getApiBaseUrl().replace('/api', '');
+    // Ensure path starts with / to avoid missing slash
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return `${backendUrl}${normalizedPath}`;
+  }
+
   // YouTube Music download endpoints
   async downloadYTMusicSong(videoId: string): Promise<ApiResponse<{ downloadId: string; message: string }>> {
     return this.request('POST', `/plugins/youtube/music/download/${videoId}`);

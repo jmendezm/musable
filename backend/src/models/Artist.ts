@@ -156,6 +156,16 @@ export class ArtistModel {
       [userId]
     );
   }
+
+  async getArtistsWithoutSongs(): Promise<Artist[]> {
+    return await this.db.query<Artist>(
+      `SELECT a.*
+       FROM artists a
+       LEFT JOIN song_artists sa ON a.id = sa.artist_id
+       WHERE sa.artist_id IS NULL
+       ORDER BY a.name`
+    );
+  }
 }
 
 export default new ArtistModel();

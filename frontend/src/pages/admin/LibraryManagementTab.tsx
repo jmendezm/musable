@@ -24,7 +24,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import { useToast } from '../../contexts/ToastContext';
 import { getBackendUrl } from '../../config/config';
 
-type LibrarySubTab = 'overview' | 'duplicates' | 'artist-images' | 'artist-splitting';
+type LibrarySubTab = 'overview' | 'duplicates' | 'artist-images' | 'artist-splitting' | 'jobs';
 
 interface DuplicateGroup {
   title: string;
@@ -1112,6 +1112,8 @@ const ArtistSplittingTabContent: React.FC<ArtistSplittingTabContentProps> = ({
   const [separators] = useState<string[]>([
     ' & ',
     ', ',
+    ';',
+    '; ',
     ' ft. ',
     ' ft ',
     ' feat. ',
@@ -2038,6 +2040,108 @@ const ArtistSplittingTabContent: React.FC<ArtistSplittingTabContentProps> = ({
   );
 };
 
+interface JobsTabContentProps {
+  showSuccess: (message: string) => void;
+  showError: (message: string) => void;
+}
+
+const JobsTabContent: React.FC<JobsTabContentProps> = ({ showSuccess, showError }) => {
+  const [loading, setLoading] = useState(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+
+  const handleCleanupEmptyArtists = async () => {
+    if (loading) return;
+
+    setConfirmDialogOpen(true);
+  };
+
+  const handleConfirmCleanup = async () => {
+    setConfirmDialogOpen(false);
+
+    try {
+      setLoading(true);
+      const response = await apiService.request('POST', '/admin/jobs/cleanup-empty-artists') as {
+        data: { message: string; deletedCount: number; deletedArtists: number[] }
+      };
+
+      showSuccess(response.data.message || `Deleted ${response.data.deletedCount} empty artists`);
+    } catch (error: any) {
+      console.error('Failed to cleanup empty artists:', error);
+      showError(error.message || 'Failed to cleanup empty artists');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-white mb-2">Maintenance Jobs</h2>
+        <p className="text-gray-400">Run maintenance tasks to keep your library clean and optimized</p>
+      </div>
+
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Available Jobs</h3>
+        <div className="space-y-4">
+          {/* Cleanup Empty Artists */}
+          <div className="border border-gray-700 rounded-lg p-4">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <h4 className="text-white font-medium mb-2">Cleanup Empty Artists</h4>
+                <p className="text-gray-400 text-sm mb-3">
+                  Remove all artists from the database that have no songs associated with them.
+                  This helps keep your artist list clean and removes any artists that were created but never used.
+                </p>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-gray-500">
+                    <ArrowPathIcon className="w-4 h-4 inline mr-1" />
+                    Maintenance task
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={handleCleanupEmptyArtists}
+                disabled={loading}
+                className={clsx(
+                  'px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors',
+                  'disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2'
+                )}
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Running...
+                  </>
+                ) : (
+                  <>
+                    <TrashIcon className="w-4 h-4" />
+                    Run Job
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* More jobs can be added here in the future */}
+          <div className="border border-dashed border-gray-700 rounded-lg p-4 text-center">
+            <p className="text-gray-500 text-sm">More maintenance jobs coming soon...</p>
+          </div>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        isOpen={confirmDialogOpen}
+        onClose={() => setConfirmDialogOpen(false)}
+        onConfirm={handleConfirmCleanup}
+        title="Cleanup Empty Artists"
+        message="Are you sure you want to delete all artists that have no songs? This action cannot be undone."
+        confirmText="Delete Artists"
+        cancelText="Cancel"
+      />
+    </div>
+  );
+};
+
 const LibraryManagementTab: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<LibrarySubTab>('overview');
   const [songs, setSongs] = useState<Song[]>([]);
@@ -2587,6 +2691,18 @@ const LibraryManagementTab: React.FC = () => {
           >
             <PencilIcon className="w-5 h-5" />
             <span>Artist Splitting</span>
+          </button>
+          <button
+            onClick={() => setActiveSubTab('jobs')}
+            className={clsx(
+              'flex items-center space-x-2 py-3 px-1 border-b-2 font-medium text-sm transition-colors',
+              activeSubTab === 'jobs'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+            )}
+          >
+            <ArrowPathIcon className="w-5 h-5" />
+            <span>Jobs</span>
           </button>
         </nav>
       </div>
@@ -3182,6 +3298,13 @@ const LibraryManagementTab: React.FC = () => {
 
       {activeSubTab === 'artist-splitting' && (
         <ArtistSplittingTabContent
+          showSuccess={showSuccess}
+          showError={showError}
+        />
+      )}
+
+      {activeSubTab === 'jobs' && (
+        <JobsTabContent
           showSuccess={showSuccess}
           showError={showError}
         />

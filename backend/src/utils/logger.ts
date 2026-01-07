@@ -1,6 +1,7 @@
 // Import dotenv to ensure .env is loaded before logger initializes
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 
 // Load .env from project root to ensure LOG_LEVEL is available
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -27,6 +28,15 @@ const colors = {
   gray: '\x1b[90m',
 };
 
+// Log entry interface
+export interface LogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+  args?: any[];
+  formatted: string; // The formatted log with colors
+}
+
 // Format timestamp to DD-MM-YYYY HH:MM:SS.mmm
 function formatTimestamp(date: Date): string {
   const day = date.getDate().toString().padStart(2, '0');
@@ -43,6 +53,10 @@ function formatTimestamp(date: Date): string {
 
 class Logger {
   private level: LogLevel;
+  private logs: LogEntry[] = [];
+  private maxLogs: number = 1000; // Keep last 1000 logs in memory
+  private logFilePath: string | null = null;
+  private fileLoggingEnabled: boolean = false;
 
   constructor() {
     // Read log level directly from environment variable (no circular dependency)
@@ -63,6 +77,52 @@ class Logger {
         break;
       default:
         this.level = LogLevel.INFO;
+    }
+
+    // Initialize file logging from system settings
+    this.initializeFileLogging();
+  }
+
+  private initializeFileLogging() {
+    try {
+      const settingsPath = path.join(process.cwd(), 'musable.db');
+      // For now, check system_settings table
+      // This will be called after database is initialized
+    } catch (error) {
+      // Database not ready yet, will be initialized later
+    }
+  }
+
+  // Enable/disable file logging
+  setFileLogging(enabled: boolean, filePath?: string) {
+    this.fileLoggingEnabled = enabled;
+    if (enabled && filePath) {
+      this.logFilePath = filePath;
+      // Ensure directory exists
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+    }
+  }
+
+  // Get current file logging status
+  getFileLoggingStatus(): { enabled: boolean; filePath: string | null } {
+    return {
+      enabled: this.fileLoggingEnabled,
+      filePath: this.logFilePath
+    };
+  }
+
+  private logToFile(formattedMessage: string) {
+    if (!this.fileLoggingEnabled || !this.logFilePath) return;
+
+    try {
+      // Strip ANSI codes for file output
+      const cleanMessage = formattedMessage.replace(/\x1b\[[0-9;]*m/g, '');
+      fs.appendFileSync(this.logFilePath, cleanMessage + '\n', 'utf8');
+    } catch (error) {
+      console.error('Failed to write to log file:', error);
     }
   }
 
@@ -101,8 +161,38 @@ class Logger {
           prefix = `[${timestamp}] [${levelName}]`;
       }
 
-      colorMethod(prefix, message, ...args);
+      const formattedMessage = `${prefix} ${message}`;
+      colorMethod(formattedMessage, ...args);
+
+      // Store log entry
+      const logEntry: LogEntry = {
+        timestamp,
+        level: levelName,
+        message,
+        args: args.length > 0 ? args : undefined,
+        formatted: formattedMessage
+      };
+
+      this.logs.push(logEntry);
+
+      // Keep only last maxLogs entries
+      if (this.logs.length > this.maxLogs) {
+        this.logs.shift();
+      }
+
+      // Write to file if enabled
+      this.logToFile(formattedMessage);
     }
+  }
+
+  // Get stored logs
+  getLogs(): LogEntry[] {
+    return [...this.logs];
+  }
+
+  // Clear stored logs
+  clearLogs() {
+    this.logs = [];
   }
 
   error(message: string, ...args: any[]): void {
