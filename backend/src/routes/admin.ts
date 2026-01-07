@@ -49,7 +49,13 @@ import {
   getLogs,
   clearLogs,
   setLogSettings,
-  getLogSettings
+  getLogSettings,
+  getAllAlbums,
+  searchAlbumImages,
+  saveAlbumImage,
+  cropAlbumImage,
+  uploadAlbumImage as uploadAlbumImageHandler,
+  updateAlbum
 } from '../controllers/adminController';
 import { getAllSongs } from '../controllers/libraryController';
 import multer from 'multer';
@@ -57,6 +63,21 @@ import { authenticateToken, requireAdmin } from '../middleware/auth';
 
 // Configure multer for artist image uploads
 const uploadArtistImage = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+// Configure multer for album image uploads
+const uploadAlbumImage = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024 // 10MB limit
@@ -114,6 +135,14 @@ router.get('/artists/search-images', searchArtistImages);
 router.post('/artists/:artistId/image', saveArtistImage);
 router.post('/artists/:artistId/crop', cropArtistImage);
 router.post('/artists/:artistId/upload', uploadArtistImage.single('image'), uploadArtistImageHandler);
+
+// Album image management routes
+router.get('/albums', getAllAlbums);
+router.get('/albums/search-images', searchAlbumImages);
+router.post('/albums/:id/image', saveAlbumImage);
+router.post('/albums/:id/crop', cropAlbumImage);
+router.post('/albums/:id/upload', uploadAlbumImage.single('image'), uploadAlbumImageHandler);
+router.put('/albums/:id', updateAlbum);
 
 router.get('/library/paths', getLibraryPaths);
 router.post('/library/paths', addLibraryPath);

@@ -8,7 +8,7 @@ import sharp from 'sharp';
 import UserModel from '../models/User';
 import InviteModel from '../models/Invite';
 import ListenHistoryModel from '../models/ListenHistory';
-import SongModel from '../models/Song';
+import SongModel, { SongWithDetails } from '../models/Song';
 import ArtistModel from '../models/Artist';
 import AlbumModel from '../models/Album';
 import SettingsModel from '../models/Settings';
@@ -540,7 +540,7 @@ export const batchSplitSongArtists = asyncHandler(async (req: AuthRequest, res: 
 
     for (const songId of songIds) {
       try {
-        const song = await SongModel.findById(parseInt(songId));
+        const song = await SongModel.findWithDetails(parseInt(songId));
         if (!song) {
           errors.push({ songId, error: 'Song not found' });
           continue;
@@ -1451,7 +1451,7 @@ export const searchArtistImages = asyncHandler(async (req: AuthRequest, res: Res
     const { GOOGLE_IMG_SCRAP } = require('google-img-scrap');
 
     const searchResults = await GOOGLE_IMG_SCRAP({
-      search: `${artistName} Cover`
+      search: `${artistName}`
     });
 
     // Return only the first 12 results
@@ -1492,7 +1492,7 @@ export const saveArtistImage = asyncHandler(async (req: AuthRequest, res: Respon
     }
 
     // Download image
-    const response = await axios.default.get(imageUrl, {
+    const response = await axios.get(imageUrl, {
       responseType: 'arraybuffer',
       timeout: 10000
     });
@@ -1570,7 +1570,7 @@ export const cropArtistImage = asyncHandler(async (req: AuthRequest, res: Respon
     console.log(`Crop data: x=${cropArea.x}, y=${cropArea.y}, size=${cropArea.size}, zoom=${zoom}`);
 
     // Download image
-    const response = await axios.default.get(imageUrl, {
+    const response = await axios.get(imageUrl, {
       responseType: 'arraybuffer',
       timeout: 15000,
       headers: {
@@ -1728,6 +1728,339 @@ export const getAllArtists = asyncHandler(async (req: AuthRequest, res: Response
     success: true,
     data: { artists }
   });
+});
+
+// Album management routes
+
+// Get all albums
+export const getAllAlbums = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { search } = req.query;
+
+  let albums = await AlbumModel.getAllWithDetails();
+
+  // Filter by search query if provided
+  if (search && typeof search === 'string') {
+    const searchLower = search.toLowerCase();
+    albums = albums.filter(album =>
+      album.title.toLowerCase().includes(searchLower) ||
+      album.artist_name?.toLowerCase().includes(searchLower)
+    );
+  }
+
+  res.json({
+    success: true,
+    data: { albums }
+  });
+});
+
+// Search for album images on Google
+export const searchAlbumImages = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { albumName } = req.query;
+
+  if (!albumName || typeof albumName !== 'string') {
+    throw new AppError('Album name is required', 400);
+  }
+
+  try {
+    const { GOOGLE_IMG_SCRAP } = require('google-img-scrap');
+
+    const searchResults = await GOOGLE_IMG_SCRAP({
+      search: `${albumName}`
+    });
+
+    // Return only the first 12 results
+    const results = searchResults.result.slice(0, 12);
+
+    res.json({
+      success: true,
+      data: {
+        results,
+        query: albumName
+      }
+    });
+  } catch (error: any) {
+    console.error('Error searching album images:', error);
+    throw new AppError('Failed to search album images', 500);
+  }
+});
+
+// Download and save album image from URL
+export const saveAlbumImage = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const { imageUrl } = req.body;
+
+  if (!imageUrl) {
+    throw new AppError('Image URL is required', 400);
+  }
+
+  const album = await AlbumModel.findById(parseInt(id));
+  if (!album) {
+    throw new AppError('Album not found', 404);
+  }
+
+  try {
+    // Create uploads/artwork directory if it doesn't exist
+    const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+    if (!fs.existsSync(artworkDir)) {
+      fs.mkdirSync(artworkDir, { recursive: true });
+    }
+
+    // Download image
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    // Process and save image with sharp
+    const image = sharp(response.data);
+    const metadata = await image.metadata();
+
+    // Calculate target size (use 500x500 for album artwork)
+    const targetSize = 500;
+
+    // Resize and save as JPEG
+    let processedImage = image.resize(targetSize, targetSize, {
+      fit: 'cover',
+      position: 'center'
+    });
+
+    // Generate filename
+    const filename = `album_${album.id}_${Date.now()}.jpg`;
+    const filepath = path.join(artworkDir, filename);
+
+    // Save file
+    await processedImage.jpeg({ quality: 90 }).toFile(filepath);
+
+    // Delete old image if exists
+    if (album.artwork_path) {
+      const oldPath = path.join(process.cwd(), album.artwork_path);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    // Update album in database
+    await AlbumModel.updateArtwork(album.id, `uploads/artwork/${filename}`);
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Album artwork saved successfully',
+        imagePath: `uploads/artwork/${filename}`
+      }
+    });
+  } catch (error: any) {
+    console.error('Error saving album image:', error);
+    throw new AppError('Failed to save album image', 500);
+  }
+});
+
+// Crop and save album image
+export const cropAlbumImage = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const { imageUrl, cropArea, zoom } = req.body;
+
+  if (!imageUrl) {
+    throw new AppError('Image URL is required', 400);
+  }
+
+  if (!cropArea || typeof cropArea.x !== 'number' || typeof cropArea.y !== 'number' || typeof cropArea.size !== 'number') {
+    throw new AppError('Invalid crop area data', 400);
+  }
+
+  if (!zoom || typeof zoom !== 'number') {
+    throw new AppError('Invalid zoom value', 400);
+  }
+
+  const album = await AlbumModel.findById(parseInt(id));
+  if (!album) {
+    throw new AppError('Album not found', 404);
+  }
+
+  try {
+    // Create uploads/artwork directory if it doesn't exist
+    const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+    if (!fs.existsSync(artworkDir)) {
+      fs.mkdirSync(artworkDir, { recursive: true });
+    }
+
+    console.log(`Downloading image from: ${imageUrl}`);
+    console.log(`Crop data: x=${cropArea.x}, y=${cropArea.y}, size=${cropArea.size}, zoom=${zoom}`);
+
+    // Download image
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    // Load image with sharp
+    const image = sharp(response.data);
+    const metadata = await image.metadata();
+
+    console.log(`Image dimensions: ${metadata.width}x${metadata.height}`);
+
+    // Calculate the actual area to extract based on zoom
+    const extractSize = Math.round(cropArea.size / zoom);
+    const extractX = Math.round(cropArea.x);
+    const extractY = Math.round(cropArea.y);
+
+    console.log(`Extracting: x=${extractX}, y=${extractY}, size=${extractSize}`);
+
+    // Validate extract bounds
+    if (extractX < 0 || extractY < 0 || extractSize <= 0) {
+      throw new Error('Invalid crop parameters');
+    }
+
+    if (!metadata.width || !metadata.height) {
+      throw new Error('Could not determine image dimensions');
+    }
+
+    if (extractX + extractSize > metadata.width || extractY + extractSize > metadata.height) {
+      throw new Error(`Crop area (${extractX + extractSize}x${extractY + extractSize}) exceeds image dimensions (${metadata.width}x${metadata.height})`);
+    }
+
+    // Extract and resize to cropArea.size (output size)
+    const processedImage = image
+      .extract({
+        left: extractX,
+        top: extractY,
+        width: extractSize,
+        height: extractSize
+      })
+      .resize(cropArea.size, cropArea.size, {
+        fit: 'cover',
+        position: 'center'
+      });
+
+    // Generate filename
+    const filename = `album_${album.id}_${Date.now()}.jpg`;
+    const filepath = path.join(artworkDir, filename);
+
+    // Save file
+    await processedImage.jpeg({ quality: 90 }).toFile(filepath);
+
+    // Delete old image if exists
+    if (album.artwork_path) {
+      const oldPath = path.join(process.cwd(), album.artwork_path);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    // Update album in database
+    await AlbumModel.updateArtwork(album.id, `uploads/artwork/${filename}`);
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Album artwork cropped and saved successfully',
+        imagePath: `uploads/artwork/${filename}`
+      }
+    });
+  } catch (error: any) {
+    console.error('Error cropping album image:', error);
+    throw new AppError('Failed to crop and save album image', 500);
+  }
+});
+
+// Upload album image file
+export const uploadAlbumImage = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+
+  const album = await AlbumModel.findById(parseInt(id));
+  if (!album) {
+    throw new AppError('Album not found', 404);
+  }
+
+  if (!req.file) {
+    throw new AppError('No file uploaded', 400);
+  }
+
+  try {
+    // Create uploads/artwork directory if it doesn't exist
+    const artworkDir = path.join(process.cwd(), 'uploads', 'artwork');
+    if (!fs.existsSync(artworkDir)) {
+      fs.mkdirSync(artworkDir, { recursive: true });
+    }
+
+    // Generate filename
+    const ext = path.extname(req.file.originalname);
+    const filename = `album_${album.id}_${Date.now()}${ext}`;
+    const filepath = path.join(artworkDir, filename);
+
+    // Save file
+    fs.writeFileSync(filepath, req.file.buffer);
+
+    // Delete old image if exists
+    if (album.artwork_path) {
+      const oldPath = path.join(process.cwd(), album.artwork_path);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    // Update album in database
+    await AlbumModel.updateArtwork(album.id, `uploads/artwork/${filename}`);
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Album artwork uploaded successfully',
+        imagePath: `uploads/artwork/${filename}`
+      }
+    });
+  } catch (error: any) {
+    console.error('Failed to upload album artwork:', error);
+    throw new AppError('Failed to upload album artwork', 500);
+  }
+});
+
+// Update album details
+export const updateAlbum = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const { title, release_year } = req.body;
+
+  const album = await AlbumModel.findById(parseInt(id));
+  if (!album) {
+    throw new AppError('Album not found', 404);
+  }
+
+  // Validate input
+  if (!title && typeof release_year !== 'number') {
+    throw new AppError('At least title or release_year must be provided', 400);
+  }
+
+  try {
+    const updates: any = {};
+    if (title) {
+      updates.title = title;
+    }
+    if (typeof release_year === 'number') {
+      updates.release_year = release_year;
+    }
+
+    await AlbumModel.update(album.id, updates);
+
+    // Fetch updated album
+    const updatedAlbum = await AlbumModel.findById(album.id);
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Album updated successfully',
+        album: updatedAlbum
+      }
+    });
+  } catch (error: any) {
+    console.error('Failed to update album:', error);
+    throw new AppError('Failed to update album', 500);
+  }
 });
 
 // Artist Split Ignore Filters
