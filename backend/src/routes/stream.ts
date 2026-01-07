@@ -32,6 +32,17 @@ router.get('/share/:token', asyncHandler(async (req: Request, res: Response) => 
   const stat = fs.statSync(song.file_path);
   const total = stat.size;
 
+  // Set CORS headers for MediaElementAudioSourceNode support
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type');
+
   if (req.headers.range) {
     const range = req.headers.range;
     const parts = range.replace(/bytes=/, "").split("-");
@@ -74,17 +85,18 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
     throw new AppError('Invalid song ID', 400);
   }
 
-  // Get token from Authorization header
+  // Get token from Authorization header OR query parameter (for HTML5 audio streaming support)
   const authHeader = req.headers.authorization;
+  const tokenQuery = req.query.token as string;
+  const token = authHeader ? authHeader.replace('Bearer ', '') : tokenQuery;
 
-  if (!authHeader) {
+  if (!token) {
     throw new AppError('Access token required', 401);
   }
 
   // Verify token
   try {
     const jwt = require('jsonwebtoken');
-    const token = authHeader.replace('Bearer ', '');
     jwt.verify(token, config.jwtSecret);
     // Token is valid, user can access the stream
   } catch (error: any) {
@@ -102,6 +114,18 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 
   const stat = fs.statSync(song.file_path);
   const total = stat.size;
+
+  // Set CORS headers for MediaElementAudioSourceNode support
+  // This allows the browser to process the audio with Web Audio API
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Authorization, Content-Type');
 
   if (req.headers.range) {
     const range = req.headers.range;

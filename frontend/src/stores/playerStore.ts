@@ -125,6 +125,7 @@ export interface AudioPreset {
 
 interface PlayerStore extends PlayerState, PlayerActions {
   howl: Howl | null;
+  customAudioElement: HTMLAudioElement | null; // Custom audio element for streaming with CORS
   eqEnabled: boolean;
   eqGains: number[];
   masterGain: number;
@@ -132,6 +133,7 @@ interface PlayerStore extends PlayerState, PlayerActions {
   masterGainNode: GainNode | null;
   audioContext: AudioContext | null;
   progressTrackerInterval: NodeJS.Timeout | null;
+  mediaElementSource: MediaElementAudioSourceNode | null;
 
   // Reverb
   reverbEnabled: boolean;
@@ -227,8 +229,253 @@ const generateReverbImpulse = (ctx: AudioContext, roomSize: number, decay: numbe
   return impulse;
 };
 
+// Setup audio effects for custom HTML5 audio element (for streaming + effects)
+const setupAudioEffectsForElement = async (
+  audioElement: HTMLAudioElement,
+  eqEnabled: boolean,
+  eqGains: number[],
+  masterGainValue: number,
+  reverbEnabled: boolean,
+  reverbRoomSize: number,
+  reverbDecay: number,
+  reverbWetDry: number,
+  reverbCutoff: number,
+  limiterEnabled: boolean,
+  limiterThreshold: number,
+  limiterRelease: number
+): Promise<{
+  filters: BiquadFilterNode[],
+  masterGainNode: GainNode,
+  ctx: AudioContext,
+  reverbNode: ConvolverNode | null,
+  reverbDryGain: GainNode | null,
+  reverbWetGain: GainNode | null,
+  reverbFilter: BiquadFilterNode | null,
+  limiterNode: DynamicsCompressorNode | null,
+  mediaElementSource: MediaElementAudioSourceNode | null
+}> => {
+  // Create new AudioContext for this audio element
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+  // Resume AudioContext if suspended
+  if (ctx.state === 'suspended') {
+    await ctx.resume();
+  }
+
+  // Create MediaElementAudioSourceNode from our custom audio element
+  const mediaElementSource = ctx.createMediaElementSource(audioElement);
+  console.log('✅ MediaElementAudioSourceNode created for custom audio element');
+
+  // Create EQ filter nodes
+  const filters: BiquadFilterNode[] = EQ_FREQUENCIES.map((freq, index) => {
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'peaking';
+    filter.frequency.value = freq;
+    filter.Q.value = 1.0;
+    filter.gain.value = eqEnabled ? eqGains[index] : 0;
+    return filter;
+  });
+
+  // Create reverb nodes
+  let reverbNode: ConvolverNode | null = null;
+  let reverbDryGain: GainNode | null = null;
+  let reverbWetGain: GainNode | null = null;
+  let reverbFilter: BiquadFilterNode | null = null;
+
+  if (reverbEnabled) {
+    reverbNode = ctx.createConvolver();
+    reverbNode.buffer = generateReverbImpulse(ctx, reverbRoomSize, reverbDecay);
+    reverbDryGain = ctx.createGain();
+    reverbWetGain = ctx.createGain();
+    reverbDryGain.gain.value = 1 - reverbWetDry;
+    reverbWetGain.gain.value = reverbWetDry;
+
+    // Create lowpass filter for reverb tail
+    reverbFilter = ctx.createBiquadFilter();
+    reverbFilter.type = 'lowpass';
+    reverbFilter.frequency.value = reverbCutoff;
+    reverbFilter.Q.value = 1.0;
+  }
+
+  // Create limiter (compressor with hard knee)
+  let limiterNode: DynamicsCompressorNode | null = null;
+  if (limiterEnabled) {
+    limiterNode = ctx.createDynamicsCompressor();
+    limiterNode.threshold.value = limiterThreshold;
+    limiterNode.knee.value = 0;
+    limiterNode.ratio.value = 20;
+    limiterNode.attack.value = 0.003;
+    limiterNode.release.value = limiterRelease;
+  }
+
+  // Create master gain node
+  const masterGainNode = ctx.createGain();
+  masterGainNode.gain.value = masterGainValue;
+
+  // Build the audio chain:
+  // mediaElementSource -> EQ filters -> reverb (if enabled) -> limiter (if enabled) -> masterGain -> destination
+
+  let currentNode: AudioNode = mediaElementSource;
+
+  // Connect EQ filters in series
+  filters.forEach(filter => {
+    currentNode.connect(filter);
+    currentNode = filter;
+  });
+
+  // Connect reverb (wet/dry mix with lowpass filter)
+  if (reverbEnabled && reverbNode && reverbDryGain && reverbWetGain && reverbFilter) {
+    currentNode.connect(reverbDryGain);
+    currentNode.connect(reverbNode);
+
+    reverbNode.connect(reverbFilter);
+    reverbFilter.connect(reverbWetGain);
+
+    const reverbMixer = ctx.createGain();
+    reverbMixer.gain.value = 1;
+    reverbDryGain.connect(reverbMixer);
+    reverbWetGain.connect(reverbMixer);
+
+    currentNode = reverbMixer;
+  }
+
+  // Connect limiter
+  if (limiterEnabled && limiterNode) {
+    currentNode.connect(limiterNode);
+    currentNode = limiterNode;
+  }
+
+  // Connect master gain and destination
+  currentNode.connect(masterGainNode);
+  masterGainNode.connect(ctx.destination);
+
+  return { filters, masterGainNode, ctx, reverbNode, reverbDryGain, reverbWetGain, reverbFilter, limiterNode, mediaElementSource };
+};
+
+// Setup audio effects REUSING an existing MediaElementAudioSourceNode (for toggling effects)
+const setupAudioEffectsWithExistingSource = async (
+  mediaElementSource: MediaElementAudioSourceNode,
+  ctx: AudioContext,
+  eqEnabled: boolean,
+  eqGains: number[],
+  masterGainValue: number,
+  reverbEnabled: boolean,
+  reverbRoomSize: number,
+  reverbDecay: number,
+  reverbWetDry: number,
+  reverbCutoff: number,
+  limiterEnabled: boolean,
+  limiterThreshold: number,
+  limiterRelease: number
+): Promise<{
+  filters: BiquadFilterNode[],
+  masterGainNode: GainNode,
+  reverbNode: ConvolverNode | null,
+  reverbDryGain: GainNode | null,
+  reverbWetGain: GainNode | null,
+  reverbFilter: BiquadFilterNode | null,
+  limiterNode: DynamicsCompressorNode | null
+}> => {
+  // Resume AudioContext if suspended
+  if (ctx.state === 'suspended') {
+    await ctx.resume();
+  }
+
+  // Disconnect all existing connections from the source
+  try {
+    mediaElementSource.disconnect();
+  } catch (e) {
+    // Nothing to disconnect
+  }
+
+  // Create EQ filter nodes
+  const filters: BiquadFilterNode[] = EQ_FREQUENCIES.map((freq, index) => {
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'peaking';
+    filter.frequency.value = freq;
+    filter.Q.value = 1.0;
+    filter.gain.value = eqEnabled ? eqGains[index] : 0;
+    return filter;
+  });
+
+  // Create reverb nodes
+  let reverbNode: ConvolverNode | null = null;
+  let reverbDryGain: GainNode | null = null;
+  let reverbWetGain: GainNode | null = null;
+  let reverbFilter: BiquadFilterNode | null = null;
+
+  if (reverbEnabled) {
+    reverbNode = ctx.createConvolver();
+    reverbNode.buffer = generateReverbImpulse(ctx, reverbRoomSize, reverbDecay);
+    reverbDryGain = ctx.createGain();
+    reverbWetGain = ctx.createGain();
+    reverbDryGain.gain.value = 1 - reverbWetDry;
+    reverbWetGain.gain.value = reverbWetDry;
+
+    // Create lowpass filter for reverb tail
+    reverbFilter = ctx.createBiquadFilter();
+    reverbFilter.type = 'lowpass';
+    reverbFilter.frequency.value = reverbCutoff;
+    reverbFilter.Q.value = 1.0;
+  }
+
+  // Create limiter (compressor with hard knee)
+  let limiterNode: DynamicsCompressorNode | null = null;
+  if (limiterEnabled) {
+    limiterNode = ctx.createDynamicsCompressor();
+    limiterNode.threshold.value = limiterThreshold;
+    limiterNode.knee.value = 0;
+    limiterNode.ratio.value = 20;
+    limiterNode.attack.value = 0.003;
+    limiterNode.release.value = limiterRelease;
+  }
+
+  // Create master gain node
+  const masterGainNode = ctx.createGain();
+  masterGainNode.gain.value = masterGainValue;
+
+  // Build the audio chain:
+  // mediaElementSource -> EQ filters -> reverb (if enabled) -> limiter (if enabled) -> masterGain -> destination
+
+  let currentNode: AudioNode = mediaElementSource;
+
+  // Connect EQ filters in series
+  filters.forEach(filter => {
+    currentNode.connect(filter);
+    currentNode = filter;
+  });
+
+  // Connect reverb (wet/dry mix with lowpass filter)
+  if (reverbEnabled && reverbNode && reverbDryGain && reverbWetGain && reverbFilter) {
+    currentNode.connect(reverbDryGain);
+    currentNode.connect(reverbNode);
+
+    reverbNode.connect(reverbFilter);
+    reverbFilter.connect(reverbWetGain);
+
+    const reverbMixer = ctx.createGain();
+    reverbMixer.gain.value = 1;
+    reverbDryGain.connect(reverbMixer);
+    reverbWetGain.connect(reverbMixer);
+
+    currentNode = reverbMixer;
+  }
+
+  // Connect limiter
+  if (limiterEnabled && limiterNode) {
+    currentNode.connect(limiterNode);
+    currentNode = limiterNode;
+  }
+
+  // Connect master gain and destination
+  currentNode.connect(masterGainNode);
+  masterGainNode.connect(ctx.destination);
+
+  return { filters, masterGainNode, reverbNode, reverbDryGain, reverbWetGain, reverbFilter, limiterNode };
+};
+
 // Setup audio effects chain for Howler instance
-const setupAudioEffects = (
+const setupAudioEffects = async (
   howl: Howl,
   eqEnabled: boolean,
   eqGains: number[],
@@ -241,7 +488,7 @@ const setupAudioEffects = (
   limiterEnabled: boolean,
   limiterThreshold: number,
   limiterRelease: number
-): {
+): Promise<{
   filters: BiquadFilterNode[],
   masterGainNode: GainNode,
   ctx: AudioContext,
@@ -249,8 +496,9 @@ const setupAudioEffects = (
   reverbDryGain: GainNode | null,
   reverbWetGain: GainNode | null,
   reverbFilter: BiquadFilterNode | null,
-  limiterNode: DynamicsCompressorNode | null
-} => {
+  limiterNode: DynamicsCompressorNode | null,
+  mediaElementSource: MediaElementAudioSourceNode | null
+}> => {
   // @ts-ignore - Access Howler's internal audio context
   const ctx = Howler.ctx as AudioContext;
   // @ts-ignore - Access Howler's master gain node
@@ -262,6 +510,8 @@ const setupAudioEffects = (
   } catch (e) {
     // Already disconnected
   }
+
+  console.log('🎵 Setting up audio effects with Web Audio API');
 
   // Create EQ filter nodes
   const filters: BiquadFilterNode[] = EQ_FREQUENCIES.map((freq, index) => {
@@ -349,7 +599,7 @@ const setupAudioEffects = (
   currentNode.connect(masterGainNode);
   masterGainNode.connect(ctx.destination);
 
-  return { filters, masterGainNode, ctx, reverbNode, reverbDryGain, reverbWetGain, reverbFilter, limiterNode };
+  return { filters, masterGainNode, ctx, reverbNode, reverbDryGain, reverbWetGain, reverbFilter, limiterNode, mediaElementSource: null };
 };
 
 // Progress tracking helper
@@ -400,6 +650,7 @@ export const usePlayerStore = create<PlayerStore>()(
       duration: 0,
       isLoading: false,
       howl: null,
+      customAudioElement: null,
       progressTrackerInterval: null,
       eqEnabled: JSON.parse(localStorage.getItem(EQ_ENABLED_STORAGE_KEY) || 'false'),
       eqGains: JSON.parse(localStorage.getItem(EQ_GAINS_STORAGE_KEY) || '[0,0,0,0,0,0,0,0,0,0]'),
@@ -407,6 +658,7 @@ export const usePlayerStore = create<PlayerStore>()(
       eqFilters: [],
       masterGainNode: null,
       audioContext: null,
+      mediaElementSource: null,
 
       // Reverb
       reverbEnabled: JSON.parse(localStorage.getItem(REVERB_ENABLED_KEY) || 'false'),
@@ -433,10 +685,20 @@ export const usePlayerStore = create<PlayerStore>()(
 
         // If no song provided and we have a current song, resume playback
         if (!song) {
-          if (state.currentSong && state.howl) {
+          if (state.currentSong) {
             // Resume current song
             if (!state.isPlaying) {
-              state.howl.play();
+              if (state.customAudioElement && state.customAudioElement.paused) {
+                console.log('🎵 Resuming custom audio element (no song param)');
+                set({ isPlaying: true });
+                state.customAudioElement.play().catch(err => {
+                  console.error('❌ Error resuming audio:', err);
+                  set({ isPlaying: false });
+                });
+                updateMediaSession(state.currentSong, true);
+              } else if (state.howl) {
+                state.howl.play();
+              }
             }
           }
           return;
@@ -469,166 +731,182 @@ export const usePlayerStore = create<PlayerStore>()(
           const streamUrl = apiService.getStreamUrl(song.id);
           const token = localStorage.getItem('authToken');
 
+          // Append token as query parameter for HTML5 audio streaming
+          const urlWithToken = token ? `${streamUrl}?token=${token}` : streamUrl;
+
           // Detect if we're on mobile to use native volume controls
           const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
                           window.innerWidth <= 768;
 
+          // Create custom HTML5 audio element with CORS set BEFORE loading
+          // This allows streaming + MediaElementAudioSourceNode for effects
+          const audioElement = new Audio();
+          audioElement.crossOrigin = 'anonymous'; // MUST be set before src
+          audioElement.preload = 'metadata';
+          audioElement.src = urlWithToken;
+
+          console.log('✅ Created custom audio element with CORS:', audioElement.crossOrigin);
+
+          // Set initial volume
+          audioElement.volume = state.isMuted ? 0 : (isMobile ? 1.0 : state.volume);
+
+          // Store the audio element in state (we'll use a dummy Howl for compatibility)
+          set({ customAudioElement: audioElement });
+
+          // Create a dummy Howl instance for compatibility with existing code
+          // The actual audio will be played by our custom audio element
           const howl = new Howl({
-            src: [streamUrl],
-            html5: false, // Must be false for Web Audio API EQ to work
-            preload: true,
+            src: [urlWithToken],
+            html5: true,
+            preload: false, // Don't preload - we're using custom audio element
             format: ['mp3'],
-            // Configure XHR to include Authorization header
-            xhr: {
-                method: 'GET',
-                headers: token ? {
-                    'Authorization': `Bearer ${token}`
-                } : {},
-                withCredentials: false
-            } as any,
+            volume: 0, // Mute the Howl instance - audio plays from our custom element
+          });
 
-            onload: () => {
-              // Reset the ended naturally flag for new Howl instance
-              (howl as any)._endedNaturally = false;
+          // Store howl in state
+          set({ howl });
 
-              set({
-                isLoading: false,
-                duration: howl.duration(),
-                howl
-              });
-            },
-            onplay: () => {
-              set({ isPlaying: true });
-              updateMediaSession(song, true);
+          // Create AudioContext and MediaElementAudioSourceNode ONCE
+          // This must be done before the audio element starts playing
+          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const mediaElementSource = ctx.createMediaElementSource(audioElement);
+          console.log('✅ MediaElementAudioSourceNode created ONCE');
 
-              // Emit WebSocket event for playback tracking
+          // Store these immediately so they can be reused when toggling effects
+          set({
+            audioContext: ctx,
+            mediaElementSource
+          });
+
+          // Setup audio effects when audio element can play
+          audioElement.addEventListener('canplay', async () => {
+            console.log('✅ Audio can play - setting up effects');
+
+            try {
               const currentState = get();
-              playbackWebSocketService.emitPlay(
-                song.id,
-                currentState.currentTime,
-                currentState.duration
+
+              // Reuse the existing MediaElementAudioSourceNode
+              const result = await setupAudioEffectsWithExistingSource(
+                currentState.mediaElementSource!,
+                currentState.audioContext!,
+                currentState.eqEnabled,
+                currentState.eqGains,
+                currentState.masterGain,
+                currentState.reverbEnabled,
+                currentState.reverbRoomSize,
+                currentState.reverbDecay,
+                currentState.reverbWetDry,
+                currentState.reverbCutoff,
+                currentState.limiterEnabled,
+                currentState.limiterThreshold,
+                        currentState.limiterRelease
               );
 
-              // Start progress tracking
-              startProgressTracking(howl, set, get);
+              // Update store with effects nodes
+              set({
+                eqFilters: result.filters,
+                masterGainNode: result.masterGainNode,
+                reverbNode: result.reverbNode,
+                reverbDryGain: result.reverbDryGain,
+                reverbWetGain: result.reverbWetGain,
+                reverbFilter: result.reverbFilter,
+                limiterNode: result.limiterNode,
+                isLoading: false,
+                duration: audioElement.duration
+              });
 
-              // Start heartbeat for play tracking
-              startHeartbeat(song.id, () => get().currentTime);
-            },
-            onpause: () => {
-              set({ isPlaying: false });
-              updateMediaSession(song, false);
-
-              // Emit WebSocket event for pause tracking
-              const currentState = get();
-              playbackWebSocketService.emitPause(currentState.currentTime);
-
-              // Stop progress tracking
-              stopProgressTracking(set, get);
-
-              // Stop heartbeat
-              stopHeartbeat();
-            },
-            onend: () => {
-              const currentState = get();
-              const totalDuration = howl.duration();
-              // When onend fires, the song played to completion, so use full duration
-              const playedDuration = totalDuration;
-              const completed = true; // Song ended naturally, so it's complete
-
-              // Track completion
-              apiService.trackPlay({
-                songId: song.id,
-                durationPlayed: Math.floor(playedDuration),
-                completed
-              }).catch(console.error);
-
-              // Mark that this song ended naturally (not skipped)
-              // This prevents trackSongBeforeChange from tracking again
-              (howl as any)._endedNaturally = true;
-
-              // Stop progress tracking
-              stopProgressTracking(set, get);
-
-              // Stop heartbeat
-              stopHeartbeat();
-
-              // Auto-advance to next song
-              if (currentState.repeatMode === 'one') {
-                howl.seek(0);
-                howl.play();
-              } else {
-                // Use room-aware next logic
-                handleRoomAwareNext();
-              }
-            },
-            onloaderror: (id: number, error: any) => {
-              console.error('🚨 Howler load error for stream URL:', streamUrl, 'Error:', error);
-              set({ isLoading: false, isPlaying: false });
-            },
-            volume: state.isMuted ? 0 : (isMobile ? 1.0 : state.volume),
+              console.log('✅ Audio effects setup complete');
+            } catch (error) {
+              console.error('❌ Error setting up audio effects:', error);
+              set({ isLoading: false });
+            }
           });
-          
-          // Setup audio effects for the new howl instance
-          const {
-            filters,
-            masterGainNode,
-            ctx,
-            reverbNode,
-            reverbDryGain,
-            reverbWetGain,
-            reverbFilter,
-            limiterNode
-          } = setupAudioEffects(
-            howl,
-            state.eqEnabled,
-            state.eqGains,
-            state.masterGain,
-            state.reverbEnabled,
-            state.reverbRoomSize,
-            state.reverbDecay,
-            state.reverbWetDry,
-            state.reverbCutoff,
-            state.limiterEnabled,
-            state.limiterThreshold,
-            state.limiterRelease
-          );
 
-          // Update howl instance and start playing
-          set({
-            howl,
-            eqFilters: filters,
-            masterGainNode,
-            audioContext: ctx,
-            reverbNode,
-            reverbDryGain,
-            reverbWetGain,
-            reverbFilter,
-            limiterNode
+          // Handle play events
+          audioElement.addEventListener('play', () => {
+            set({ isPlaying: true });
+            updateMediaSession(song, true);
+
+            // Emit WebSocket event
+            playbackWebSocketService.emitPlay(song.id, audioElement.currentTime, audioElement.duration);
+
+            // Start heartbeat
+            startHeartbeat(song.id, () => audioElement.currentTime);
           });
-          howl.play();
-          
-        } else if (state.howl && state.currentSong) {
-          // Resume current song
-          // Ensure isPlaying state is updated before calling play
-          set({ isPlaying: true });
-          state.howl.play();
 
-          // Update media session
-          updateMediaSession(state.currentSong, true);
+          // Handle timeupdate for seek bar (fires approximately every 250ms during playback)
+          audioElement.addEventListener('timeupdate', () => {
+            const currentTime = audioElement.currentTime;
+            set({ currentTime });
+          });
+
+          // Handle pause events
+          audioElement.addEventListener('pause', () => {
+            set({ isPlaying: false });
+            updateMediaSession(song, false);
+            playbackWebSocketService.emitPause(audioElement.currentTime);
+            stopHeartbeat();
+          });
+
+          // Handle ended event
+          audioElement.addEventListener('ended', () => {
+            // Track completion
+            apiService.trackPlay({
+              songId: song.id,
+              durationPlayed: Math.floor(audioElement.duration),
+              completed: true
+            }).catch(console.error);
+
+            stopHeartbeat();
+
+            // Auto-advance
+            const currentState = get();
+            if (currentState.repeatMode === 'one') {
+              audioElement.currentTime = 0;
+              audioElement.play();
+            } else {
+              handleRoomAwareNext();
+            }
+          });
+
+          // Handle loaded metadata
+          audioElement.addEventListener('loadedmetadata', () => {
+            set({ duration: audioElement.duration });
+          });
+
+          // Handle errors
+          audioElement.addEventListener('error', (e) => {
+            console.error('🚨 Audio element error:', e);
+            set({ isLoading: false, isPlaying: false });
+          });
+
+          // Start playing
+          audioElement.play().catch(err => {
+            console.error('❌ Error playing audio:', err);
+            set({ isLoading: false, isPlaying: false });
+          });
+
+        } else if (state.currentSong && song.id === state.currentSong.id) {
+          // Same song already playing - do nothing
+          console.log('🎵 Same song already playing/loaded');
         }
       },
 
       pause: () => {
-        const { howl } = get();
-        if (howl) {
+        const { customAudioElement, howl } = get();
+        if (customAudioElement) {
+          customAudioElement.pause();
+        } else if (howl) {
           howl.pause();
         }
       },
 
       stop: () => {
-        const { howl } = get();
-        if (howl) {
+        const { customAudioElement, howl } = get();
+        if (customAudioElement) {
+          customAudioElement.pause();
+          customAudioElement.currentTime = 0;
+        } else if (howl) {
           howl.stop();
         }
         stopHeartbeat(); // Stop heartbeat when stopping playback
@@ -671,21 +949,26 @@ export const usePlayerStore = create<PlayerStore>()(
 
       previous: () => {
         const state = get();
-        const { queue, currentIndex, howl } = state;
-        
+        const { queue, currentIndex, customAudioElement, howl } = state;
+
         if (queue.length === 0) return;
-        
+
         // If more than 3 seconds into current song, restart it
-        if (howl && (howl.seek() as number) > 3) {
-          howl.seek(0);
+        const currentTime = customAudioElement ? customAudioElement.currentTime : (howl ? howl.seek() as number : 0);
+        if (currentTime > 3) {
+          if (customAudioElement) {
+            customAudioElement.currentTime = 0;
+          } else if (howl) {
+            howl.seek(0);
+          }
           return;
         }
-        
+
         let prevIndex = currentIndex - 1;
         if (prevIndex < 0) {
           prevIndex = queue.length - 1;
         }
-        
+
         const prevSong = queue[prevIndex];
         if (prevSong) {
           set({ currentIndex: prevIndex });
@@ -694,26 +977,30 @@ export const usePlayerStore = create<PlayerStore>()(
       },
 
       seek: (time) => {
-        const { howl } = get();
-        if (howl) {
+        const { customAudioElement, howl } = get();
+        if (customAudioElement) {
+          customAudioElement.currentTime = time;
+          set({ currentTime: time });
+          playbackWebSocketService.emitSeek(time);
+        } else if (howl) {
           howl.seek(time);
           set({ currentTime: time });
-
-          // Emit WebSocket event for seek tracking
           playbackWebSocketService.emitSeek(time);
         }
       },
 
       // Volume controls
       setVolume: (volume) => {
-        const { howl, isMuted } = get();
+        const { customAudioElement, howl, isMuted } = get();
         const clampedVolume = Math.max(0, Math.min(1, volume));
 
         // Check if mobile - use native volume controls
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
                         window.innerWidth <= 768;
 
-        if (howl && !isMuted) {
+        if (customAudioElement && !isMuted) {
+          customAudioElement.volume = isMobile ? 1.0 : clampedVolume;
+        } else if (howl && !isMuted) {
           howl.volume(isMobile ? 1.0 : clampedVolume);
         }
 
@@ -722,14 +1009,16 @@ export const usePlayerStore = create<PlayerStore>()(
       },
 
       toggleMute: () => {
-        const { howl, volume, isMuted } = get();
+        const { customAudioElement, howl, volume, isMuted } = get();
         const newMuted = !isMuted;
 
         // Check if mobile - use native volume controls
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
                         window.innerWidth <= 768;
 
-        if (howl) {
+        if (customAudioElement) {
+          customAudioElement.volume = newMuted ? 0 : (isMobile ? 1.0 : volume);
+        } else if (howl) {
           howl.volume(newMuted ? 0 : (isMobile ? 1.0 : volume));
         }
 
@@ -786,17 +1075,46 @@ export const usePlayerStore = create<PlayerStore>()(
         localStorage.setItem(REVERB_ENABLED_KEY, JSON.stringify(newEnabled));
 
         // Rebuild audio chain when toggling reverb
-        if (state.howl) {
-          const {
+        if (state.customAudioElement && state.mediaElementSource && state.audioContext) {
+          // Use custom audio element with streaming - reuse existing source
+          setupAudioEffectsWithExistingSource(
+            state.mediaElementSource,
+            state.audioContext,
+            state.eqEnabled,
+            state.eqGains,
+            state.masterGain,
+            newEnabled,
+            state.reverbRoomSize,
+            state.reverbDecay,
+            state.reverbWetDry,
+            state.reverbCutoff,
+            state.limiterEnabled,
+            state.limiterThreshold,
+            state.limiterRelease
+          ).then(({
             filters,
             masterGainNode,
-            ctx,
             reverbNode,
             reverbDryGain,
             reverbWetGain,
             reverbFilter,
             limiterNode
-          } = setupAudioEffects(
+          }) => {
+            set({
+              eqFilters: filters,
+              masterGainNode,
+              reverbNode,
+              reverbDryGain,
+              reverbWetGain,
+              reverbFilter,
+              limiterNode
+            });
+          }).catch((error) => {
+            console.error('❌ Error toggling reverb:', error);
+          });
+        } else if (state.howl) {
+          // Use Howler
+          setupAudioEffects(
             state.howl,
             state.eqEnabled,
             state.eqGains,
@@ -809,17 +1127,30 @@ export const usePlayerStore = create<PlayerStore>()(
             state.limiterEnabled,
             state.limiterThreshold,
             state.limiterRelease
-          );
-
-          set({
-            eqFilters: filters,
+          ).then(({
+            filters,
             masterGainNode,
-            audioContext: ctx,
+            ctx,
             reverbNode,
             reverbDryGain,
             reverbWetGain,
             reverbFilter,
-            limiterNode
+            limiterNode,
+            mediaElementSource
+          }) => {
+            set({
+              eqFilters: filters,
+              masterGainNode,
+              audioContext: ctx,
+              reverbNode,
+              reverbDryGain,
+              reverbWetGain,
+              reverbFilter,
+              limiterNode,
+              mediaElementSource
+            });
+          }).catch((error) => {
+            console.error('❌ Error toggling reverb:', error);
           });
         }
       },
@@ -881,17 +1212,46 @@ export const usePlayerStore = create<PlayerStore>()(
         localStorage.setItem(LIMITER_ENABLED_KEY, JSON.stringify(newEnabled));
 
         // Rebuild audio chain when toggling limiter
-        if (state.howl) {
-          const {
+        if (state.customAudioElement && state.mediaElementSource && state.audioContext) {
+          // Use custom audio element with streaming - reuse existing source
+          setupAudioEffectsWithExistingSource(
+            state.mediaElementSource,
+            state.audioContext,
+            state.eqEnabled,
+            state.eqGains,
+            state.masterGain,
+            state.reverbEnabled,
+            state.reverbRoomSize,
+            state.reverbDecay,
+            state.reverbWetDry,
+            state.reverbCutoff,
+            newEnabled,
+            state.limiterThreshold,
+            state.limiterRelease
+          ).then(({
             filters,
             masterGainNode,
-            ctx,
             reverbNode,
             reverbDryGain,
             reverbWetGain,
             reverbFilter,
             limiterNode
-          } = setupAudioEffects(
+          }) => {
+            set({
+              eqFilters: filters,
+              masterGainNode,
+              reverbNode,
+              reverbDryGain,
+              reverbWetGain,
+              reverbFilter,
+              limiterNode
+            });
+          }).catch((error) => {
+            console.error('❌ Error toggling limiter:', error);
+          });
+        } else if (state.howl) {
+          // Use Howler
+          setupAudioEffects(
             state.howl,
             state.eqEnabled,
             state.eqGains,
@@ -904,17 +1264,30 @@ export const usePlayerStore = create<PlayerStore>()(
             newEnabled,
             state.limiterThreshold,
             state.limiterRelease
-          );
-
-          set({
-            eqFilters: filters,
+          ).then(({
+            filters,
             masterGainNode,
-            audioContext: ctx,
+            ctx,
             reverbNode,
             reverbDryGain,
             reverbWetGain,
             reverbFilter,
-            limiterNode
+            limiterNode,
+            mediaElementSource
+          }) => {
+            set({
+              eqFilters: filters,
+              masterGainNode,
+              audioContext: ctx,
+              reverbNode,
+              reverbDryGain,
+              reverbWetGain,
+              reverbFilter,
+              limiterNode,
+              mediaElementSource
+            });
+          }).catch((error) => {
+            console.error('❌ Error toggling limiter:', error);
           });
         }
       },
@@ -1171,14 +1544,24 @@ export const usePlayerStore = create<PlayerStore>()(
 if (typeof window !== 'undefined') {
   // Setup media session handlers
   setupMediaSessionHandlers(usePlayerStore);
-  
+
   setInterval(() => {
     const state = usePlayerStore.getState();
-    if (state.howl && state.isPlaying) {
-      const currentTime = state.howl.seek() as number;
+    if (state.isPlaying) {
+      let currentTime: number;
+
+      // Get currentTime from custom audio element or howl
+      if (state.customAudioElement) {
+        currentTime = state.customAudioElement.currentTime;
+      } else if (state.howl) {
+        currentTime = state.howl.seek() as number;
+      } else {
+        return;
+      }
+
       if (typeof currentTime === 'number' && !isNaN(currentTime)) {
         state.setCurrentTime(currentTime);
-        
+
         // Update media session position
         if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
           navigator.mediaSession.setPositionState({
