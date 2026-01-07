@@ -534,6 +534,12 @@ class ApiService {
     return `${apiBaseUrl}/stream/${songId}`;
   }
 
+  // Public stream endpoint for shared songs (no authentication required)
+  getPublicStreamUrl(token: string): string {
+    const apiBaseUrl = getApiBaseUrl();
+    return `${apiBaseUrl}/stream/share/${token}`;
+  }
+
   getArtworkUrl(path: string): string {
     if (!path) return '';
 

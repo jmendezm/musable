@@ -467,16 +467,25 @@ export const usePlayerStore = create<PlayerStore>()(
 
           // Create new Howl instance
           const streamUrl = apiService.getStreamUrl(song.id);
+          const token = localStorage.getItem('authToken');
 
           // Detect if we're on mobile to use native volume controls
           const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
                           window.innerWidth <= 768;
-          
+
           const howl = new Howl({
             src: [streamUrl],
             html5: false, // Must be false for Web Audio API EQ to work
             preload: true,
             format: ['mp3'],
+            // Configure XHR to include Authorization header
+            xhr: {
+                method: 'GET',
+                headers: token ? {
+                    'Authorization': `Bearer ${token}`
+                } : {},
+                withCredentials: false
+            } as any,
 
             onload: () => {
               // Reset the ended naturally flag for new Howl instance

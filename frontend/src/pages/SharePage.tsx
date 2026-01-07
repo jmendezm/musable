@@ -56,7 +56,7 @@ const SharePage: React.FC = () => {
         howl.play();
       }
     } else {
-      const streamUrl = apiService.getStreamUrl(song.id);
+      const streamUrl = apiService.getPublicStreamUrl(token);
       const newHowl = new Howl({
         src: [streamUrl],
         html5: true,
