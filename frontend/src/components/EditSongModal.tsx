@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { XMarkIcon, PhotoIcon, MusicalNoteIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, PhotoIcon, MusicalNoteIcon, MagnifyingGlassIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import { Song } from '../types';
 import { apiService } from '../services/api';
 import { useToast } from '../contexts/ToastContext';
@@ -34,6 +34,16 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
   const [ImageSearchModalComponent, setImageSearchModalComponent] = useState<React.ComponentType<any> | null>(null);
+
+  // Autocomplete states
+  const [artistSearchResults, setArtistSearchResults] = useState<Array<{ id: number; name: string }>>([]);
+  const [albumSearchResults, setAlbumSearchResults] = useState<Array<{ id: number; title: string; artist_name?: string }>>([]);
+  const [showArtistDropdown, setShowArtistDropdown] = useState(false);
+  const [showAlbumDropdown, setShowAlbumDropdown] = useState(false);
+  const [artistSelectedIndex, setArtistSelectedIndex] = useState(-1);
+  const [albumSelectedIndex, setAlbumSelectedIndex] = useState(-1);
+  const artistDropdownRef = useRef<HTMLDivElement>(null);
+  const albumDropdownRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState<EditSongData>({
     title: '',
@@ -89,14 +99,177 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
       });
       setPreviewUrl(null);
       setIsLoading(false);
+      setShowArtistDropdown(false);
+      setShowAlbumDropdown(false);
+      setArtistSearchResults([]);
+      setAlbumSearchResults([]);
     }
   }, [isOpen]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (artistDropdownRef.current && !artistDropdownRef.current.contains(event.target as Node)) {
+        setShowArtistDropdown(false);
+        setArtistSelectedIndex(-1);
+      }
+      if (albumDropdownRef.current && !albumDropdownRef.current.contains(event.target as Node)) {
+        setShowAlbumDropdown(false);
+        setAlbumSelectedIndex(-1);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Search artists with debounce
+  useEffect(() => {
+    const timeoutId = setTimeout(async () => {
+      if (formData.artist_name.trim().length > 0) {
+        try {
+          const response = await apiService.request('GET', `/admin/artists?search=${encodeURIComponent(formData.artist_name)}`) as {
+            data: { artists: Array<{ id: number; name: string }> }
+          };
+          setArtistSearchResults(response.data.artists || []);
+          setShowArtistDropdown(response.data.artists && response.data.artists.length > 0);
+          setArtistSelectedIndex(-1);
+        } catch (error) {
+          console.error('Error searching artists:', error);
+        }
+      } else {
+        setArtistSearchResults([]);
+        setShowArtistDropdown(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.artist_name]);
+
+  // Search albums with debounce
+  useEffect(() => {
+    const timeoutId = setTimeout(async () => {
+      if (formData.album_title.trim().length > 0) {
+        try {
+          const response = await apiService.request('GET', `/admin/albums?search=${encodeURIComponent(formData.album_title)}`) as {
+            data: { albums: Array<{ id: number; title: string; artist_name?: string }> }
+          };
+          setAlbumSearchResults(response.data.albums || []);
+          setShowAlbumDropdown(response.data.albums && response.data.albums.length > 0);
+          setAlbumSelectedIndex(-1);
+        } catch (error) {
+          console.error('Error searching albums:', error);
+        }
+      } else {
+        setAlbumSearchResults([]);
+        setShowAlbumDropdown(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.album_title]);
 
   const handleInputChange = (field: keyof EditSongData, value: string | number | null) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
+  };
+
+  // Handle keyboard navigation for artist dropdown
+  const handleArtistKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showArtistDropdown || artistSearchResults.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setArtistSelectedIndex(prev =>
+          prev < artistSearchResults.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setArtistSelectedIndex(prev => (prev > 0 ? prev - 1 : 0));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (artistSelectedIndex >= 0 && artistSearchResults[artistSelectedIndex]) {
+          handleSelectArtist(artistSearchResults[artistSelectedIndex]);
+        }
+        break;
+      case 'Escape':
+        setShowArtistDropdown(false);
+        setArtistSelectedIndex(-1);
+        break;
+    }
+  };
+
+  // Handle keyboard navigation for album dropdown
+  const handleAlbumKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showAlbumDropdown || albumSearchResults.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setAlbumSelectedIndex(prev =>
+          prev < albumSearchResults.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setAlbumSelectedIndex(prev => (prev > 0 ? prev - 1 : 0));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (albumSelectedIndex >= 0 && albumSearchResults[albumSelectedIndex]) {
+          handleSelectAlbum(albumSearchResults[albumSelectedIndex]);
+        }
+        break;
+      case 'Escape':
+        setShowAlbumDropdown(false);
+        setAlbumSelectedIndex(-1);
+        break;
+    }
+  };
+
+  const handleSelectArtist = (artist: { id: number; name: string }) => {
+    setFormData(prev => ({ ...prev, artist_name: artist.name }));
+    setShowArtistDropdown(false);
+    setArtistSelectedIndex(-1);
+  };
+
+  const handleSelectAlbum = (album: { id: number; title: string; artist_name?: string }) => {
+    setFormData(prev => ({ ...prev, album_title: album.title }));
+    setShowAlbumDropdown(false);
+    setAlbumSelectedIndex(-1);
+  };
+
+  const handleArtistFocus = () => {
+    if (artistSearchResults.length > 0) {
+      setShowArtistDropdown(true);
+    }
+  };
+
+  const handleAlbumFocus = () => {
+    if (albumSearchResults.length > 0) {
+      setShowAlbumDropdown(true);
+    }
+  };
+
+  const handleArtistBlur = () => {
+    // Delay to allow click events on dropdown items to process
+    setTimeout(() => {
+      setShowArtistDropdown(false);
+      setArtistSelectedIndex(-1);
+    }, 200);
+  };
+
+  const handleAlbumBlur = () => {
+    // Delay to allow click events on dropdown items to process
+    setTimeout(() => {
+      setShowAlbumDropdown(false);
+      setAlbumSelectedIndex(-1);
+    }, 200);
   };
 
   const handleArtworkChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -354,33 +527,98 @@ const EditSongModal: React.FC<EditSongModalProps> = ({
           </div>
 
           {/* Artist Name */}
-          <div>
+          <div ref={artistDropdownRef} className="relative">
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Artist
             </label>
-            <input
-              type="text"
-              value={formData.artist_name}
-              onChange={(e) => handleInputChange('artist_name', e.target.value)}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-              placeholder="Enter artist name"
-              disabled={isLoading}
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={formData.artist_name}
+                onChange={(e) => handleInputChange('artist_name', e.target.value)}
+                onKeyDown={handleArtistKeyDown}
+                onFocus={handleArtistFocus}
+                onBlur={handleArtistBlur}
+                className="w-full px-3 py-2 pr-10 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                placeholder="Enter artist name"
+                disabled={isLoading}
+                autoComplete="off"
+              />
+              {artistSearchResults.length > 0 && (
+                <ChevronDownIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+              )}
+            </div>
+
+            {/* Artist Dropdown */}
+            {showArtistDropdown && artistSearchResults.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                {artistSearchResults.map((artist, index) => (
+                  <button
+                    key={artist.id}
+                    type="button"
+                    onClick={() => handleSelectArtist(artist)}
+                    onMouseDown={(e) => e.preventDefault()} // Prevent blur from closing dropdown before click
+                    className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                      index === artistSelectedIndex
+                        ? 'bg-primary text-white'
+                        : 'text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    {artist.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Album Title */}
-          <div>
+          <div ref={albumDropdownRef} className="relative">
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Album
             </label>
-            <input
-              type="text"
-              value={formData.album_title}
-              onChange={(e) => handleInputChange('album_title', e.target.value)}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-              placeholder="Enter album title"
-              disabled={isLoading}
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={formData.album_title}
+                onChange={(e) => handleInputChange('album_title', e.target.value)}
+                onKeyDown={handleAlbumKeyDown}
+                onFocus={handleAlbumFocus}
+                onBlur={handleAlbumBlur}
+                className="w-full px-3 py-2 pr-10 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                placeholder="Enter album title"
+                disabled={isLoading}
+                autoComplete="off"
+              />
+              {albumSearchResults.length > 0 && (
+                <ChevronDownIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+              )}
+            </div>
+
+            {/* Album Dropdown */}
+            {showAlbumDropdown && albumSearchResults.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                {albumSearchResults.map((album, index) => (
+                  <button
+                    key={album.id}
+                    type="button"
+                    onClick={() => handleSelectAlbum(album)}
+                    onMouseDown={(e) => e.preventDefault()} // Prevent blur from closing dropdown before click
+                    className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                      index === albumSelectedIndex
+                        ? 'bg-primary text-white'
+                        : 'text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-medium">{album.title}</div>
+                      {album.artist_name && (
+                        <div className="text-xs text-gray-400">{album.artist_name}</div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Release Year and Genre Row */}

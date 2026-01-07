@@ -311,6 +311,10 @@ export const updateSong = asyncHandler(async (req: AuthRequest, res: Response) =
     throw new AppError('Song not found', 404);
   }
 
+  // Store old artist and album IDs for cleanup later
+  const oldArtists = await SongModel.getArtists(songId);
+  const oldAlbumId = song.album_id;
+
   // Handle artist_name to artist_id conversion via junction table
   let updateData = { ...req.body };
   let artworkUrl: string | null = undefined;
@@ -385,6 +389,32 @@ export const updateSong = asyncHandler(async (req: AuthRequest, res: Response) =
           await AlbumModel.update(album.id, { artwork_path: artworkPath });
         }
       }
+    }
+  }
+
+  // Cleanup: Delete old artists if they no longer have any songs
+  for (const oldArtist of oldArtists) {
+    // Skip if this artist is still assigned to the song
+    const currentArtists = await SongModel.getArtists(songId);
+    if (currentArtists.some(a => a.id === oldArtist.id)) {
+      continue;
+    }
+
+    // Check if this artist has any other songs
+    const artistSongs = await SongModel.getSongsByArtist(oldArtist.id);
+    if (artistSongs.length === 0) {
+      // Artist has no more songs, delete them
+      await ArtistModel.delete(oldArtist.id);
+    }
+  }
+
+  // Cleanup: Delete old album if it's no longer used and changed
+  if (oldAlbumId && oldAlbumId !== updatedSong.album_id) {
+    // Check if the old album still has songs
+    const albumSongs = await SongModel.getSongsByAlbum(oldAlbumId);
+    if (albumSongs.length === 0) {
+      // Album has no more songs, delete it
+      await AlbumModel.delete(oldAlbumId);
     }
   }
 
