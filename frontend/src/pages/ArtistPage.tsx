@@ -1,27 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { PlayIcon, MusicalNoteIcon, ClockIcon, UserIcon, RectangleStackIcon } from '@heroicons/react/24/outline';
-import { PlayIcon as PlayIconSolid, PauseIcon } from '@heroicons/react/24/solid';
+import { PlayIcon, MusicalNoteIcon, ClockIcon, UserIcon, RectangleStackIcon, HeartIcon, ChevronDownIcon, ChevronUpIcon, EllipsisHorizontalIcon } from '@heroicons/react/24/outline';
+import { PlayIcon as PlayIconSolid, PauseIcon, HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
 import { usePlayerStore } from '../stores/playerStore';
+import { useAuthStore } from '../stores/authStore';
 import { useRoomStore } from '../stores/roomStore';
 import { handleRoomAwarePlayback } from '../utils/roomPlayback';
 import { useToast } from '../contexts/ToastContext';
+import { useContextMenu } from '../hooks/useContextMenu';
 import { apiService } from '../services/api';
 import { Artist, Song, Album } from '../types';
 import clsx from 'clsx';
 import { getBackendUrl } from '../config/config';
+import ContextMenu from '../components/ContextMenu';
+import SongMenuBottomSheet from '../components/SongMenuBottomSheet';
+import { copyToClipboard } from '../utils/clipboard';
+import EditSongModal from '../components/EditSongModal';
+import AddToPlaylistModal from '../components/AddToPlaylistModal';
 
 const ArtistPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { play, setQueue, currentSong, isPlaying } = usePlayerStore();
+  const { play, setQueue, addToQueue, currentSong, isPlaying } = usePlayerStore();
   const roomStore = useRoomStore();
-  const { showSuccess } = useToast();
+  const { user } = useAuthStore();
+  const { showSuccess, showError } = useToast();
+  const {
+    contextMenu,
+    closeContextMenu,
+    handleContextMenu,
+    handleTouchStart,
+    handleTouchEnd,
+    handleTouchMove,
+    handleClick
+  } = useContextMenu();
   const [artist, setArtist] = useState<Artist | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<Set<number>>(new Set());
+  const [selectedSongForMenu, setSelectedSongForMenu] = useState<Song | null>(null);
+  const [showSongMenu, setShowSongMenu] = useState(false);
+  const [editingSong, setEditingSong] = useState<Song | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [addToPlaylistModalOpen, setAddToPlaylistModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'songs' | 'albums'>(() => {
     // Restore tab state from sessionStorage on component mount
     if (id) {
@@ -67,7 +90,18 @@ const ArtistPage: React.FC = () => {
       }
     };
 
+    const fetchFavorites = async () => {
+      try {
+        const response = await apiService.getFavorites();
+        const favoriteIds = new Set(response.data?.songs?.map((song: Song) => song.id) || []);
+        setFavorites(favoriteIds);
+      } catch (error) {
+        console.error('Error fetching favorites:', error);
+      }
+    };
+
     fetchArtist();
+    fetchFavorites();
   }, [id, navigate]);
 
   const handlePlayAllSongs = () => {
@@ -76,8 +110,85 @@ const ArtistPage: React.FC = () => {
     }
   };
 
+  const handleMenuAction = (song: Song) => {
+    setSelectedSongForMenu(song);
+    setShowSongMenu(true);
+  };
+
   const handlePlaySong = (song: Song, index: number) => {
     handleRoomAwarePlayback(song, songs);
+  };
+
+  const handleToggleFavorite = async (song: Song) => {
+    try {
+      await apiService.toggleFavorite(song.id);
+      setFavorites(prev => {
+        const newFavorites = new Set(prev);
+        if (newFavorites.has(song.id)) {
+          newFavorites.delete(song.id);
+        } else {
+          newFavorites.add(song.id);
+        }
+        return newFavorites;
+      });
+      showSuccess(favorites.has(song.id) ? 'Removed from favorites' : 'Added to favorites');
+    } catch (error) {
+      console.error('Failed to toggle favorite:', error);
+    }
+  };
+
+  const handleAddToQueue = (song: Song) => {
+    addToQueue(song);
+    showSuccess(`Added "${song.title}" to queue`);
+  };
+
+  const handleAddToPlaylist = (song: Song) => {
+    setSelectedSongForMenu(song);
+    setAddToPlaylistModalOpen(true);
+  };
+
+  // Context menu handlers
+  const handleContextMenuPlay = (song: Song) => {
+    handlePlaySong(song, songs.indexOf(song));
+  };
+
+  const handleContextMenuAddToQueue = (song: Song) => {
+    addToQueue(song);
+    showSuccess(`Added "${song.title}" to queue`);
+  };
+
+  const handleContextMenuAddToPlaylist = (song: Song) => {
+    setSelectedSongForMenu(song);
+    setAddToPlaylistModalOpen(true);
+    closeContextMenu();
+  };
+
+  const handleContextMenuToggleFavorite = async (song: Song) => {
+    await handleToggleFavorite(song);
+  };
+
+  const handleContextMenuShare = async (song: Song) => {
+    try {
+      const response = await apiService.createShareToken(song.id);
+      const shareUrl = response.data.shareUrl;
+
+      await copyToClipboard(shareUrl);
+      showSuccess('Share link copied to clipboard!');
+    } catch (err) {
+      console.error('Failed to create share URL:', err);
+      showError('Failed to copy share URL. Please try again.');
+    }
+  };
+
+  const handleContextMenuEdit = (song: Song) => {
+    setEditingSong(song);
+    setEditModalOpen(true);
+    closeContextMenu();
+  };
+
+  const handleContextMenuDelete = (song: Song) => {
+    console.log('Delete song:', song.title);
+    // TODO: Implement delete song functionality with confirmation
   };
 
   const formatDuration = (duration: number): string => {
@@ -222,75 +333,93 @@ const ArtistPage: React.FC = () => {
 
       {/* Content */}
       {activeTab === 'songs' && (
-        <div>
+        <div className="px-0 lg:px-4">
           {songs.length > 0 ? (
-            <div className="space-y-2">
-              {songs.map((song, index) => {
-                const isCurrentSong = currentSong?.id === song.id;
-                const isSongPlaying = isCurrentSong && isPlaying;
+            <div className="md:bg-gray-800/80 md:rounded-lg p-0 md:p-6">
+              <div className="space-y-2">
+                {songs.map((song, index) => {
+                  const isCurrentSong = currentSong?.id === song.id;
+                  const isSongPlaying = isCurrentSong && isPlaying;
 
-                return (
-                  <div
-                    key={song.id}
-                    className={clsx(
-                      'flex items-center gap-4 p-3 rounded-lg hover:bg-gray-800 transition-colors group cursor-pointer',
-                      isCurrentSong && 'bg-gray-800'
-                    )}
-                    onClick={() => handlePlaySong(song, index)}
-                  >
-                    {/* Play Button / Song Number */}
-                    <div className="w-8 h-8 flex items-center justify-center text-gray-400 group-hover:text-white transition-colors">
-                      {isSongPlaying ? (
-                        <PauseIcon className="w-4 h-4 text-primary" />
-                      ) : isCurrentSong ? (
-                        <PlayIcon className="w-4 h-4 text-primary" />
-                      ) : (
-                        <>
-                          <span className="group-hover:hidden text-sm">
-                            {index + 1}
-                          </span>
-                          <PlayIcon className="w-4 h-4 hidden group-hover:block" />
-                        </>
+                  return (
+                    <div
+                      key={song.id}
+                      data-song-context-menu
+                      className={clsx(
+                        'flex items-center gap-3 md:gap-4 py-3 px-0 md:px-3 rounded-lg hover:bg-gray-800 transition-all duration-300 group cursor-pointer select-none',
+                        isCurrentSong && 'bg-gray-800'
                       )}
-                    </div>
+                      onClick={(e) => handleClick(e, () => handlePlaySong(song, index))}
+                      onContextMenu={(e) => handleContextMenu(e, song)}
+                      onTouchStart={(e) => handleTouchStart(e, song)}
+                      onTouchEnd={handleTouchEnd}
+                      onTouchMove={handleTouchMove}
+                    >
+                      {/* Track Number / Play Button */}
+                      <div className="w-8 h-8 flex items-center justify-center text-gray-400 group-hover:text-white transition-colors flex-shrink-0">
+                        {isSongPlaying ? (
+                          <PauseIcon className="w-4 h-4 text-primary" />
+                        ) : isCurrentSong ? (
+                          <PlayIcon className="w-4 h-4 text-primary" />
+                        ) : (
+                          <>
+                            <span className="group-hover:hidden text-sm">
+                              {index + 1}
+                            </span>
+                            <PlayIcon className="w-4 h-4 hidden group-hover:block" />
+                          </>
+                        )}
+                      </div>
 
-                    {/* Song Artwork */}
-                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
-                      {song.artwork_path ? (
-                        <img
-                          src={apiService.getArtworkUrl(song.artwork_path)}
-                          alt={song.album_title || 'Album artwork'}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <MusicalNoteIcon className="w-4 h-4 text-gray-400" />
-                        </div>
-                      )}
-                    </div>
+                      {/* Song Artwork */}
+                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
+                        {song.artwork_path ? (
+                          <img
+                            src={apiService.getArtworkUrl(song.artwork_path)}
+                            alt={song.album_title || 'Album artwork'}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <MusicalNoteIcon className="w-4 h-4 text-gray-400" />
+                          </div>
+                        )}
+                      </div>
 
-                    {/* Song Info */}
-                    <div className="flex-1 min-w-0">
-                      <h3 className={clsx(
-                        'font-medium truncate',
-                        isCurrentSong ? 'text-primary' : 'text-white'
-                      )}>
-                        {song.title}
-                      </h3>
-                      {song.album_title && (
-                        <p className="text-gray-400 text-sm truncate">
-                          {song.album_title}
-                        </p>
-                      )}
-                    </div>
+                      {/* Song Info */}
+                      <div className="flex-1 min-w-0">
+                        <h3 className={clsx(
+                          'font-medium truncate',
+                          isCurrentSong ? 'text-primary' : 'text-white'
+                        )}>
+                          {song.title}
+                        </h3>
+                        {song.album_title && (
+                          <p className="text-gray-400 text-sm truncate">
+                            {song.album_title}
+                          </p>
+                        )}
+                      </div>
 
-                    {/* Duration */}
-                    <div className="text-gray-400 text-sm">
-                      {song.duration ? formatDuration(song.duration) : ''}
+                      {/* Duration */}
+                      <div className="text-gray-400 text-xs md:text-sm flex-shrink-0">
+                        {song.duration ? formatDuration(song.duration) : ''}
+                      </div>
+
+                      {/* Menu Button - Mobile Only */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMenuAction(song);
+                        }}
+                        className="md:hidden flex-shrink-0 p-2 text-gray-400 hover:text-white transition-colors"
+                      >
+                        <EllipsisHorizontalIcon className="w-6 h-6" />
+                      </button>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           ) : (
             <div className="text-center py-12">
@@ -331,6 +460,68 @@ const ArtistPage: React.FC = () => {
           ))}
         </div>
       )}
+
+      {/* Mobile Song Menu Bottom Sheet */}
+      <SongMenuBottomSheet
+        isOpen={showSongMenu}
+        song={selectedSongForMenu}
+        onClose={() => setShowSongMenu(false)}
+        favorites={favorites}
+        onToggleFavorite={handleToggleFavorite}
+        onAddToQueue={handleAddToQueue}
+        onAddToPlaylist={handleAddToPlaylist}
+        showSuccess={showSuccess}
+        showError={(msg) => console.error(msg)}
+      />
+
+      {/* Desktop Context Menu */}
+      <ContextMenu
+        isOpen={contextMenu.isOpen}
+        position={contextMenu.position}
+        onClose={closeContextMenu}
+        song={contextMenu.song}
+        isAdmin={Boolean(user?.is_admin)}
+        isFavorited={contextMenu.song ? favorites.has(contextMenu.song.id) : false}
+        onPlay={handleContextMenuPlay}
+        onAddToQueue={handleContextMenuAddToQueue}
+        onAddToPlaylist={handleContextMenuAddToPlaylist}
+        onToggleFavorite={handleContextMenuToggleFavorite}
+        onShare={handleContextMenuShare}
+        onEdit={user?.is_admin ? handleContextMenuEdit : undefined}
+        onDelete={user?.is_admin ? handleContextMenuDelete : undefined}
+      />
+
+      {/* Edit Song Modal */}
+      <EditSongModal
+        isOpen={editModalOpen}
+        song={editingSong}
+        onClose={() => {
+          setEditModalOpen(false);
+          setEditingSong(null);
+        }}
+        onSongUpdated={(updatedSong) => {
+          setEditModalOpen(false);
+          setEditingSong(null);
+          // Refresh artist data
+          if (id) {
+            apiService.getArtist(Number(id)).then(response => {
+              if (response.success) {
+                setSongs(response.data.songs);
+              }
+            });
+          }
+        }}
+      />
+
+      {/* Add to Playlist Modal */}
+      <AddToPlaylistModal
+        isOpen={addToPlaylistModalOpen}
+        song={selectedSongForMenu}
+        onClose={() => {
+          setAddToPlaylistModalOpen(false);
+          setSelectedSongForMenu(null);
+        }}
+      />
     </div>
   );
 };

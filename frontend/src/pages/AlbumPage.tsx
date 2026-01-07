@@ -5,12 +5,18 @@ import { PlayIcon as PlayIconSolid, PauseIcon, HeartIcon as HeartIconSolid } fro
 import { usePlayerStore } from '../stores/playerStore';
 import { useFollowedAlbumsStore } from '../stores/followedAlbumsStore';
 import { useRoomStore } from '../stores/roomStore';
+import { useAuthStore } from '../stores/authStore';
 import { handleRoomAwarePlayback } from '../utils/roomPlayback';
 import { useToast } from '../contexts/ToastContext';
+import { useContextMenu } from '../hooks/useContextMenu';
 import { apiService } from '../services/api';
 import { Album, Song } from '../types';
 import clsx from 'clsx';
 import SongMenuBottomSheet from '../components/SongMenuBottomSheet';
+import ContextMenu from '../components/ContextMenu';
+import { copyToClipboard } from '../utils/clipboard';
+import EditSongModal from '../components/EditSongModal';
+import AddToPlaylistModal from '../components/AddToPlaylistModal';
 
 const AlbumPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -19,7 +25,17 @@ const AlbumPage: React.FC = () => {
   const { play, setQueue, addToQueue, currentSong, isPlaying } = usePlayerStore();
   const { isFollowing, toggleFollow, loadFollowedAlbums } = useFollowedAlbumsStore();
   const roomStore = useRoomStore();
-  const { showSuccess } = useToast();
+  const { user } = useAuthStore();
+  const { showSuccess, showError } = useToast();
+  const {
+    contextMenu,
+    closeContextMenu,
+    handleContextMenu,
+    handleTouchStart,
+    handleTouchEnd,
+    handleTouchMove,
+    handleClick
+  } = useContextMenu();
   const [album, setAlbum] = useState<Album | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -29,6 +45,9 @@ const AlbumPage: React.FC = () => {
   const [showSongMenu, setShowSongMenu] = useState(false);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [sharedSongId, setSharedSongId] = useState<number | null>(null);
+  const [editingSong, setEditingSong] = useState<Song | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [addToPlaylistModalOpen, setAddToPlaylistModalOpen] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -154,8 +173,52 @@ const AlbumPage: React.FC = () => {
   };
 
   const handleAddToPlaylist = (song: Song) => {
-    // For now, just show a message. You can integrate with AddToPlaylistModal later
-    showSuccess('Add to playlist feature coming soon!');
+    setSelectedSongForMenu(song);
+    setAddToPlaylistModalOpen(true);
+  };
+
+  // Context menu handlers
+  const handleContextMenuPlay = (song: Song) => {
+    handlePlaySong(song, songs.indexOf(song));
+  };
+
+  const handleContextMenuAddToQueue = (song: Song) => {
+    addToQueue(song);
+    showSuccess(`Added "${song.title}" to queue`);
+  };
+
+  const handleContextMenuAddToPlaylist = (song: Song) => {
+    setSelectedSongForMenu(song);
+    setAddToPlaylistModalOpen(true);
+    closeContextMenu();
+  };
+
+  const handleContextMenuToggleFavorite = async (song: Song) => {
+    await handleToggleFavorite(song);
+  };
+
+  const handleContextMenuShare = async (song: Song) => {
+    try {
+      const response = await apiService.createShareToken(song.id);
+      const shareUrl = response.data.shareUrl;
+
+      await copyToClipboard(shareUrl);
+      showSuccess('Share link copied to clipboard!');
+    } catch (err) {
+      console.error('Failed to create share URL:', err);
+      showError('Failed to copy share URL. Please try again.');
+    }
+  };
+
+  const handleContextMenuEdit = (song: Song) => {
+    setEditingSong(song);
+    setEditModalOpen(true);
+    closeContextMenu();
+  };
+
+  const handleContextMenuDelete = (song: Song) => {
+    console.log('Delete song:', song.title);
+    // TODO: Implement delete song functionality with confirmation
   };
 
   const formatDuration = (duration: number): string => {
@@ -425,12 +488,17 @@ const AlbumPage: React.FC = () => {
                     <div
                       key={song.id}
                       id={`song-${song.id}`}
+                      data-song-context-menu
                       className={clsx(
-                        'flex items-center gap-3 md:gap-4 py-3 px-0 md:px-3 rounded-lg hover:bg-gray-800 transition-all duration-300 group cursor-pointer',
+                        'flex items-center gap-3 md:gap-4 py-3 px-0 md:px-3 rounded-lg hover:bg-gray-800 transition-all duration-300 group cursor-pointer select-none',
                         isCurrentSong && 'bg-gray-800',
                         isSharedSong && 'bg-primary/20 ring-2 ring-primary'
                       )}
-                      onClick={() => handlePlaySong(song, index)}
+                      onClick={(e) => handleClick(e, () => handlePlaySong(song, index))}
+                      onContextMenu={(e) => handleContextMenu(e, song)}
+                      onTouchStart={(e) => handleTouchStart(e, song)}
+                      onTouchEnd={handleTouchEnd}
+                      onTouchMove={handleTouchMove}
                     >
                       {/* Track Number / Play Button */}
                       <div className="w-8 h-8 flex items-center justify-center text-gray-400 group-hover:text-white transition-colors flex-shrink-0">
@@ -509,6 +577,55 @@ const AlbumPage: React.FC = () => {
         onAddToPlaylist={handleAddToPlaylist}
         showSuccess={showSuccess}
         showError={(msg) => console.error(msg)}
+      />
+
+      {/* Desktop Context Menu */}
+      <ContextMenu
+        isOpen={contextMenu.isOpen}
+        position={contextMenu.position}
+        onClose={closeContextMenu}
+        song={contextMenu.song}
+        isAdmin={Boolean(user?.is_admin)}
+        isFavorited={contextMenu.song ? favorites.has(contextMenu.song.id) : false}
+        onPlay={handleContextMenuPlay}
+        onAddToQueue={handleContextMenuAddToQueue}
+        onAddToPlaylist={handleContextMenuAddToPlaylist}
+        onToggleFavorite={handleContextMenuToggleFavorite}
+        onShare={handleContextMenuShare}
+        onEdit={user?.is_admin ? handleContextMenuEdit : undefined}
+        onDelete={user?.is_admin ? handleContextMenuDelete : undefined}
+      />
+
+      {/* Edit Song Modal */}
+      <EditSongModal
+        isOpen={editModalOpen}
+        song={editingSong}
+        onClose={() => {
+          setEditModalOpen(false);
+          setEditingSong(null);
+        }}
+        onSongUpdated={(updatedSong) => {
+          setEditModalOpen(false);
+          setEditingSong(null);
+          // Refresh album data
+          if (id) {
+            apiService.getAlbum(Number(id)).then(response => {
+              if (response.success) {
+                setSongs(response.data.songs);
+              }
+            });
+          }
+        }}
+      />
+
+      {/* Add to Playlist Modal */}
+      <AddToPlaylistModal
+        isOpen={addToPlaylistModalOpen}
+        song={selectedSongForMenu}
+        onClose={() => {
+          setAddToPlaylistModalOpen(false);
+          setSelectedSongForMenu(null);
+        }}
       />
     </div>
   );
