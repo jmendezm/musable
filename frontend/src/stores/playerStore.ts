@@ -126,6 +126,7 @@ export interface AudioPreset {
 interface PlayerStore extends PlayerState, PlayerActions {
   howl: Howl | null;
   customAudioElement: HTMLAudioElement | null; // Custom audio element for streaming with CORS
+  audioElementSetup: boolean; // Flag to track if audio element has been set up with event listeners
   eqEnabled: boolean;
   eqGains: number[];
   masterGain: number;
@@ -648,6 +649,7 @@ export const usePlayerStore = create<PlayerStore>()(
       isLoading: false,
       howl: null,
       customAudioElement: null,
+      audioElementSetup: false,
       progressTrackerInterval: null,
       eqEnabled: JSON.parse(localStorage.getItem(EQ_ENABLED_STORAGE_KEY) || 'false'),
       eqGains: JSON.parse(localStorage.getItem(EQ_GAINS_STORAGE_KEY) || '[0,0,0,0,0,0,0,0,0,0]'),
@@ -707,21 +709,20 @@ export const usePlayerStore = create<PlayerStore>()(
 
         // If a new song is provided, update current song and queue, OR if no howl exists
         if (song && (song.id !== state.currentSong?.id || !state.howl)) {
-          // CRITICAL: Stop the old custom audio element before starting a new song
+          // Stop the old custom audio element before starting a new song
           if (state.customAudioElement) {
             state.customAudioElement.pause();
             state.customAudioElement.currentTime = 0;
-            // Note: We don't remove the element reference as it will be replaced
           }
 
           if (state.howl) {
             stopHeartbeat(); // Stop heartbeat before unloading
             state.howl.unload();
           }
-          
+
           const newQueue = state.queue.length > 0 ? state.queue : [song];
           const index = newQueue.findIndex(s => s.id === song.id);
-          
+
           set({
             currentSong: song,
             queue: newQueue,
@@ -741,18 +742,206 @@ export const usePlayerStore = create<PlayerStore>()(
           const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
                           window.innerWidth <= 768;
 
-          // Create custom HTML5 audio element with CORS set BEFORE loading
-          // This allows streaming + MediaElementAudioSourceNode for effects
-          const audioElement = new Audio();
-          audioElement.crossOrigin = 'anonymous'; // MUST be set before src
-          audioElement.preload = 'metadata';
-          audioElement.src = urlWithToken;
+          // REUSE existing audio element or create a new one
+          let audioElement: HTMLAudioElement;
+          let ctx: AudioContext;
+          let mediaElementSource: MediaElementAudioSourceNode;
 
-          // Set initial volume
-          audioElement.volume = state.isMuted ? 0 : (isMobile ? 1.0 : state.volume);
+          if (state.customAudioElement && state.audioElementSetup) {
+            // Reuse existing audio element and nodes
+            audioElement = state.customAudioElement;
+            audioElement.src = urlWithToken; // Just change the source
 
-          // Store the audio element in state (we'll use a dummy Howl for compatibility)
-          set({ customAudioElement: audioElement });
+            // Update volume for the new song
+            audioElement.volume = state.isMuted ? 0 : (isMobile ? 1.0 : state.volume);
+
+            // Reuse existing AudioContext and MediaElementAudioSourceNode
+            ctx = state.audioContext!;
+            mediaElementSource = state.mediaElementSource!;
+
+            // Setup audio effects for the new song (add new listener for this song)
+            const handleCanPlay = async () => {
+              try {
+                const currentState = get();
+
+                // Reuse the existing MediaElementAudioSourceNode
+                const result = await setupAudioEffectsWithExistingSource(
+                  currentState.mediaElementSource!,
+                  currentState.audioContext!,
+                  currentState.eqEnabled,
+                  currentState.eqGains,
+                  currentState.masterGain,
+                  currentState.reverbEnabled,
+                  currentState.reverbRoomSize,
+                  currentState.reverbDecay,
+                  currentState.reverbWetDry,
+                  currentState.reverbCutoff,
+                  currentState.limiterEnabled,
+                  currentState.limiterThreshold,
+                  currentState.limiterRelease
+                );
+
+                // Update store with effects nodes
+                set({
+                  eqFilters: result.filters,
+                  masterGainNode: result.masterGainNode,
+                  reverbNode: result.reverbNode,
+                  reverbDryGain: result.reverbDryGain,
+                  reverbWetGain: result.reverbWetGain,
+                  reverbFilter: result.reverbFilter,
+                  limiterNode: result.limiterNode,
+                  isLoading: false,
+                  duration: audioElement.duration
+                });
+
+                // Remove this one-time listener
+                audioElement.removeEventListener('canplay', handleCanPlay);
+              } catch (error) {
+                console.error('❌ Error setting up audio effects:', error);
+                set({ isLoading: false });
+                audioElement.removeEventListener('canplay', handleCanPlay);
+              }
+            };
+
+            audioElement.addEventListener('canplay', handleCanPlay);
+          } else {
+            // Create NEW audio element and nodes (only on first play or after page refresh)
+            audioElement = new Audio();
+            audioElement.crossOrigin = 'anonymous'; // MUST be set before src
+            audioElement.preload = 'metadata';
+            audioElement.src = urlWithToken;
+
+            // Set initial volume
+            audioElement.volume = state.isMuted ? 0 : (isMobile ? 1.0 : state.volume);
+
+            // Store the audio element in state
+            set({ customAudioElement: audioElement });
+
+            // Create AudioContext and MediaElementAudioSourceNode
+            ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            mediaElementSource = ctx.createMediaElementSource(audioElement);
+
+            // Store these immediately so they can be reused when switching songs
+            set({
+              audioContext: ctx,
+              mediaElementSource
+            });
+
+            // Setup event listeners ONLY ONCE when creating the audio element
+            // These listeners will work for all songs using this element
+
+            // Setup audio effects when audio element can play (use { once: true } for one-time setup)
+            audioElement.addEventListener('canplay', async () => {
+              try {
+                const currentState = get();
+
+                // Reuse the existing MediaElementAudioSourceNode
+                const result = await setupAudioEffectsWithExistingSource(
+                  currentState.mediaElementSource!,
+                  currentState.audioContext!,
+                  currentState.eqEnabled,
+                  currentState.eqGains,
+                  currentState.masterGain,
+                  currentState.reverbEnabled,
+                  currentState.reverbRoomSize,
+                  currentState.reverbDecay,
+                  currentState.reverbWetDry,
+                  currentState.reverbCutoff,
+                  currentState.limiterEnabled,
+                  currentState.limiterThreshold,
+                  currentState.limiterRelease
+                );
+
+                // Update store with effects nodes
+                set({
+                  eqFilters: result.filters,
+                  masterGainNode: result.masterGainNode,
+                  reverbNode: result.reverbNode,
+                  reverbDryGain: result.reverbDryGain,
+                  reverbWetGain: result.reverbWetGain,
+                  reverbFilter: result.reverbFilter,
+                  limiterNode: result.limiterNode,
+                  isLoading: false,
+                  duration: audioElement.duration
+                });
+              } catch (error) {
+                console.error('❌ Error setting up audio effects:', error);
+                set({ isLoading: false });
+              }
+            }, { once: true });
+
+            // Handle play events
+            audioElement.addEventListener('play', () => {
+              const currentState = get();
+              const currentSong = currentState.currentSong;
+              if (currentSong) {
+                set({ isPlaying: true });
+                updateMediaSession(currentSong, true);
+
+                // Emit WebSocket event
+                playbackWebSocketService.emitPlay(currentSong.id, audioElement.currentTime, audioElement.duration);
+
+                // Start heartbeat
+                startHeartbeat(currentSong.id, () => audioElement.currentTime);
+              }
+            });
+
+            // Handle timeupdate for seek bar (fires approximately every 250ms during playback)
+            audioElement.addEventListener('timeupdate', () => {
+              const currentTime = audioElement.currentTime;
+              set({ currentTime });
+            });
+
+            // Handle pause events
+            audioElement.addEventListener('pause', () => {
+              const currentState = get();
+              const currentSong = currentState.currentSong;
+              if (currentSong) {
+                set({ isPlaying: false });
+                updateMediaSession(currentSong, false);
+                playbackWebSocketService.emitPause(audioElement.currentTime);
+                stopHeartbeat();
+              }
+            });
+
+            // Handle ended event
+            audioElement.addEventListener('ended', () => {
+              const currentState = get();
+              const currentSong = currentState.currentSong;
+              if (currentSong) {
+                // Track completion
+                apiService.trackPlay({
+                  songId: currentSong.id,
+                  durationPlayed: Math.floor(audioElement.duration),
+                  completed: true
+                }).catch(console.error);
+
+                stopHeartbeat();
+
+                // Auto-advance
+                if (currentState.repeatMode === 'one') {
+                  audioElement.currentTime = 0;
+                  audioElement.play();
+                } else {
+                  handleRoomAwareNext();
+                }
+              }
+            });
+
+            // Handle loaded metadata
+            audioElement.addEventListener('loadedmetadata', () => {
+              set({ duration: audioElement.duration });
+            });
+
+            // Handle errors
+            audioElement.addEventListener('error', (e) => {
+              console.error('🚨 Audio element error:', e);
+              set({ isLoading: false, isPlaying: false });
+            });
+
+            // Mark the audio element as set up
+            set({ audioElementSetup: true });
+          }
 
           // Create a dummy Howl instance for compatibility with existing code
           // The actual audio will be played by our custom audio element
@@ -766,115 +955,6 @@ export const usePlayerStore = create<PlayerStore>()(
 
           // Store howl in state
           set({ howl });
-
-          // Create AudioContext and MediaElementAudioSourceNode ONCE
-          // This must be done before the audio element starts playing
-          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const mediaElementSource = ctx.createMediaElementSource(audioElement);
-
-          // Store these immediately so they can be reused when toggling effects
-          set({
-            audioContext: ctx,
-            mediaElementSource
-          });
-
-          // Setup audio effects when audio element can play
-          audioElement.addEventListener('canplay', async () => {
-            try {
-              const currentState = get();
-
-              // Reuse the existing MediaElementAudioSourceNode
-              const result = await setupAudioEffectsWithExistingSource(
-                currentState.mediaElementSource!,
-                currentState.audioContext!,
-                currentState.eqEnabled,
-                currentState.eqGains,
-                currentState.masterGain,
-                currentState.reverbEnabled,
-                currentState.reverbRoomSize,
-                currentState.reverbDecay,
-                currentState.reverbWetDry,
-                currentState.reverbCutoff,
-                currentState.limiterEnabled,
-                currentState.limiterThreshold,
-                        currentState.limiterRelease
-              );
-
-              // Update store with effects nodes
-              set({
-                eqFilters: result.filters,
-                masterGainNode: result.masterGainNode,
-                reverbNode: result.reverbNode,
-                reverbDryGain: result.reverbDryGain,
-                reverbWetGain: result.reverbWetGain,
-                reverbFilter: result.reverbFilter,
-                limiterNode: result.limiterNode,
-                isLoading: false,
-                duration: audioElement.duration
-              });
-            } catch (error) {
-              console.error('❌ Error setting up audio effects:', error);
-              set({ isLoading: false });
-            }
-          });
-
-          // Handle play events
-          audioElement.addEventListener('play', () => {
-            set({ isPlaying: true });
-            updateMediaSession(song, true);
-
-            // Emit WebSocket event
-            playbackWebSocketService.emitPlay(song.id, audioElement.currentTime, audioElement.duration);
-
-            // Start heartbeat
-            startHeartbeat(song.id, () => audioElement.currentTime);
-          });
-
-          // Handle timeupdate for seek bar (fires approximately every 250ms during playback)
-          audioElement.addEventListener('timeupdate', () => {
-            const currentTime = audioElement.currentTime;
-            set({ currentTime });
-          });
-
-          // Handle pause events
-          audioElement.addEventListener('pause', () => {
-            set({ isPlaying: false });
-            updateMediaSession(song, false);
-            playbackWebSocketService.emitPause(audioElement.currentTime);
-            stopHeartbeat();
-          });
-
-          // Handle ended event
-          audioElement.addEventListener('ended', () => {
-            // Track completion
-            apiService.trackPlay({
-              songId: song.id,
-              durationPlayed: Math.floor(audioElement.duration),
-              completed: true
-            }).catch(console.error);
-
-            stopHeartbeat();
-
-            // Auto-advance
-            const currentState = get();
-            if (currentState.repeatMode === 'one') {
-              audioElement.currentTime = 0;
-              audioElement.play();
-            } else {
-              handleRoomAwareNext();
-            }
-          });
-
-          // Handle loaded metadata
-          audioElement.addEventListener('loadedmetadata', () => {
-            set({ duration: audioElement.duration });
-          });
-
-          // Handle errors
-          audioElement.addEventListener('error', (e) => {
-            console.error('🚨 Audio element error:', e);
-            set({ isLoading: false, isPlaying: false });
-          });
 
           // Start playing
           audioElement.play().catch(err => {
