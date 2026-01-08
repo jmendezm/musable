@@ -1,25 +1,24 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import logger from './../utils/logger';
 
 // Load .env from project root (one directory up from backend/)
 const envPath = path.resolve(__dirname, '../../../.env');
-logger.info(`Loading .env from: ${envPath}`);
 const result = dotenv.config({ path: envPath });
 
-if (!result.error) {
-  logger.info('Loaded .env file');
-} else {
-  const error = result.error as NodeJS.ErrnoException;
-  if (error.code === 'ENOENT') {
-    logger.info('.env file not found (this is OK - using default values)');
-  } else {
-    logger.error('Failed to load .env file:', result.error);
+if (result.error) {
+  const error = result.error as any;
+  if (error.code !== 'ENOENT') {
+    // Silently ignore .env errors except in console
+    console.error('Failed to load .env file:', result.error);
   }
 }
 
 // Base data directory - all application data goes here
-const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+// In Docker: uses DATA_DIR env var (/app/backend/data)
+// In dev: use __dirname to get consistent path regardless of where process is run from
+// __dirname for this file (backend/src/config/config.ts) is: /backend/src/config
+// So we go up 3 levels to project root, then into backend/data
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', '..', '..', 'backend', 'data');
 
 interface Config {
   port: number;
@@ -44,7 +43,7 @@ interface Config {
 const config: Config = {
   port: parseInt(process.env.BACKEND_PORT || '3001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
-  databasePath: path.join(DATA_DIR, 'musable.db'), // Always in data folder
+  databasePath: path.join(DATA_DIR, 'musable.db'),
   dataDir: DATA_DIR,
   uploadsDir: path.join(DATA_DIR, 'uploads'),
   logsDir: path.join(DATA_DIR, 'logs'),

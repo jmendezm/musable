@@ -1,3 +1,9 @@
+// DEBUG: Log immediately when worker starts
+console.log('[Worker] ==================== WORKER STARTING ====================');
+console.log('[Worker] Worker script is executing...');
+console.log('[Worker] Current working directory:', process.cwd());
+console.log('[Worker] __dirname (in worker):', __dirname);
+
 import config from '../config/config';
 import { parentPort } from 'worker_threads';
 import * as path from 'path';
@@ -6,6 +12,8 @@ import { parseFile } from 'music-metadata';
 import sharp from 'sharp';
 import { promisify } from 'util';
 import sqlite3 from 'sqlite3';
+
+console.log('[Worker] All imports completed successfully');
 
 // Set up error handlers IMMEDIATELY at the top
 process.on('uncaughtException', (error: any) => {
@@ -108,17 +116,34 @@ const Database = {
 
 async function initializeWorker() {
   try {
-    // Create a new database connection for this worker
-    const dbPath = process.env.DATABASE_PATH || './musable.db';
-    const fullPath = path.resolve(dbPath);
+    console.log('[Worker] initializeWorker() called');
+    console.log('[Worker] config.databasePath =', config.databasePath);
+    console.log('[Worker] config.dataDir =', config.dataDir);
 
+    // Create a new database connection for this worker
+    const fullPath = path.resolve(config.databasePath);
+    console.log('[Worker] Resolved database path:', fullPath);
+    console.log('[Worker] Checking if database directory exists...');
+
+    const dbDir = path.dirname(fullPath);
+    console.log('[Worker] Database directory:', dbDir);
+    console.log('[Worker] Directory exists:', fs.existsSync(dbDir));
+
+    if (!fs.existsSync(dbDir)) {
+      console.log('[Worker] Creating database directory:', dbDir);
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+
+    console.log('[Worker] Opening database connection...');
     workerDb = new sqlite3.Database(fullPath, (err) => {
       if (err) {
         console.error('[Worker] Error opening database:', err.message);
         throw err;
       }
+      console.log('[Worker] Database connection opened successfully');
     });
 
+    console.log('[Worker] Setting PRAGMA foreign_keys = ON...');
     // Enable foreign keys and WAL mode
     await new Promise<void>((resolve, reject) => {
       workerDb!.run('PRAGMA foreign_keys = ON', (err) => {
@@ -126,16 +151,26 @@ async function initializeWorker() {
         else resolve();
       });
     });
+    console.log('[Worker] PRAGMA foreign_keys set successfully');
 
+    console.log('[Worker] Setting PRAGMA journal_mode = WAL...');
     await new Promise<void>((resolve, reject) => {
       workerDb!.run('PRAGMA journal_mode = WAL', (err) => {
         if (err) reject(err);
         else resolve();
       });
     });
+    console.log('[Worker] PRAGMA journal_mode set successfully');
 
     // Test database connection
-    await Database.query('SELECT 1 as test');
+    console.log('[Worker] Testing database connection with SELECT 1...');
+    await new Promise<void>((resolve, reject) => {
+      workerDb!.get('SELECT 1 as test', (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    console.log('[Worker] Database connection test successful');
   } catch (error: any) {
     console.error('[Worker] Failed to initialize:', error);
     console.error('[Worker] Error type:', error.constructor.name);

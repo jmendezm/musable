@@ -85,9 +85,8 @@ class Logger {
 
   private initializeFileLogging() {
     try {
-      const settingsPath = path.join(process.cwd(), 'musable.db');
-      // For now, check system_settings table
-      // This will be called after database is initialized
+      // Database path will be checked later after initialization
+      // This is just a placeholder method
     } catch (error) {
       // Database not ready yet, will be initialized later
     }
