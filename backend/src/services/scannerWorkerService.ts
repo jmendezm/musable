@@ -1,6 +1,7 @@
 import { Worker } from 'worker_threads';
 import * as path from 'path';
 import logger from '../utils/logger';
+import config from '../config/config';
 
 interface ScanProgress {
   id: number;
@@ -57,6 +58,11 @@ class ScannerWorkerService {
       this.isWorkerReady = false;
 
       const worker = new Worker(workerPath, {
+        workerData: {
+          databasePath: config.databasePath,
+          dataDir: config.dataDir,
+          uploadsDir: config.uploadsDir,
+        },
         resourceLimits: {
           maxOldGenerationSizeMb: 512,
         }

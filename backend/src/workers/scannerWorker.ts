@@ -1,30 +1,17 @@
-// DEBUG: Log immediately when worker starts
-console.log('[Worker] ==================== WORKER STARTING ====================');
-console.log('[Worker] Worker script is executing...');
-console.log('[Worker] Current working directory:', process.cwd());
-console.log('[Worker] __dirname (in worker):', __dirname);
-
-import config from '../config/config';
-import { parentPort } from 'worker_threads';
-import * as path from 'path';
-import * as fs from 'fs';
-import { parseFile } from 'music-metadata';
-import sharp from 'sharp';
-import { promisify } from 'util';
-import sqlite3 from 'sqlite3';
-
-console.log('[Worker] All imports completed successfully');
-
-// Set up error handlers IMMEDIATELY at the top
+// Set up error handlers FIRST before anything else
 process.on('uncaughtException', (error: any) => {
   console.error('[Worker] UNCAUGHT EXCEPTION:', error.message);
   console.error('[Worker] Stack:', error.stack);
-  // Send error to parent port
-  if (parentPort) {
-    parentPort.postMessage({
-      type: 'scanError',
-      data: { error: error.message }
-    });
+  try {
+    const { parentPort } = require('worker_threads');
+    if (parentPort) {
+      parentPort.postMessage({
+        type: 'scanError',
+        data: { error: error.message }
+      });
+    }
+  } catch (e) {
+    // Ignore if parentPort not available
   }
 });
 
@@ -32,6 +19,23 @@ process.on('unhandledRejection', (reason: any) => {
   console.error('[Worker] UNHANDLED REJECTION:', reason);
   console.error('[Worker] Reason:', reason?.stack || reason);
 });
+
+// Import worker_threads to get workerData
+import { parentPort, workerData } from 'worker_threads';
+
+// Get config from workerData passed by parent process
+const config = {
+  databasePath: workerData?.databasePath || '',
+  dataDir: workerData?.dataDir || '',
+  uploadsDir: workerData?.uploadsDir || '',
+};
+
+import * as path from 'path';
+import * as fs from 'fs';
+import { parseFile } from 'music-metadata';
+import sharp from 'sharp';
+import { promisify } from 'util';
+import sqlite3 from 'sqlite3';
 
 interface ScanRequest {
   type: 'scan' | 'stop';
@@ -116,34 +120,21 @@ const Database = {
 
 async function initializeWorker() {
   try {
-    console.log('[Worker] initializeWorker() called');
-    console.log('[Worker] config.databasePath =', config.databasePath);
-    console.log('[Worker] config.dataDir =', config.dataDir);
-
     // Create a new database connection for this worker
     const fullPath = path.resolve(config.databasePath);
-    console.log('[Worker] Resolved database path:', fullPath);
-    console.log('[Worker] Checking if database directory exists...');
-
     const dbDir = path.dirname(fullPath);
-    console.log('[Worker] Database directory:', dbDir);
-    console.log('[Worker] Directory exists:', fs.existsSync(dbDir));
 
     if (!fs.existsSync(dbDir)) {
-      console.log('[Worker] Creating database directory:', dbDir);
       fs.mkdirSync(dbDir, { recursive: true });
     }
 
-    console.log('[Worker] Opening database connection...');
     workerDb = new sqlite3.Database(fullPath, (err) => {
       if (err) {
         console.error('[Worker] Error opening database:', err.message);
         throw err;
       }
-      console.log('[Worker] Database connection opened successfully');
     });
 
-    console.log('[Worker] Setting PRAGMA foreign_keys = ON...');
     // Enable foreign keys and WAL mode
     await new Promise<void>((resolve, reject) => {
       workerDb!.run('PRAGMA foreign_keys = ON', (err) => {
@@ -151,30 +142,23 @@ async function initializeWorker() {
         else resolve();
       });
     });
-    console.log('[Worker] PRAGMA foreign_keys set successfully');
 
-    console.log('[Worker] Setting PRAGMA journal_mode = WAL...');
     await new Promise<void>((resolve, reject) => {
       workerDb!.run('PRAGMA journal_mode = WAL', (err) => {
         if (err) reject(err);
         else resolve();
       });
     });
-    console.log('[Worker] PRAGMA journal_mode set successfully');
 
     // Test database connection
-    console.log('[Worker] Testing database connection with SELECT 1...');
     await new Promise<void>((resolve, reject) => {
       workerDb!.get('SELECT 1 as test', (err) => {
         if (err) reject(err);
         else resolve();
       });
     });
-    console.log('[Worker] Database connection test successful');
   } catch (error: any) {
     console.error('[Worker] Failed to initialize:', error);
-    console.error('[Worker] Error type:', error.constructor.name);
-    console.error('[Worker] Error stack:', error.stack);
     throw error;
   }
 }
@@ -708,13 +692,9 @@ let keepAliveInterval: NodeJS.Timeout | null = null;
 initializeWorker()
   .then(() => {
     // File watcher disabled - it's causing performance issues with large libraries over Samba
-    // If needed, you can enable it by uncommenting the next line:
-    // return setupFileWatcher();
-    console.log('[Worker] File watcher disabled (not needed for scanning)');
     return Promise.resolve();
   })
   .then(() => {
-    console.log('[Worker] Worker fully initialized and ready (without file watcher)');
     sendMessage({
       type: 'scanProgress',
       data: { status: 'ready' }
@@ -723,9 +703,8 @@ initializeWorker()
     // Keep the worker alive by preventing the event loop from emptying
     // This is necessary because worker threads exit when their event loop is empty
     keepAliveInterval = setInterval(() => {
-      // This interval keeps the worker alive (no logging needed)
-      const timestamp = new Date().toISOString();
-    }, 15000); // Every 15 seconds
+      // This interval keeps the worker alive
+    }, 15000);
 
     // Clear interval on exit
     process.on('exit', () => {
