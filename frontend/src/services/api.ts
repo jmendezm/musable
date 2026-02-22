@@ -345,7 +345,16 @@ class ApiService {
     return this.request('POST', '/admin/reset-all-data');
   }
 
-  async getAllHistory(params?: { limit?: number; offset?: number; user?: number }): Promise<ApiResponse<{ history: ListenHistory[] }>> {
+  async getAllHistory(params?: {
+    limit?: number;
+    offset?: number;
+    user?: number;
+    type?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    minDuration?: number;
+    maxDuration?: number;
+  }): Promise<ApiResponse<{ history: ListenHistory[] }>> {
     const queryString = new URLSearchParams(params as any).toString();
     return this.request('GET', `/admin/history${queryString ? `?${queryString}` : ''}`);
   }

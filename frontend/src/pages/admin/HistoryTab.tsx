@@ -3,9 +3,8 @@ import {
   ClockIcon,
   UserIcon,
   MusicalNoteIcon,
-  FunnelIcon,
-  TrashIcon,
-  ChartBarIcon
+  ChartBarIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 import { apiService } from '../../services/api';
 import { ListenHistory, User } from '../../types';
@@ -13,7 +12,11 @@ import clsx from 'clsx';
 
 interface HistoryFilters {
   user?: number;
-  dateRange?: string;
+  type?: 'completed' | 'skipped' | 'partial' | 'all';
+  dateFrom?: string;
+  dateTo?: string;
+  minDuration?: number;
+  maxDuration?: number;
   limit: number;
   offset: number;
 }
@@ -24,9 +27,9 @@ const HistoryTab: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<HistoryFilters>({
     limit: 50,
-    offset: 0
+    offset: 0,
+    type: 'all'
   });
-  const [totalCount, setTotalCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<string>('');
 
@@ -42,7 +45,7 @@ const HistoryTab: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const queryFilters: any = {
         limit: filters.limit,
         offset: filters.offset
@@ -51,11 +54,24 @@ const HistoryTab: React.FC = () => {
       if (filters.user) {
         queryFilters.user = filters.user;
       }
+      if (filters.type && filters.type !== 'all') {
+        queryFilters.type = filters.type;
+      }
+      if (filters.dateFrom) {
+        queryFilters.dateFrom = filters.dateFrom;
+      }
+      if (filters.dateTo) {
+        queryFilters.dateTo = filters.dateTo;
+      }
+      if (filters.minDuration) {
+        queryFilters.minDuration = filters.minDuration;
+      }
+      if (filters.maxDuration) {
+        queryFilters.maxDuration = filters.maxDuration;
+      }
 
       const response = await apiService.getAllHistory(queryFilters);
       setHistory(response.data.history);
-      // Note: API doesn't return total count, so we estimate based on results
-      setTotalCount(response.data.history.length);
     } catch (err: any) {
       console.error('Failed to fetch history:', err);
       setError(err.message || 'Failed to load listening history');
@@ -82,6 +98,15 @@ const HistoryTab: React.FC = () => {
     }));
   };
 
+  const handleClearFilters = () => {
+    setSelectedUser('');
+    setFilters({ limit: 50, offset: 0, type: 'all' });
+  };
+
+  const hasActiveFilters = filters.user || filters.type !== 'all' ||
+    filters.dateFrom || filters.dateTo ||
+    filters.minDuration || filters.maxDuration;
+
   const handleLoadMore = () => {
     setFilters(prev => ({
       ...prev,
@@ -98,6 +123,16 @@ const HistoryTab: React.FC = () => {
       return `${hours}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
     }
     return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+  };
+
+  const formatTotalTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m`;
   };
 
   const getListeningStats = () => {
@@ -175,78 +210,145 @@ const HistoryTab: React.FC = () => {
             <div>
               <p className="text-gray-400 text-sm">Total Time</p>
               <p className="text-white text-xl font-bold">
-                {Math.round(stats.totalDuration / 3600)}h
+                {formatTotalTime(stats.totalDuration)}
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-gray-800 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-          <FunnelIcon className="w-5 h-5 mr-2" />
-          Filters
-        </h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Filter by User
-            </label>
-            <select
-              value={selectedUser}
-              onChange={(e) => handleUserFilterChange(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="">All Users</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.username}
-                </option>
-              ))}
-            </select>
+      {/* History Table */}
+      <div className="bg-gray-800 rounded-lg overflow-hidden">
+        {/* Filters Header */}
+        <div className="p-4 border-b border-gray-700">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+            <h3 className="text-lg font-semibold text-white">
+              Recent Activity ({history.length} entries)
+            </h3>
+            {hasActiveFilters && (
+              <button
+                onClick={handleClearFilters}
+                className="flex items-center px-3 py-1.5 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm font-medium self-start md:self-auto"
+              >
+                <XMarkIcon className="w-4 h-4 mr-1.5" />
+                Clear Filters
+              </button>
+            )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Items per page
-            </label>
+          {/* Compact Filters */}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            <div>
+              <select
+                value={selectedUser}
+                onChange={(e) => handleUserFilterChange(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">All Users</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.username}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <select
+                value={filters.type || 'all'}
+                onChange={(e) => setFilters(prev => ({
+                  ...prev,
+                  type: (e.target.value === 'all' ? undefined : e.target.value as any),
+                  offset: 0
+                }))}
+                className="w-full px-2.5 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="all">All Types</option>
+                <option value="completed">Completed</option>
+                <option value="partial">Partial</option>
+                <option value="skipped">Skipped</option>
+              </select>
+            </div>
+
+            <div>
+              <input
+                type="date"
+                placeholder="From date"
+                value={filters.dateFrom || ''}
+                onChange={(e) => setFilters(prev => ({
+                  ...prev,
+                  dateFrom: e.target.value || undefined,
+                  offset: 0
+                }))}
+                className="w-full px-2.5 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+
+            <div>
+              <input
+                type="date"
+                placeholder="To date"
+                value={filters.dateTo || ''}
+                onChange={(e) => setFilters(prev => ({
+                  ...prev,
+                  dateTo: e.target.value || undefined,
+                  offset: 0
+                }))}
+                className="w-full px-2.5 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+
+            <div>
+              <input
+                type="number"
+                min="0"
+                placeholder="Min duration (s)"
+                value={filters.minDuration || ''}
+                onChange={(e) => setFilters(prev => ({
+                  ...prev,
+                  minDuration: e.target.value ? parseInt(e.target.value) : undefined,
+                  offset: 0
+                }))}
+                className="w-full px-2.5 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+
+            <div>
+              <input
+                type="number"
+                min="0"
+                placeholder="Max duration (s)"
+                value={filters.maxDuration || ''}
+                onChange={(e) => setFilters(prev => ({
+                  ...prev,
+                  maxDuration: e.target.value ? parseInt(e.target.value) : undefined,
+                  offset: 0
+                }))}
+                className="w-full px-2.5 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+          </div>
+
+          {/* Items per page */}
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-sm text-gray-400">Per page:</span>
             <select
               value={filters.limit}
-              onChange={(e) => setFilters(prev => ({ 
-                ...prev, 
+              onChange={(e) => setFilters(prev => ({
+                ...prev,
                 limit: parseInt(e.target.value),
-                offset: 0 
+                offset: 0
               }))}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary"
+              className="px-2.5 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value={25}>25</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
             </select>
           </div>
-
-          <div className="flex items-end">
-            <button
-              onClick={() => {
-                setSelectedUser('');
-                setFilters({ limit: 50, offset: 0 });
-              }}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors"
-            >
-              Clear Filters
-            </button>
-          </div>
         </div>
-      </div>
 
-      {/* History Table */}
-      <div className="bg-gray-800 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">
-          Recent Activity ({history.length} entries)
-        </h3>
-
+        <div className="p-6">
         {history.length > 0 ? (
           <div>
             <div className="overflow-x-auto">
@@ -298,14 +400,9 @@ const HistoryTab: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-3 px-4 text-gray-300">
-                        {(() => {
-                          console.log('HistoryTab entry:', entry);
-                          console.log('duration_played:', entry.duration_played);
-                          console.log('completed:', entry.completed);
-                          return entry.duration_played !== null && entry.duration_played !== undefined
-                            ? formatDuration(entry.duration_played)
-                            : 'N/A';
-                        })()}
+                        {entry.duration_played !== null && entry.duration_played !== undefined
+                          ? formatDuration(entry.duration_played)
+                          : 'N/A'}
                       </td>
                       <td className="py-3 px-4">
                         <span className={clsx(
@@ -359,6 +456,7 @@ const HistoryTab: React.FC = () => {
             </p>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

@@ -91,9 +91,15 @@ export class ListenHistoryModel {
     );
   }
 
-  async getUserHistory(userId: number, limit: number = 50, offset: number = 0): Promise<ListenHistoryWithDetails[]> {
-    return await this.db.query<ListenHistoryWithDetails>(
-      `SELECT
+  async getUserHistory(userId: number, limit: number = 50, offset: number = 0, filters?: {
+    type?: 'completed' | 'skipped' | 'partial';
+    dateFrom?: string;
+    dateTo?: string;
+    minDuration?: number;
+    maxDuration?: number;
+  }): Promise<ListenHistoryWithDetails[]> {
+    let query = `
+      SELECT
         lh.*,
         u.username,
         s.title as song_title,
@@ -106,18 +112,59 @@ export class ListenHistoryModel {
        JOIN songs s ON lh.song_id = s.id
        JOIN song_artists sa ON s.id = sa.song_id
        JOIN artists a ON sa.artist_id = a.id
-       LEFT JOIN albums al ON s.album_id = al.id
-       WHERE lh.user_id = ?
-       GROUP BY s.id, lh.id, u.username, al.title, s.title, s.duration, al.artwork_path
-       ORDER BY MAX(lh.played_at) DESC
-       LIMIT ? OFFSET ?`,
-      [userId, limit, offset]
-    );
+       LEFT JOIN albums al ON s.album_id = al.id`;
+
+    const conditions: string[] = [`lh.user_id = ?`];
+    const params: any[] = [userId];
+
+    if (filters?.type === 'completed') {
+      conditions.push('lh.completed = 1');
+    } else if (filters?.type === 'skipped') {
+      conditions.push('lh.duration_played < 5');
+    } else if (filters?.type === 'partial') {
+      conditions.push('lh.completed = 0 AND lh.duration_played >= 5');
+    }
+
+    if (filters?.dateFrom) {
+      conditions.push('lh.played_at >= ?');
+      params.push(filters.dateFrom);
+    }
+
+    if (filters?.dateTo) {
+      conditions.push('lh.played_at <= ?');
+      params.push(filters.dateTo);
+    }
+
+    if (filters?.minDuration) {
+      conditions.push('lh.duration_played >= ?');
+      params.push(filters.minDuration);
+    }
+
+    if (filters?.maxDuration) {
+      conditions.push('lh.duration_played <= ?');
+      params.push(filters.maxDuration);
+    }
+
+    query += ' WHERE ' + conditions.join(' AND ');
+
+    query += ` GROUP BY s.id, lh.id, u.username, al.title, s.title, s.duration, al.artwork_path
+       ORDER BY lh.played_at DESC
+       LIMIT ? OFFSET ?`;
+
+    params.push(limit, offset);
+
+    return await this.db.query<ListenHistoryWithDetails>(query, params);
   }
 
-  async getAllHistory(limit: number = 100, offset: number = 0): Promise<ListenHistoryWithDetails[]> {
-    return await this.db.query<ListenHistoryWithDetails>(
-      `SELECT
+  async getAllHistory(limit: number = 100, offset: number = 0, filters?: {
+    type?: 'completed' | 'skipped' | 'partial';
+    dateFrom?: string;
+    dateTo?: string;
+    minDuration?: number;
+    maxDuration?: number;
+  }): Promise<ListenHistoryWithDetails[]> {
+    let query = `
+      SELECT
         lh.*,
         u.username,
         s.title as song_title,
@@ -130,12 +177,50 @@ export class ListenHistoryModel {
        JOIN songs s ON lh.song_id = s.id
        JOIN song_artists sa ON s.id = sa.song_id
        JOIN artists a ON sa.artist_id = a.id
-       LEFT JOIN albums al ON s.album_id = al.id
-       GROUP BY s.id, lh.id, u.username, al.title, s.title, s.duration, al.artwork_path
-       ORDER BY MAX(lh.played_at) DESC
-       LIMIT ? OFFSET ?`,
-      [limit, offset]
-    );
+       LEFT JOIN albums al ON s.album_id = al.id`;
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (filters?.type === 'completed') {
+      conditions.push('lh.completed = 1');
+    } else if (filters?.type === 'skipped') {
+      conditions.push('lh.duration_played < 5');
+    } else if (filters?.type === 'partial') {
+      conditions.push('lh.completed = 0 AND lh.duration_played >= 5');
+    }
+
+    if (filters?.dateFrom) {
+      conditions.push('lh.played_at >= ?');
+      params.push(filters.dateFrom);
+    }
+
+    if (filters?.dateTo) {
+      conditions.push('lh.played_at <= ?');
+      params.push(filters.dateTo);
+    }
+
+    if (filters?.minDuration) {
+      conditions.push('lh.duration_played >= ?');
+      params.push(filters.minDuration);
+    }
+
+    if (filters?.maxDuration) {
+      conditions.push('lh.duration_played <= ?');
+      params.push(filters.maxDuration);
+    }
+
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    query += ` GROUP BY s.id, lh.id, u.username, al.title, s.title, s.duration, al.artwork_path
+       ORDER BY lh.played_at DESC
+       LIMIT ? OFFSET ?`;
+
+    params.push(limit, offset);
+
+    return await this.db.query<ListenHistoryWithDetails>(query, params);
   }
 
   async getRecentlyPlayedSongs(userId: number, limit: number = 20): Promise<ListenHistoryWithDetails[]> {

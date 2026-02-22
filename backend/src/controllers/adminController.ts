@@ -225,15 +225,22 @@ export const revokeInvite = asyncHandler(async (req: AuthRequest, res: Response)
 });
 
 export const getAllHistory = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { limit = 100, offset = 0, user } = req.query;
+  const { limit = 100, offset = 0, user, type, dateFrom, dateTo, minDuration, maxDuration } = req.query;
 
   let history;
-  
+
+  const filters: any = {};
+  if (type) filters.type = type;
+  if (dateFrom) filters.dateFrom = dateFrom;
+  if (dateTo) filters.dateTo = dateTo;
+  if (minDuration) filters.minDuration = parseInt(minDuration as string);
+  if (maxDuration) filters.maxDuration = parseInt(maxDuration as string);
+
   if (user) {
     const userId = parseInt(user as string);
-    history = await ListenHistoryModel.getUserHistory(userId, parseInt(limit as string), parseInt(offset as string));
+    history = await ListenHistoryModel.getUserHistory(userId, parseInt(limit as string), parseInt(offset as string), filters);
   } else {
-    history = await ListenHistoryModel.getAllHistory(parseInt(limit as string), parseInt(offset as string));
+    history = await ListenHistoryModel.getAllHistory(parseInt(limit as string), parseInt(offset as string), filters);
   }
 
   res.json({
