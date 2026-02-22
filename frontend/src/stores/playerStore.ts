@@ -876,6 +876,12 @@ export const usePlayerStore = create<PlayerStore>()(
               const currentSong = currentState.currentSong;
               if (currentSong) {
                 set({ isPlaying: true });
+
+                // Resume AudioContext if it was suspended
+                if (currentState.audioContext && currentState.audioContext.state === 'suspended') {
+                  currentState.audioContext.resume();
+                }
+
                 updateMediaSession(currentSong, true);
 
                 // Emit WebSocket event
@@ -968,9 +974,14 @@ export const usePlayerStore = create<PlayerStore>()(
       },
 
       pause: () => {
-        const { customAudioElement, howl } = get();
+        const { customAudioElement, howl, audioContext } = get();
         if (customAudioElement) {
           customAudioElement.pause();
+
+          // Suspend AudioContext to immediately stop ALL audio processing
+          if (audioContext && audioContext.state === 'running') {
+            audioContext.suspend();
+          }
         } else if (howl) {
           howl.pause();
         }
@@ -1635,15 +1646,17 @@ if (typeof window !== 'undefined') {
       }
 
       if (typeof currentTime === 'number' && !isNaN(currentTime)) {
-        state.setCurrentTime(currentTime);
-
         // Update media session position
         if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
-          navigator.mediaSession.setPositionState({
-            duration: state.duration,
-            playbackRate: 1.0,
-            position: currentTime,
-          });
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: state.duration,
+              playbackRate: 1.0,
+              position: currentTime,
+            });
+          } catch (error) {
+            // Ignore media session errors (can happen if position > duration briefly)
+          }
         }
       }
     }
