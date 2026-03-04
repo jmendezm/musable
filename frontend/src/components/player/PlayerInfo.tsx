@@ -63,19 +63,29 @@ const PlayerInfo: React.FC = () => {
 
       {/* Song details */}
       <div className="min-w-0 flex-1">
-        <p className="text-white font-medium text-sm truncate">
+        <p className="text-white font-medium text-sm truncate" title={currentSong?.title}>
           {currentSong ? currentSong.title : 'No song playing'}
         </p>
-        <p className="text-gray-400 text-xs truncate flex items-center">
+        <div className="text-gray-400 text-xs flex items-center min-w-0 gap-1 overflow-hidden">
           {currentSong ? (
             <>
-              <span className="truncate">{currentSong.artist_name}</span>
+              {currentSong.artists && currentSong.artists.length > 0 ? (
+                <button
+                  onClick={() => navigate(`/artist/${currentSong.artists[0].id}`)}
+                  className="hover:text-primary transition-colors text-left truncate min-w-0"
+                  title={`View artist: ${currentSong.artists[0].name}`}
+                >
+                  {currentSong.artist_name}
+                </button>
+              ) : (
+                <span className="truncate" title={currentSong.artist_name}>{currentSong.artist_name}</span>
+              )}
               {currentSong.album_id && currentSong.album_id > 0 && currentSong.album_title && (
                 <>
-                  <span className="mx-1 flex-shrink-0">•</span>
+                  <span className="flex-shrink-0">•</span>
                   <button
                     onClick={() => navigate(`/album/${currentSong.album_id}`)}
-                    className="hover:text-primary transition-colors truncate"
+                    className="hover:text-primary transition-colors text-left truncate min-w-0"
                     title={`View album: ${currentSong.album_title}`}
                   >
                     {currentSong.album_title}
@@ -84,15 +94,15 @@ const PlayerInfo: React.FC = () => {
               )}
               {!currentSong.album_id && currentSong.album_title && (
                 <>
-                  <span className="mx-1 flex-shrink-0">•</span>
-                  <span className="truncate">{currentSong.album_title}</span>
+                  <span className="flex-shrink-0">•</span>
+                  <span className="truncate" title={currentSong.album_title}>{currentSong.album_title}</span>
                 </>
               )}
             </>
           ) : (
             'Select a song to start playing'
           )}
-        </p>
+        </div>
       </div>
 
       {/* Like button - only show when song is playing */}

@@ -45,8 +45,8 @@ const SearchPage: React.FC = () => {
 
   // Initialize state from URL params
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
-  const [selectedCategory, setSelectedCategory] = useState<'all' | 'songs' | 'artists' | 'albums' | 'users' | 'playlists'>(
-    (searchParams.get('category') as 'all' | 'songs' | 'artists' | 'albums' | 'users' | 'playlists') || 'all'
+  const [selectedCategory, setSelectedCategory] = useState<'all' | 'songs' | 'artists' | 'albums' | 'playlists'>(
+    (searchParams.get('category') as 'all' | 'songs' | 'artists' | 'albums' | 'playlists') || 'all'
   );
 
   const [debouncedQuery] = useDebounce(searchQuery, 300);
@@ -284,7 +284,6 @@ const SearchPage: React.FC = () => {
     songs: selectedCategory === 'all' || selectedCategory === 'songs' ? results.songs : [],
     artists: selectedCategory === 'all' || selectedCategory === 'artists' ? results.artists : [],
     albums: selectedCategory === 'all' || selectedCategory === 'albums' ? results.albums : [],
-    users: selectedCategory === 'all' || selectedCategory === 'users' ? results.users : [],
     playlists: selectedCategory === 'all' || selectedCategory === 'playlists' ? results.playlists : []
   };
 
@@ -301,7 +300,7 @@ const SearchPage: React.FC = () => {
         <MagnifyingGlassIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
         <input
           type="text"
-          placeholder="Search for songs, artists, albums, users, or playlists..."
+          placeholder="Search for songs, artists, albums, or playlists..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full pl-12 pr-4 py-3 md:py-4 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
@@ -312,16 +311,15 @@ const SearchPage: React.FC = () => {
       <div className="flex gap-2 md:gap-4 overflow-x-auto pb-2">
         {[
           { key: 'all', label: 'All', icon: MagnifyingGlassIcon },
-          { key: 'users', label: 'Users', icon: UserIcon },
+          { key: 'songs', label: 'Songs', icon: MusicalNoteIcon },
           { key: 'playlists', label: 'Playlists', icon: MusicalNoteIcon },
           { key: 'albums', label: 'Albums', icon: RectangleStackIcon },
-          { key: 'artists', label: 'Artists', icon: UserIcon },
-          { key: 'songs', label: 'Songs', icon: MusicalNoteIcon }
+          { key: 'artists', label: 'Artists', icon: UserIcon }
         ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => {
-              const newCategory = key as 'all' | 'songs' | 'artists' | 'albums' | 'users' | 'playlists';
+              const newCategory = key as 'all' | 'songs' | 'artists' | 'albums' | 'playlists';
               setSelectedCategory(newCategory);
 
               // Update URL params immediately when category changes
@@ -361,47 +359,6 @@ const SearchPage: React.FC = () => {
       {/* Search Results */}
       {!isLocalLoading && searchQuery && (
         <div className="space-y-6 md:space-y-8">
-          {/* Users Section */}
-          {filteredResults.users.length > 0 && (selectedCategory === 'all' || selectedCategory === 'users') && (
-            <div>
-              <h2 className="text-xl md:text-2xl font-bold text-white mb-4 flex items-center gap-2">
-                <UserIcon className="w-6 h-6" />
-                Users ({filteredResults.users.length})
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredResults.users.map((userItem) => (
-                  <div
-                    key={userItem.id}
-                    className="bg-gray-800/50 p-4 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer group"
-                    onClick={() => navigate(`/profile/${userItem.username}`)}
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center flex-shrink-0">
-                        {userItem.profile_picture ? (
-                          <img
-                            src={apiService.getArtworkUrl(userItem.profile_picture)}
-                            alt={userItem.username}
-                            className="w-full h-full rounded-full object-cover"
-                          />
-                        ) : (
-                          <UserIcon className="w-8 h-8 text-white" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-white font-medium truncate">{userItem.username}</h3>
-                        {userItem.is_admin && (
-                          <span className="inline-block bg-primary/20 text-primary px-2 py-0.5 rounded text-xs font-medium">
-                            Admin
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Playlists Section */}
           {filteredResults.playlists.length > 0 && (selectedCategory === 'all' || selectedCategory === 'playlists') && (
             <div>
@@ -688,7 +645,7 @@ const SearchPage: React.FC = () => {
       )}
 
       {/* No Results */}
-      {!isLocalLoading && !isLoadingExtensions && searchQuery && filteredResults.songs.length === 0 && filteredResults.artists.length === 0 && filteredResults.albums.length === 0 && filteredResults.users.length === 0 && filteredResults.playlists.length === 0 && Array.from(results.extensionResults.values()).every(results => results.length === 0) && (
+      {!isLocalLoading && !isLoadingExtensions && searchQuery && filteredResults.songs.length === 0 && filteredResults.artists.length === 0 && filteredResults.albums.length === 0 && filteredResults.playlists.length === 0 && Array.from(results.extensionResults.values()).every(results => results.length === 0) && (
         <div className="text-center py-12">
           <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">No results found</h3>
@@ -701,7 +658,7 @@ const SearchPage: React.FC = () => {
         <div className="text-center py-12">
           <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">Start searching</h3>
-          <p className="text-gray-400">Enter a song, artist, album, user, or playlist name above</p>
+          <p className="text-gray-400">Enter a song, artist, album, or playlist name above</p>
         </div>
       )}
 

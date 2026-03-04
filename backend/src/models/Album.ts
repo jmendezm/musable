@@ -1,4 +1,5 @@
 import Database from '../config/database';
+import { prepareSearchTerms, createSearchParams, isYearTerm } from '../utils/search';
 
 export interface Album {
   id: number;
@@ -147,18 +148,42 @@ export class AlbumModel {
   }
 
   async search(query: string, limit: number = 20): Promise<AlbumWithDetails[]> {
-    const searchTerm = `%${query}%`;
-    const albums = await this.db.query<Album>(
-      `SELECT DISTINCT al.*
+    // Fuzzy search with character normalization
+    const terms = prepareSearchTerms(query);
+
+    if (terms.length === 0) return [];
+
+    // Search conditions
+    const searchConditions = terms.map(() =>
+      `(LOWER(al.title) LIKE LOWER(?) OR
+        LOWER(a.name) LIKE LOWER(?) OR
+        al.release_year = ?)`
+    ).join(' AND ');
+
+    // Build params for each term
+    const params: (string | number)[] = [];
+    for (const term of terms) {
+      const { searchTerm } = createSearchParams(term);
+      const yearNum = parseInt(term);
+      params.push(
+        searchTerm,  // title
+        searchTerm,  // artist
+        isYearTerm(term) ? yearNum : -1  // year
+      );
+    }
+
+    const sql = `SELECT DISTINCT al.*
        FROM albums al
        LEFT JOIN songs s ON al.id = s.album_id
        LEFT JOIN song_artists sa ON s.id = sa.song_id
        LEFT JOIN artists a ON sa.artist_id = a.id
-       WHERE al.title LIKE ? OR a.name LIKE ?
+       WHERE ${searchConditions}
        ORDER BY al.title
-       LIMIT ?`,
-      [searchTerm, searchTerm, limit]
-    );
+       LIMIT ?`;
+
+    const allParams = [...params, limit];
+
+    const albums = await this.db.query<Album>(sql, allParams);
 
     const result: AlbumWithDetails[] = [];
     for (const album of albums) {

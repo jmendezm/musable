@@ -143,8 +143,9 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4" onClick={onClose}>
       <div
-        className="bg-gradient-to-br from-gray-800 via-gray-900 to-gray-800 rounded-2xl w-full max-w-4xl max-h-[95vh] overflow-hidden shadow-2xl border border-gray-700/50"
+        className="bg-gradient-to-br from-gray-800 via-gray-900 to-gray-800 rounded-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden shadow-2xl border border-gray-700/50"
         onClick={(e) => e.stopPropagation()}
+        style={{ animation: 'fadeIn 0.2s ease-out' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-700/50 bg-gray-900/50">
@@ -189,112 +190,101 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
           {/* EQ Tab */}
           {activeTab === 'eq' && (
             <div className="space-y-4">
-              {/* EQ Toggle and Presets */}
-              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+              {/* EQ Toggle and Master Gain - Row */}
+              <div className="flex gap-3">
+                {/* EQ Toggle */}
                 <button
                   onClick={toggleEQ}
-                  className={`px-6 py-2 rounded-full text-sm font-bold transition-all shadow-lg ${
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
                     eqEnabled
-                      ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-blue-500/30'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      ? 'bg-primary text-white hover:bg-primary/90'
+                      : 'bg-gray-700/50 text-gray-400 hover:bg-gray-700 border border-gray-600/50'
                   }`}
                 >
                   {eqEnabled ? '✓ EQ On' : '✕ EQ Off'}
                 </button>
 
-                <div className="flex-1 w-full">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Presets</label>
-                    <button
-                      onClick={() => setShowSaveDialog(!showSaveDialog)}
-                      className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-gray-700/50 rounded-lg transition-all"
-                      title="Save current as preset"
-                    >
-                      <PlusIcon className="w-4 h-4" />
-                    </button>
-                  </div>
+                {/* Master Gain */}
+                <div className={`flex-1 px-3 rounded-lg border transition-all duration-300 flex items-center gap-3 ${masterGain > 1.2 ? 'bg-red-900/20 border-red-700/50 clipping-indicator' : 'bg-gray-800/50 border-gray-700/50'}`}>
+                  <label className="text-xs font-semibold text-gray-400 whitespace-nowrap">Master</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.01"
+                    value={masterGain}
+                    onChange={(e) => {setMasterGain(parseFloat(e.target.value)); setSelectedPreset('Custom');}}
+                    className="flex-1 slider-thumb"
+                  />
+                  <span className={`text-xs font-bold transition-colors min-w-[3rem] text-right ${masterGain > 1.2 ? 'text-red-400 clipping-warning' : 'text-blue-400'}`}>
+                    {masterGain > 1 ? '+' : ''}{((masterGain - 1) * 100).toFixed(0)}%
+                  </span>
+                </div>
+              </div>
 
-                  {showSaveDialog && (
-                    <div className="mb-3 p-3 bg-gray-800/80 rounded-xl border border-gray-700/50">
+              {/* Presets */}
+              <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Presets</label>
+                  <button
+                    onClick={() => setShowSaveDialog(!showSaveDialog)}
+                    className="p-1 text-gray-400 hover:text-blue-400 hover:bg-gray-700/50 rounded transition-all"
+                    title="Save current as preset"
+                  >
+                    <PlusIcon className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {showSaveDialog && (
+                  <div className="mb-2 p-2 bg-gray-900/50 rounded-lg border border-gray-700/50">
+                    <div className="flex gap-2">
                       <input
                         type="text"
                         value={presetName}
                         onChange={(e) => setPresetName(e.target.value)}
                         placeholder="Preset name"
-                        className="w-full px-3 py-2 bg-gray-900/50 text-white text-sm rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                        className="flex-1 px-2 py-1.5 bg-gray-800 text-white text-xs rounded border border-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         onKeyPress={(e) => e.key === 'Enter' && handleSavePreset()}
                         autoFocus
                       />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleSavePreset}
-                          className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm font-semibold rounded-lg hover:from-blue-500 hover:to-blue-400 transition-all"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => {setShowSaveDialog(false); setPresetName('');}}
-                          className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 text-sm font-semibold rounded-lg hover:bg-gray-600 transition-all"
-                        >
-                          Cancel
-                        </button>
-                      </div>
+                      <button
+                        onClick={handleSavePreset}
+                        className="px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded hover:bg-primary/90 transition-colors"
+                      >
+                        Save
+                      </button>
                     </div>
-                  )}
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {allPresets.map((preset) => {
-                      const isCustom = !DEFAULT_AUDIO_PRESETS.find(p => p.name === preset.name);
-                      return (
-                        <div key={preset.name} className="flex items-center gap-1">
-                          <button
-                            onClick={() => applyPreset(preset)}
-                            className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-all text-center ${
-                              selectedPreset === preset.name
-                                ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30'
-                                : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/50 border border-gray-700/50'
-                            }`}
-                          >
-                            {preset.name}
-                          </button>
-                          {isCustom && (
-                            <button
-                              onClick={() => handleDeletePreset(preset.name)}
-                              className="p-2 bg-gray-800/50 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-900/30 transition-all border border-gray-700/50"
-                              title="Delete preset"
-                            >
-                              <TrashIcon className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
                   </div>
-                </div>
-              </div>
-
-              {/* Master Gain */}
-              <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-semibold text-gray-300">Master Gain</label>
-                  <span className={`text-sm font-bold ${masterGain > 1.2 ? 'text-yellow-400' : 'text-blue-400'}`}>
-                    {masterGain > 1 ? '+' : ''}{((masterGain - 1) * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="2"
-                  step="0.01"
-                  value={masterGain}
-                  onChange={(e) => {setMasterGain(parseFloat(e.target.value)); setSelectedPreset('Custom');}}
-                  className="w-full h-2.5 bg-gray-700 rounded-full appearance-none cursor-pointer slider-thumb"
-                />
-                {masterGain > 1.2 && (
-                  <p className="text-xs text-yellow-500 mt-2 flex items-center gap-1">
-                    <span>⚠️</span> High gain may cause clipping
-                  </p>
                 )}
+
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+                  {allPresets.map((preset) => {
+                    const isCustom = !DEFAULT_AUDIO_PRESETS.find(p => p.name === preset.name);
+                    return (
+                      <div key={preset.name} className="relative group">
+                        <button
+                          onClick={() => applyPreset(preset)}
+                          className={`preset-btn w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                            selectedPreset === preset.name
+                              ? 'bg-primary text-white'
+                              : 'bg-gray-700/50 text-gray-300 hover:bg-gray-700 border border-gray-600/50'
+                          }`}
+                        >
+                          {preset.name}
+                        </button>
+                        {isCustom && (
+                          <button
+                            onClick={() => handleDeletePreset(preset.name)}
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                            title="Delete preset"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* 10-Band EQ */}
@@ -312,37 +302,81 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
                   </button>
                 </div>
 
-                {/* Compact EQ for mobile, detailed for desktop */}
-                <div className="overflow-x-auto pb-2">
-                  <div className="flex items-end justify-between gap-2 sm:gap-3 min-w-[300px] sm:min-w-[600px]">
-                    {EQ_BANDS.map((freq, index) => (
-                      <div key={freq} className="flex flex-col items-center flex-1 min-w-[30px] sm:min-w-[50px]">
-                        <div className="h-32 sm:h-40 mb-2 flex items-center justify-center relative">
-                          <input
-                            type="range"
-                            min="-12"
-                            max="12"
-                            step="0.5"
-                            value={eqGains[index]}
-                            onChange={(e) => handleGainChange(index, parseFloat(e.target.value))}
-                            className="eq-slider"
-                            disabled={!eqEnabled}
-                            style={{
-                              transform: 'rotate(-90deg)',
-                              width: '140px',
-                              height: '40px'
-                            }}
-                          />
-                        </div>
-                        <span className={`text-xs font-bold mb-1 min-w-[2.5rem] text-center ${eqGains[index] > 0 ? 'text-green-400' : eqGains[index] < 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                {/* EQ Bands */}
+                <div className="flex items-end justify-between gap-1 sm:gap-2">
+                  {EQ_BANDS.map((freq, index) => (
+                    <div key={freq} className="flex flex-col items-center flex-1">
+                      {/* Value display */}
+                      <div className="h-6 flex items-center justify-center mb-1">
+                        <span className={`text-xs font-bold transition-colors ${!eqEnabled ? 'text-gray-600' : eqGains[index] > 0 ? 'text-green-400' : eqGains[index] < 0 ? 'text-red-400' : 'text-gray-400'}`}>
                           {eqGains[index] > 0 ? '+' : ''}{eqGains[index].toFixed(1)}
                         </span>
-                        <span className="text-[10px] sm:text-xs text-gray-500 font-semibold whitespace-nowrap">
-                          {freq >= 1000 ? `${freq / 1000}k` : freq}
-                        </span>
                       </div>
-                    ))}
-                  </div>
+
+                      {/* Vertical slider container */}
+                      <div className="relative h-32 w-5 flex items-center justify-center">
+                        {/* Track background */}
+                        <div className={`absolute w-1 h-full rounded-full ${!eqEnabled ? 'bg-gray-700' : 'bg-gray-700'}`}></div>
+
+                        {/* Fill (positive values) */}
+                        {eqGains[index] > 0 && (
+                          <div
+                            className="absolute bottom-1/2 w-1 bg-gradient-to-t from-blue-500 to-blue-400 rounded-full transition-all duration-100"
+                            style={{ height: `${(eqGains[index] / 12) * 50}%` }}
+                          ></div>
+                        )}
+
+                        {/* Fill (negative values) */}
+                        {eqGains[index] < 0 && (
+                          <div
+                            className="absolute top-1/2 w-1 bg-gradient-to-b from-blue-500 to-blue-400 rounded-full transition-all duration-100"
+                            style={{ height: `${(Math.abs(eqGains[index]) / 12) * 50}%` }}
+                          ></div>
+                        )}
+
+                        {/* Center line */}
+                        <div className="absolute w-2 h-0.5 bg-gray-500 rounded-full"></div>
+
+                        {/* Thumb/Handle */}
+                        <div
+                          className={`absolute w-3 h-3 rounded-full shadow-lg transition-all duration-100 cursor-grab active:cursor-grabbing ${
+                            !eqEnabled ? 'bg-gray-600 cursor-not-allowed' : 'bg-blue-400 hover:scale-125'
+                          }`}
+                          style={{
+                            bottom: `${50 + (eqGains[index] / 12) * 50}%`,
+                            transform: 'translateY(50%)'
+                          }}
+                          onMouseDown={(e) => {
+                            if (!eqEnabled) return;
+                            const container = e.currentTarget.parentElement;
+                            const containerRect = container.getBoundingClientRect();
+                            const centerY = containerRect.top + containerRect.height / 2;
+
+                            const handleMouseMove = (moveEvent: MouseEvent) => {
+                              const newY = moveEvent.clientY - centerY;
+                              const percentage = (newY / (containerRect.height / 2)) * -12;
+                              const clampedValue = Math.max(-12, Math.min(12, percentage));
+                              const steppedValue = Math.round(clampedValue * 2) / 2;
+                              handleGainChange(index, steppedValue);
+                            };
+
+                            const handleMouseUp = () => {
+                              document.removeEventListener('mousemove', handleMouseMove);
+                              document.removeEventListener('mouseup', handleMouseUp);
+                            };
+
+                            document.addEventListener('mousemove', handleMouseMove);
+                            document.addEventListener('mouseup', handleMouseUp);
+                          }}
+                        ></div>
+                      </div>
+
+                      {/* Frequency label */}
+                      <span className={`text-[10px] font-semibold mt-2 ${!eqEnabled ? 'text-gray-600' : 'text-gray-500'}`}>
+                        {freq >= 1000 ? `${freq / 1000}k` : freq}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -352,18 +386,18 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
           {activeTab === 'effects' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Reverb */}
-              <div className="p-5 bg-gray-800/50 rounded-2xl border border-gray-700/50 shadow-lg">
+              <div className="p-5 bg-gray-800/50 rounded-2xl border border-gray-700/50 shadow-lg transition-all duration-300">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                    <span className={`w-2 h-2 rounded-full transition-all ${reverbEnabled ? 'bg-green-500 animate-pulse shadow-lg shadow-green-500/50' : 'bg-gray-500'}`}></span>
                     Reverb
                   </h3>
                   <button
                     onClick={() => {toggleReverb(); setSelectedPreset('Custom');}}
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-md ${
+                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
                       reverbEnabled
-                        ? 'bg-gradient-to-r from-green-600 to-green-500 text-white shadow-green-500/30'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        ? 'bg-primary text-white hover:bg-primary/90'
+                        : 'bg-gray-700/50 text-gray-400 hover:bg-gray-700'
                     }`}
                   >
                     {reverbEnabled ? 'ON' : 'OFF'}
@@ -374,8 +408,8 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
                   {/* Room Size */}
                   <div>
                     <div className="flex justify-between mb-2">
-                      <span className="text-xs font-semibold text-gray-400 uppercase">Room Size</span>
-                      <span className="text-xs font-bold text-blue-400">{reverbRoomSize.toFixed(1)}s</span>
+                      <span className={`text-xs font-semibold uppercase transition-colors ${reverbEnabled ? 'text-gray-400' : 'text-gray-600'}`}>Room Size</span>
+                      <span className={`text-xs font-bold transition-colors ${reverbEnabled ? 'text-blue-400' : 'text-gray-600'}`}>{reverbRoomSize.toFixed(1)}s</span>
                     </div>
                     <input
                       type="range"
@@ -385,15 +419,15 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
                       value={reverbRoomSize}
                       onChange={(e) => {setReverbRoomSize(parseFloat(e.target.value)); setSelectedPreset('Custom');}}
                       disabled={!reverbEnabled}
-                      className="w-full h-2 bg-gray-700 rounded-full appearance-none cursor-pointer slider-thumb"
+                      className="w-full slider-thumb"
                     />
                   </div>
 
                   {/* Decay */}
                   <div>
                     <div className="flex justify-between mb-2">
-                      <span className="text-xs font-semibold text-gray-400 uppercase">Decay</span>
-                      <span className="text-xs font-bold text-blue-400">{reverbDecay.toFixed(1)}</span>
+                      <span className={`text-xs font-semibold uppercase transition-colors ${reverbEnabled ? 'text-gray-400' : 'text-gray-600'}`}>Decay</span>
+                      <span className={`text-xs font-bold transition-colors ${reverbEnabled ? 'text-blue-400' : 'text-gray-600'}`}>{reverbDecay.toFixed(1)}</span>
                     </div>
                     <input
                       type="range"
@@ -403,15 +437,15 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
                       value={reverbDecay}
                       onChange={(e) => {setReverbDecay(parseFloat(e.target.value)); setSelectedPreset('Custom');}}
                       disabled={!reverbEnabled}
-                      className="w-full h-2 bg-gray-700 rounded-full appearance-none cursor-pointer slider-thumb"
+                      className="w-full slider-thumb"
                     />
                   </div>
 
                   {/* Mix */}
                   <div>
                     <div className="flex justify-between mb-2">
-                      <span className="text-xs font-semibold text-gray-400 uppercase">Mix</span>
-                      <span className="text-xs font-bold text-blue-400">{(reverbWetDry * 100).toFixed(0)}%</span>
+                      <span className={`text-xs font-semibold uppercase transition-colors ${reverbEnabled ? 'text-gray-400' : 'text-gray-600'}`}>Mix</span>
+                      <span className={`text-xs font-bold transition-colors ${reverbEnabled ? 'text-blue-400' : 'text-gray-600'}`}>{(reverbWetDry * 100).toFixed(0)}%</span>
                     </div>
                     <input
                       type="range"
@@ -421,15 +455,15 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
                       value={reverbWetDry}
                       onChange={(e) => {setReverbWetDry(parseFloat(e.target.value)); setSelectedPreset('Custom');}}
                       disabled={!reverbEnabled}
-                      className="w-full h-2 bg-gray-700 rounded-full appearance-none cursor-pointer slider-thumb"
+                      className="w-full slider-thumb"
                     />
                   </div>
 
                   {/* Cutoff */}
                   <div>
                     <div className="flex justify-between mb-2">
-                      <span className="text-xs font-semibold text-gray-400 uppercase">Cutoff</span>
-                      <span className="text-xs font-bold text-blue-400">{reverbCutoff >= 1000 ? `${(reverbCutoff / 1000).toFixed(1)}k` : reverbCutoff}Hz</span>
+                      <span className={`text-xs font-semibold uppercase transition-colors ${reverbEnabled ? 'text-gray-400' : 'text-gray-600'}`}>Cutoff</span>
+                      <span className={`text-xs font-bold transition-colors ${reverbEnabled ? 'text-blue-400' : 'text-gray-600'}`}>{reverbCutoff >= 1000 ? `${(reverbCutoff / 1000).toFixed(1)}k` : reverbCutoff}Hz</span>
                     </div>
                     <input
                       type="range"
@@ -439,25 +473,25 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
                       value={reverbCutoff}
                       onChange={(e) => {setReverbCutoff(parseFloat(e.target.value)); setSelectedPreset('Custom');}}
                       disabled={!reverbEnabled}
-                      className="w-full h-2 bg-gray-700 rounded-full appearance-none cursor-pointer slider-thumb"
+                      className="w-full slider-thumb"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Limiter */}
-              <div className="p-5 bg-gray-800/50 rounded-2xl border border-gray-700/50 shadow-lg">
+              <div className="p-5 bg-gray-800/50 rounded-2xl border border-gray-700/50 shadow-lg transition-all duration-300">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+                    <span className={`w-2 h-2 rounded-full transition-all ${limiterEnabled ? 'bg-orange-500 animate-pulse shadow-lg shadow-orange-500/50' : 'bg-gray-500'}`}></span>
                     Limiter
                   </h3>
                   <button
                     onClick={() => {toggleLimiter(); setSelectedPreset('Custom');}}
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-md ${
+                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
                       limiterEnabled
-                        ? 'bg-gradient-to-r from-orange-600 to-orange-500 text-white shadow-orange-500/30'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        ? 'bg-primary text-white hover:bg-primary/90'
+                        : 'bg-gray-700/50 text-gray-400 hover:bg-gray-700'
                     }`}
                   >
                     {limiterEnabled ? 'ON' : 'OFF'}
@@ -468,8 +502,8 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
                   {/* Threshold */}
                   <div>
                     <div className="flex justify-between mb-2">
-                      <span className="text-xs font-semibold text-gray-400 uppercase">Threshold</span>
-                      <span className="text-xs font-bold text-blue-400">{limiterThreshold.toFixed(1)} dB</span>
+                      <span className={`text-xs font-semibold uppercase transition-colors ${limiterEnabled ? 'text-gray-400' : 'text-gray-600'}`}>Threshold</span>
+                      <span className={`text-xs font-bold transition-colors ${limiterEnabled ? 'text-blue-400' : 'text-gray-600'}`}>{limiterThreshold.toFixed(1)} dB</span>
                     </div>
                     <input
                       type="range"
@@ -479,15 +513,15 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
                       value={limiterThreshold}
                       onChange={(e) => {setLimiterThreshold(parseFloat(e.target.value)); setSelectedPreset('Custom');}}
                       disabled={!limiterEnabled}
-                      className="w-full h-2 bg-gray-700 rounded-full appearance-none cursor-pointer slider-thumb"
+                      className="w-full slider-thumb"
                     />
                   </div>
 
                   {/* Release */}
                   <div>
                     <div className="flex justify-between mb-2">
-                      <span className="text-xs font-semibold text-gray-400 uppercase">Release</span>
-                      <span className="text-xs font-bold text-blue-400">{(limiterRelease * 1000).toFixed(0)}ms</span>
+                      <span className={`text-xs font-semibold uppercase transition-colors ${limiterEnabled ? 'text-gray-400' : 'text-gray-600'}`}>Release</span>
+                      <span className={`text-xs font-bold transition-colors ${limiterEnabled ? 'text-blue-400' : 'text-gray-600'}`}>{(limiterRelease * 1000).toFixed(0)}ms</span>
                     </div>
                     <input
                       type="range"
@@ -497,7 +531,7 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
                       value={limiterRelease}
                       onChange={(e) => {setLimiterRelease(parseFloat(e.target.value)); setSelectedPreset('Custom');}}
                       disabled={!limiterEnabled}
-                      className="w-full h-2 bg-gray-700 rounded-full appearance-none cursor-pointer slider-thumb"
+                      className="w-full slider-thumb"
                     />
                   </div>
 
@@ -517,7 +551,7 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
         <div className="flex justify-end items-center p-4 sm:p-6 border-t border-gray-700/50 bg-gray-900/50">
           <button
             onClick={onClose}
-            className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-500/30"
+            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm font-semibold"
           >
             Done
           </button>
@@ -525,82 +559,113 @@ const EqualizerModal: React.FC<EqualizerModalProps> = ({ isOpen, onClose }) => {
       </div>
 
       <style>{`
+        /* Smooth animations for the entire modal */
+        @keyframes fadeIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes pulse-warning {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
+        }
+
+        @keyframes glow-pulse {
+          0%, 100% { box-shadow: 0 0 5px rgba(239, 68, 68, 0.5); }
+          50% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.8), 0 0 30px rgba(239, 68, 68, 0.4); }
+        }
+
+        /* Horizontal slider styles */
+        .slider-thumb::-webkit-slider-runnable-track {
+          width: 100%;
+          height: 8px;
+          border-radius: 4px;
+          background: linear-gradient(90deg, #1e3a5f 0%, #2d4a6f 50%, #3b5a8f 100%);
+          box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+
         .slider-thumb::-webkit-slider-thumb {
           -webkit-appearance: none;
           appearance: none;
-          width: 16px;
-          height: 16px;
+          width: 20px;
+          height: 20px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+          background: linear-gradient(135deg, #60a5fa, #3b82f6);
           cursor: pointer;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-          transition: transform 0.2s;
+          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.5), 0 0 0 3px rgba(59, 130, 246, 0.1);
+          transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+          margin-top: -6px;
         }
 
         .slider-thumb::-webkit-slider-thumb:hover {
-          transform: scale(1.2);
+          transform: scale(1.15);
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.6), 0 0 0 5px rgba(59, 130, 246, 0.15);
+          background: linear-gradient(135deg, #93c5fd, #60a5fa);
+        }
+
+        .slider-thumb::-webkit-slider-thumb:active {
+          transform: scale(1.05);
+          box-shadow: 0 2px 6px rgba(59, 130, 246, 0.5);
+        }
+
+        .slider-thumb::-moz-range-track {
+          width: 100%;
+          height: 8px;
+          border-radius: 4px;
+          background: linear-gradient(90deg, #1e3a5f 0%, #2d4a6f 50%, #3b5a8f 100%);
+          box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
         }
 
         .slider-thumb::-moz-range-thumb {
-          width: 16px;
-          height: 16px;
+          width: 20px;
+          height: 20px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+          background: linear-gradient(135deg, #60a5fa, #3b82f6);
           cursor: pointer;
           border: none;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-          transition: transform 0.2s;
+          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.5), 0 0 0 3px rgba(59, 130, 246, 0.1);
+          transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         .slider-thumb::-moz-range-thumb:hover {
-          transform: scale(1.2);
+          transform: scale(1.15);
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.6), 0 0 0 5px rgba(59, 130, 246, 0.15);
+          background: linear-gradient(135deg, #93c5fd, #60a5fa);
         }
 
-        .eq-slider {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 140px;
-          height: 6px;
-          border-radius: 3px;
-          background: linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6);
-          outline: none;
-          cursor: pointer;
-        }
-
-        .eq-slider:disabled {
-          opacity: 0.3;
+        /* Disabled state for sliders */
+        .slider-thumb:disabled::-webkit-slider-thumb {
+          background: linear-gradient(135deg, #6b7280, #4b5563);
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
           cursor: not-allowed;
         }
 
-        .eq-slider::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 18px;
-          height: 18px;
-          border-radius: 50%;
-          background: white;
-          cursor: pointer;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-          transition: transform 0.2s;
+        .slider-thumb:disabled::-moz-range-thumb {
+          background: linear-gradient(135deg, #6b7280, #4b5563);
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+          cursor: not-allowed;
         }
 
-        .eq-slider::-webkit-slider-thumb:hover {
-          transform: scale(1.3);
+        /* Clipping warning animation */
+        .clipping-warning {
+          animation: pulse-warning 1s ease-in-out infinite;
         }
 
-        .eq-slider::-moz-range-thumb {
-          width: 18px;
-          height: 18px;
-          border-radius: 50%;
-          background: white;
-          cursor: pointer;
-          border: none;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-          transition: transform 0.2s;
+        .clipping-indicator {
+          animation: glow-pulse 1.5s ease-in-out infinite;
         }
 
-        .eq-slider::-moz-range-thumb:hover {
-          transform: scale(1.3);
+        /* Preset button hover glow */
+        .preset-btn {
+          transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .preset-btn:hover {
+          transform: translateY(-1px);
+        }
+
+        .preset-btn:active {
+          transform: translateY(0);
         }
       `}</style>
     </div>

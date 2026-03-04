@@ -249,11 +249,18 @@ export class PlaylistModel {
   }
 
   async searchPlaylists(query: string, userId?: number): Promise<PlaylistWithDetails[]> {
-    const searchTerm = `%${query}%`;
-    
+    // Improved fuzzy search with word splitting
+    const terms = query.trim().split(/\s+/).filter(t => t.length > 0);
+
+    if (terms.length === 0) return [];
+
+    const nameConditions = terms.map(() => 'p.name LIKE ?').join(' AND ');
+    const descConditions = terms.map(() => 'p.description LIKE ?').join(' AND ');
+    const params = terms.flatMap(t => [`%${t}%`, `%${t}%`]);
+
     if (userId) {
       return await this.db.query<PlaylistWithDetails>(
-        `SELECT 
+        `SELECT
           p.*,
           u.username,
           COUNT(ps.song_id) as song_count,
@@ -262,15 +269,17 @@ export class PlaylistModel {
          JOIN users u ON p.user_id = u.id
          LEFT JOIN playlist_songs ps ON p.id = ps.playlist_id
          LEFT JOIN songs s ON ps.song_id = s.id
-         WHERE (p.name LIKE ? OR p.description LIKE ?) 
+         WHERE (${nameConditions} OR ${descConditions})
            AND (p.is_public = 1 OR p.user_id = ?)
          GROUP BY p.id
-         ORDER BY p.updated_at DESC`,
-        [searchTerm, searchTerm, userId]
+         ORDER BY
+           CASE WHEN LOWER(p.name) LIKE LOWER(?) THEN 0 ELSE 1 END,
+           p.updated_at DESC`,
+        params.concat(userId, `%${terms[0]}%`)
       );
     } else {
       return await this.db.query<PlaylistWithDetails>(
-        `SELECT 
+        `SELECT
           p.*,
           u.username,
           COUNT(ps.song_id) as song_count,
@@ -279,10 +288,12 @@ export class PlaylistModel {
          JOIN users u ON p.user_id = u.id
          LEFT JOIN playlist_songs ps ON p.id = ps.playlist_id
          LEFT JOIN songs s ON ps.song_id = s.id
-         WHERE (p.name LIKE ? OR p.description LIKE ?) AND p.is_public = 1
+         WHERE (${nameConditions} OR ${descConditions}) AND p.is_public = 1
          GROUP BY p.id
-         ORDER BY p.updated_at DESC`,
-        [searchTerm, searchTerm]
+         ORDER BY
+           CASE WHEN LOWER(p.name) LIKE LOWER(?) THEN 0 ELSE 1 END,
+           p.updated_at DESC`,
+        params.concat(`%${terms[0]}%`)
       );
     }
   }

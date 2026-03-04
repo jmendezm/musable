@@ -270,51 +270,7 @@ code {
   }
 }
 
-/* Vertical EQ slider styles - matching horizontal slider style */
-.eq-slider {
-  -webkit-appearance: slider-vertical;
-  width: 8px;
-  height: 160px;
-  background: #404040;
-  border-radius: 4px;
-  outline: none;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.eq-slider:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.eq-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #82AAF2;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.eq-slider:not(:disabled)::-webkit-slider-thumb:hover {
-  background: #9bb8f5;
-}
-
-.eq-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #82AAF2;
-  cursor: pointer;
-  border: none;
-  transition: background 0.2s;
-}
-
-.eq-slider:not(:disabled)::-moz-range-thumb:hover {
-  background: #9bb8f5;
-}
+/* Vertical EQ slider styles - handled in EqualizerModal component */
 
 /* Slider thumb styles */
 input[type="range"].slider-thumb::-webkit-slider-thumb {

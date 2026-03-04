@@ -1,4 +1,5 @@
 import Database from '../config/database';
+import { prepareSearchTerms, createSearchParams, isYearTerm } from '../utils/search';
 
 export interface Song {
   id: number;
@@ -174,19 +175,62 @@ export class SongModel {
   }
 
   async searchSongs(query: string): Promise<SongWithDetails[]> {
-    const searchTerm = `%${query}%`;
-    const songs = await this.db.query<Song>(
-      `SELECT DISTINCT s.*
+    // Fuzzy search with relevance scoring
+    const terms = prepareSearchTerms(query);
+
+    if (terms.length === 0) return [];
+
+    // Build WHERE clause for each term
+    const searchConditions = terms.map(() =>
+      `(LOWER(s.title) LIKE LOWER(?) OR
+        LOWER(a.name) LIKE LOWER(?) OR
+        LOWER(al.title) LIKE LOWER(?) OR
+        LOWER(s.genre) LIKE LOWER(?) OR
+        s.year = ?)`
+    ).join(' AND ');
+
+    // Build CASE expressions for each term for relevance scoring
+    const caseExpressions = terms.map((_, i) => {
+      const offset = i * 5;
+      return `(CASE
+        WHEN LOWER(s.title) LIKE LOWER(?) THEN 10
+        WHEN LOWER(a.name) LIKE LOWER(?) THEN 7
+        WHEN LOWER(al.title) LIKE LOWER(?) THEN 5
+        WHEN LOWER(s.genre) LIKE LOWER(?) THEN 3
+        WHEN s.year = ? THEN 2
+        ELSE 0
+      END)`;
+    }).join(' + ');
+
+    // Build params for each term
+    const params: (string | number)[] = [];
+    for (const term of terms) {
+      const { searchTerm } = createSearchParams(term);
+      const yearNum = parseInt(term);
+      params.push(
+        searchTerm,  // title (WHERE)
+        searchTerm,  // artist (WHERE)
+        searchTerm,  // album (WHERE)
+        searchTerm,  // genre (WHERE)
+        isYearTerm(term) ? yearNum : -1  // year (WHERE)
+      );
+    }
+
+    // Duplicate params for CASE statement (same params used in WHERE and CASE)
+    const allParams = [...params, ...params];
+
+    const songs = await this.db.query<Song & { relevance?: number }>(
+      `SELECT DISTINCT s.*,
+        (${caseExpressions}) as relevance
        FROM songs s
        LEFT JOIN song_artists sa ON s.id = sa.song_id
        LEFT JOIN artists a ON sa.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
-       WHERE s.title LIKE ?
-          OR a.name LIKE ?
-          OR al.title LIKE ?
-          OR s.genre LIKE ?
-       ORDER BY s.title`,
-      [searchTerm, searchTerm, searchTerm, searchTerm]
+       WHERE ${searchConditions}
+       GROUP BY s.id
+       HAVING relevance > 0
+       ORDER BY relevance DESC, s.title`,
+      allParams
     );
 
     const result: SongWithDetails[] = [];

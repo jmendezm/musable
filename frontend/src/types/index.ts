@@ -57,6 +57,7 @@ export interface Song {
   id: number;
   title: string;
   artist_name: string;
+  artists?: { id: number; name: string }[];
   album_id?: number;
   album_title?: string;
   file_path: string;

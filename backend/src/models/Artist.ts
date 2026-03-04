@@ -1,4 +1,5 @@
 import Database from '../config/database';
+import { prepareSearchTerms, createSearchParams } from '../utils/search';
 
 export interface Artist {
   id: number;
@@ -85,9 +86,24 @@ export class ArtistModel {
   }
 
   async search(query: string, limit: number = 20): Promise<ArtistWithStats[]> {
-    const searchTerm = `%${query}%`;
-    return await this.db.query<ArtistWithStats>(
-      `SELECT
+    // Fuzzy search with character normalization
+    const terms = prepareSearchTerms(query);
+
+    if (terms.length === 0) return [];
+
+    // Search conditions
+    const searchConditions = terms.map(() =>
+      `LOWER(a.name) LIKE LOWER(?)`
+    ).join(' AND ');
+
+    // Build params for each term
+    const params: string[] = [];
+    for (const term of terms) {
+      const { searchTerm } = createSearchParams(term);
+      params.push(searchTerm);
+    }
+
+    const sql = `SELECT
         a.*,
         COUNT(DISTINCT s.id) as song_count,
         COUNT(DISTINCT al.id) as album_count
@@ -95,12 +111,16 @@ export class ArtistModel {
        LEFT JOIN song_artists sa ON a.id = sa.artist_id
        LEFT JOIN songs s ON sa.song_id = s.id
        LEFT JOIN albums al ON s.album_id = al.id
-       WHERE a.name LIKE ?
+       WHERE ${searchConditions}
        GROUP BY a.id
-       ORDER BY a.name
-       LIMIT ?`,
-      [searchTerm, limit]
-    );
+       ORDER BY
+         CASE WHEN LOWER(a.name) LIKE LOWER(?) THEN 0 ELSE 1 END,
+         a.name
+       LIMIT ?`;
+
+    const allParams = [...params, `%${terms[0]}%`, limit];
+
+    return await this.db.query<ArtistWithStats>(sql, allParams);
   }
 
   async update(id: number, data: { name?: string; image_path?: string }): Promise<void> {
