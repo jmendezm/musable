@@ -36,6 +36,7 @@ import { parseFile } from 'music-metadata';
 import sharp from 'sharp';
 import { promisify } from 'util';
 import sqlite3 from 'sqlite3';
+import { calculateFileHash, hashCache } from '../utils/fileHash';
 
 interface ScanRequest {
   type: 'scan' | 'stop';
@@ -57,6 +58,8 @@ interface ScanFileResult {
   added: boolean;
   updated: boolean;
   skipped: boolean;
+  renamed: boolean;
+  duplicate: boolean;
 }
 
 let isScanning = false;
@@ -172,12 +175,56 @@ function isSupportedAudioFile(filePath: string): boolean {
 async function scanFile(filePath: string): Promise<ScanFileResult> {
   try {
     if (!isSupportedAudioFile(filePath)) {
-      return { added: false, updated: false, skipped: true };
+      return { added: false, updated: false, skipped: true, renamed: false, duplicate: false };
     }
 
-    const metadata = await parseFile(filePath);
     const fileStats = fs.statSync(filePath);
 
+    // Calculate file hash for content-based identification
+    let fileHash: string | null = null;
+    try {
+      // Check cache first
+      const cachedHash = await hashCache.getCachedHash(filePath);
+      if (cachedHash) {
+        fileHash = cachedHash;
+      } else {
+        // Calculate hash and cache it
+        fileHash = await calculateFileHash(filePath);
+        hashCache.setCachedHash(filePath, fileHash);
+      }
+    } catch (hashError) {
+      console.error(`[Worker] Failed to calculate hash for ${filePath}:`, hashError);
+      // Continue without hash - will use file_path matching
+    }
+
+    // Check if this file hash already exists in the database at a different path
+    if (fileHash) {
+      const existingByHash = await Database.get(
+        'SELECT * FROM songs WHERE file_hash = ? AND file_path != ?',
+        [fileHash, filePath]
+      );
+
+      if (existingByHash) {
+        // File was moved or renamed! Update the path instead of creating a duplicate
+        console.log(`[Worker] Detected moved/renamed file: ${existingByHash.file_path} -> ${filePath}`);
+
+        await Database.run(
+          'UPDATE songs SET file_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          [filePath, existingByHash.id]
+        );
+
+        // Update playlist_songs to use the correct song_id
+        await Database.run(
+          'UPDATE playlist_songs SET song_id = ? WHERE file_hash = ?',
+          [existingByHash.id, fileHash]
+        );
+
+        return { added: false, updated: false, skipped: false, renamed: true, duplicate: false };
+      }
+    }
+
+    // Parse metadata
+    const metadata = await parseFile(filePath);
     const artistName = metadata.common.artist || 'Unknown Artist';
     const albumTitle = metadata.common.album;
     const title = metadata.common.title || path.basename(filePath, path.extname(filePath));
@@ -225,65 +272,99 @@ async function scanFile(filePath: string): Promise<ScanFileResult> {
       }
     }
 
-    // Atomic insert-or-ignore to prevent duplicate songs during concurrent scanning
-    await Database.run(
-      `INSERT OR IGNORE INTO songs (title, album_id, file_path, file_size, duration,
-       track_number, genre, year, bitrate, sample_rate, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        title,
-        album?.id || null,
-        filePath,
-        fileStats.size,
-        metadata.format.duration ? Math.round(metadata.format.duration) : null,
-        metadata.common.track?.no || null,
-        metadata.common.genre?.join(', ') || null,
-        metadata.common.year || null,
-        metadata.format.bitrate || null,
-        metadata.format.sampleRate || null,
-        'local'
-      ]
-    );
-
-    // Fetch the song (it either existed or was just created)
-    const fetchedSongs = await Database.query(
+    // Check if file already exists by path
+    const existingByPath = await Database.get(
       'SELECT * FROM songs WHERE file_path = ?',
       [filePath]
     );
 
-    if (!fetchedSongs || fetchedSongs.length === 0) {
-      throw new Error('Failed to insert or fetch song');
-    }
-
-    const song = fetchedSongs[0];
+    let song = existingByPath;
     let wasAdded = false;
     let wasUpdated = false;
 
-    // Check if this is a new song (file_size should match if it existed before)
-    // If file_size differs, the file was modified and needs update
-    if (song.file_size !== fileStats.size) {
-      // File size changed, update metadata
+    if (song) {
+      // File exists at this path - check if it needs updating
+      // Update hash if it wasn't set before
+      if (fileHash && !song.file_hash) {
+        await Database.run(
+          'UPDATE songs SET file_hash = ? WHERE id = ?',
+          [fileHash, song.id]
+        );
+        song.file_hash = fileHash;
+      }
+
+      // Check if file size changed (file was modified)
+      if (song.file_size !== fileStats.size) {
+        await Database.run(
+          `UPDATE songs SET title = ?, album_id = ?, file_size = ?, file_hash = ?,
+           duration = ?, track_number = ?, genre = ?, year = ?, bitrate = ?, sample_rate = ?
+           WHERE id = ?`,
+          [
+            title,
+            album?.id || null,
+            fileStats.size,
+            fileHash || null,
+            metadata.format.duration ? Math.round(metadata.format.duration) : null,
+            metadata.common.track?.no || null,
+            metadata.common.genre?.join(', ') || null,
+            metadata.common.year || null,
+            metadata.format.bitrate || null,
+            metadata.format.sampleRate || null,
+            song.id
+          ]
+        );
+        wasUpdated = true;
+      } else {
+        // File unchanged
+        wasUpdated = false;
+      }
+    } else {
+      // New file - insert it
       await Database.run(
-        `UPDATE songs SET title = ?, album_id = ?, file_size = ?,
-         duration = ?, track_number = ?, genre = ?, year = ?, bitrate = ?, sample_rate = ?
-         WHERE id = ?`,
+        `INSERT INTO songs (title, album_id, file_path, file_size, file_hash, duration,
+         track_number, genre, year, bitrate, sample_rate, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           title,
           album?.id || null,
+          filePath,
           fileStats.size,
+          fileHash || null,
           metadata.format.duration ? Math.round(metadata.format.duration) : null,
           metadata.common.track?.no || null,
           metadata.common.genre?.join(', ') || null,
           metadata.common.year || null,
           metadata.format.bitrate || null,
           metadata.format.sampleRate || null,
-          song.id
+          'local'
         ]
       );
-      wasUpdated = true;
-    } else if (song.created_at === song.updated_at) {
-      // Song was just created (created_at equals updated_at for new rows)
+
+      // Fetch the newly created song
+      const fetchedSongs = await Database.query(
+        'SELECT * FROM songs WHERE file_path = ?',
+        [filePath]
+      );
+
+      if (!fetchedSongs || fetchedSongs.length === 0) {
+        throw new Error('Failed to insert or fetch song');
+      }
+
+      song = fetchedSongs[0];
       wasAdded = true;
+
+      // Check if this is a duplicate (same hash as another file)
+      if (fileHash) {
+        const duplicateCheck = await Database.query(
+          'SELECT id, file_path FROM songs WHERE file_hash = ? AND id != ?',
+          [fileHash, song.id]
+        );
+
+        if (duplicateCheck && duplicateCheck.length > 0) {
+          console.log(`[Worker] Duplicate detected: ${filePath} has same hash as ${duplicateCheck[0].file_path}`);
+          return { added: true, updated: false, skipped: false, renamed: false, duplicate: true };
+        }
+      }
     }
 
     // Atomic artist update: always delete all existing artists and insert the correct one
@@ -294,7 +375,7 @@ async function scanFile(filePath: string): Promise<ScanFileResult> {
       [song.id, artist[0].id]
     );
 
-    return { added: wasAdded, updated: wasUpdated, skipped: !wasAdded && !wasUpdated };
+    return { added: wasAdded, updated: wasUpdated, skipped: !wasAdded && !wasUpdated, renamed: false, duplicate: false };
   } catch (error: any) {
     console.error(`[Worker] Failed to scan file ${filePath}:`, error.message);
     throw error;
@@ -381,7 +462,10 @@ async function performScan(
   let totalFilesScanned = 0;
   let totalFilesAdded = 0;
   let totalFilesUpdated = 0;
+  let totalFilesRemoved = 0;
+  let totalFilesRenamed = 0;
   let totalFilesSkipped = 0;
+  let totalDuplicates = 0;
   let totalErrors = 0;
 
   // Track progress for each library path
@@ -389,7 +473,10 @@ async function performScan(
     filesScanned: number;
     filesAdded: number;
     filesUpdated: number;
+    filesRemoved: number;
+    filesRenamed: number;
     filesSkipped: number;
+    duplicatesFound: number;
     errorsCount: number;
     errors: Array<{ filePath: string; errorMessage: string }>;
   }>();
@@ -400,7 +487,10 @@ async function performScan(
         filesScanned: 0,
         filesAdded: 0,
         filesUpdated: 0,
+        filesRemoved: 0,
+        filesRenamed: 0,
         filesSkipped: 0,
+        duplicatesFound: 0,
         errorsCount: 0,
         errors: []
       });
@@ -415,6 +505,38 @@ async function performScan(
     console.log(`[Worker] Scanning paths: ${scanPaths.join(', ')}`);
     if (pathReports) {
       console.log(`[Worker] Tracking ${pathReports.length} library path reports`);
+    }
+
+    // First, remove all songs that are NOT in any of the current library paths
+    // This handles the case where a path was removed from the library
+    if (scanPaths.length > 0) {
+      console.log('[Worker] Checking for songs that no longer belong to any library path...');
+
+      // Build OR condition for all library paths
+      const pathConditions = scanPaths.map(() => 'file_path LIKE ?').join(' OR ');
+      const pathParams = scanPaths.map(p => `${p}%`);
+
+      // Find all songs that DON'T match any library path
+      const orphanedSongs = await Database.query<{ id: number; file_path: string }>(
+        `SELECT id, file_path FROM songs WHERE NOT (${pathConditions})`,
+        pathParams
+      );
+
+      if (orphanedSongs.length > 0) {
+        console.log(`[Worker] Found ${orphanedSongs.length} songs that no longer belong to any library path, removing...`);
+
+        for (const song of orphanedSongs) {
+          try {
+            await Database.run('DELETE FROM songs WHERE id = ?', [song.id]);
+            totalFilesRemoved++;
+            console.log(`[Worker] Removed orphaned song: ${song.file_path} (id: ${song.id})`);
+          } catch (err) {
+            console.error(`[Worker] Error removing orphaned song ${song.id}:`, err);
+          }
+        }
+
+        console.log(`[Worker] Removed ${orphanedSongs.length} orphaned songs in total`);
+      }
     }
 
     for (let pathIndex = 0; pathIndex < scanPaths.length; pathIndex++) {
@@ -446,16 +568,44 @@ async function performScan(
         console.log(`[Worker] Using report ID ${currentPathReport.reportId} for this path`);
       }
 
+      // Get existing files in database for this path before scanning
+      const existingDbFiles = await Database.query(
+        'SELECT id, file_path, file_hash FROM songs WHERE file_path LIKE ?',
+        [`${scanPath}%`]
+      );
+      const existingFilePaths = new Set(existingDbFiles.map((f: any) => f.file_path));
+      console.log(`[Worker] Found ${existingDbFiles.length} existing files in database for ${scanPath}`);
+
       // Count files first
       const audioFiles = await findAudioFiles(scanPath);
+      const foundFilePaths = new Set(audioFiles);
       const totalFiles = audioFiles.length;
       console.log(`[Worker] Found ${totalFiles} files in ${scanPath}`);
+
+      // Detect removed files (files in DB but not on disk)
+      const removedFiles = existingDbFiles.filter((f: any) => !foundFilePaths.has(f.file_path));
+      for (const removed of removedFiles) {
+        await Database.run('DELETE FROM songs WHERE id = ?', [removed.id]);
+        totalFilesRemoved++;
+        if (currentPathReport) {
+          const progress = pathProgressMap.get(currentPathReport.reportId);
+          if (progress) {
+            progress.filesRemoved++;
+          }
+        }
+      }
+      if (removedFiles.length > 0) {
+        console.log(`[Worker] Removed ${removedFiles.length} files that no longer exist in ${scanPath}`);
+      }
 
       // Initialize/reset path-specific counters
       let pathFilesScanned = 0;
       let pathFilesAdded = 0;
       let pathFilesUpdated = 0;
+      let pathFilesRemoved = removedFiles.length;
+      let pathFilesRenamed = 0;
       let pathFilesSkipped = 0;
+      let pathDuplicates = 0;
       let pathErrors = 0;
 
       // Process files with concurrency of 3
@@ -474,14 +624,14 @@ async function performScan(
           batch.map(async (filePath) => {
             try {
               if (shouldStop) {
-                return { scanned: false, added: false, updated: false, skipped: true };
+                return { scanned: false, added: false, updated: false, skipped: true, renamed: false, duplicate: false };
               }
 
               const result = await scanFile(filePath);
               return { scanned: true, ...result };
             } catch (error: any) {
               console.error(`[Worker] Error processing ${path.basename(filePath)}: ${error.message}`);
-              return { scanned: false, added: false, updated: false, skipped: false, error: true, filePath, errorMessage: error.message };
+              return { scanned: false, added: false, updated: false, skipped: false, renamed: false, duplicate: false, error: true, filePath, errorMessage: error.message };
             }
           })
         );
@@ -501,6 +651,14 @@ async function performScan(
             if (data.updated) {
               totalFilesUpdated++;
               pathFilesUpdated++;
+            }
+            if (data.renamed) {
+              totalFilesRenamed++;
+              pathFilesRenamed++;
+            }
+            if (data.duplicate) {
+              totalDuplicates++;
+              pathDuplicates++;
             }
             if (data.skipped) {
               totalFilesSkipped++;
@@ -537,7 +695,7 @@ async function performScan(
 
         // Send progress update every 50 files
         if (processedFiles % 50 === 0 || processedFiles === totalFiles) {
-          console.log(`[Worker] ${scanPath}: ${processedFiles}/${totalFiles} (${pathFilesAdded} added, ${pathFilesUpdated} updated, ${pathFilesSkipped} skipped, ${pathErrors} errors)`);
+          console.log(`[Worker] ${scanPath}: ${processedFiles}/${totalFiles} (${pathFilesAdded} added, ${pathFilesUpdated} updated, ${pathFilesRemoved} removed, ${pathFilesRenamed} renamed/moved, ${pathDuplicates} duplicates, ${pathErrors} errors)`);
 
           sendMessage({
             type: 'scanProgress',
@@ -546,7 +704,10 @@ async function performScan(
               filesScanned: totalFilesScanned,
               filesAdded: totalFilesAdded,
               filesUpdated: totalFilesUpdated,
+              filesRemoved: totalFilesRemoved,
+              filesRenamed: totalFilesRenamed,
               filesSkipped: totalFilesSkipped,
+              duplicatesFound: totalDuplicates,
               errorsCount: totalErrors,
               progress,
               totalFiles,
@@ -559,9 +720,10 @@ async function performScan(
             await Database.run(
               `UPDATE library_path_scan_reports
                SET files_scanned = ?, files_added = ?, files_updated = ?,
-                   files_skipped = ?, errors_count = ?, progress = ?, total_files = ?
+                   files_removed = ?, files_renamed = ?, files_skipped = ?,
+                   duplicates_found = ?, errors_count = ?, progress = ?, total_files = ?
                WHERE id = ?`,
-              [pathFilesScanned, pathFilesAdded, pathFilesUpdated, pathFilesSkipped, pathErrors, progress, totalFiles, currentPathReport.reportId]
+              [pathFilesScanned, pathFilesAdded, pathFilesUpdated, pathFilesRemoved, pathFilesRenamed, pathFilesSkipped, pathDuplicates, pathErrors, progress, totalFiles, currentPathReport.reportId]
             );
           }
         }
@@ -609,10 +771,22 @@ async function performScan(
 
     sendMessage({
       type: 'scanComplete',
-      data: { scanId }
+      data: {
+        scanId,
+        summary: {
+          filesScanned: totalFilesScanned,
+          filesAdded: totalFilesAdded,
+          filesUpdated: totalFilesUpdated,
+          filesRemoved: totalFilesRemoved,
+          filesRenamed: totalFilesRenamed,
+          filesSkipped: totalFilesSkipped,
+          duplicatesFound: totalDuplicates,
+          errors: totalErrors
+        }
+      }
     });
 
-    console.log(`[Worker] Scan ${scanStatus}: ${totalFilesScanned} scanned, ${totalFilesAdded} added, ${totalFilesUpdated} updated, ${totalFilesSkipped} skipped, ${totalErrors} errors`);
+    console.log(`[Worker] Scan ${scanStatus}: ${totalFilesScanned} scanned, ${totalFilesAdded} added, ${totalFilesUpdated} updated, ${totalFilesRemoved} removed, ${totalFilesRenamed} renamed/moved, ${totalFilesSkipped} skipped, ${totalDuplicates} duplicates, ${totalErrors} errors`);
 
     // Log artwork error summary if there were any
     if (artworkErrors > 0) {

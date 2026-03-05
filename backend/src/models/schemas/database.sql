@@ -53,6 +53,7 @@ CREATE TABLE songs (
     album_id INTEGER,
     file_path VARCHAR(1000) NOT NULL,
     file_size INTEGER,
+    file_hash VARCHAR(64), -- SHA-256 hash of file content for persistent identification
     duration INTEGER, -- in seconds
     track_number INTEGER,
     genre VARCHAR(100),
@@ -94,6 +95,7 @@ CREATE TABLE playlist_songs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     playlist_id INTEGER NOT NULL,
     song_id INTEGER NOT NULL,
+    file_hash VARCHAR(64), -- Store file_hash for persistent reference across rescans
     position INTEGER NOT NULL,
     added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
@@ -263,6 +265,7 @@ CREATE TABLE room_messages (
 CREATE INDEX idx_songs_album ON songs(album_id);
 CREATE INDEX idx_songs_title ON songs(title);
 CREATE INDEX idx_songs_file_path ON songs(file_path);
+CREATE INDEX idx_songs_file_hash ON songs(file_hash);
 CREATE INDEX idx_song_artists_song ON song_artists(song_id);
 CREATE INDEX idx_song_artists_artist ON song_artists(artist_id);
 
@@ -348,7 +351,10 @@ CREATE TABLE IF NOT EXISTS library_path_scan_reports (
   files_scanned INTEGER DEFAULT 0,
   files_added INTEGER DEFAULT 0,
   files_updated INTEGER DEFAULT 0,
+  files_removed INTEGER DEFAULT 0,
+  files_renamed INTEGER DEFAULT 0,
   files_skipped INTEGER DEFAULT 0,
+  duplicates_found INTEGER DEFAULT 0,
   errors_count INTEGER DEFAULT 0,
   error_message TEXT,
   progress INTEGER DEFAULT 0,

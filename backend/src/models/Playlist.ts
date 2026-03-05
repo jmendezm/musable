@@ -167,6 +167,12 @@ export class PlaylistModel {
   }
 
   async addSong(playlistId: number, songId: number): Promise<void> {
+    // Get the file_hash for this song
+    const song = await this.db.get<{ file_hash?: string }>(
+      'SELECT file_hash FROM songs WHERE id = ?',
+      [songId]
+    );
+
     const maxPosition = await this.db.get<{ max_pos: number }>(
       'SELECT MAX(position) as max_pos FROM playlist_songs WHERE playlist_id = ?',
       [playlistId]
@@ -175,8 +181,8 @@ export class PlaylistModel {
     const position = (maxPosition?.max_pos || 0) + 1;
 
     await this.db.run(
-      'INSERT OR IGNORE INTO playlist_songs (playlist_id, song_id, position) VALUES (?, ?, ?)',
-      [playlistId, songId, position]
+      'INSERT OR IGNORE INTO playlist_songs (playlist_id, song_id, file_hash, position) VALUES (?, ?, ?, ?)',
+      [playlistId, songId, song?.file_hash || null, position]
     );
 
     await this.db.run(
@@ -275,7 +281,7 @@ export class PlaylistModel {
          ORDER BY
            CASE WHEN LOWER(p.name) LIKE LOWER(?) THEN 0 ELSE 1 END,
            p.updated_at DESC`,
-        params.concat(userId, `%${terms[0]}%`)
+        [...params, userId, `%${terms[0]}%`]
       );
     } else {
       return await this.db.query<PlaylistWithDetails>(
@@ -312,6 +318,23 @@ export class PlaylistModel {
     if (!playlist) return false;
 
     return playlist.user_id === userId;
+  }
+
+  // Update playlist songs to use new song_id based on file_hash
+  // This is called when a file is moved/renamed and gets a new song_id
+  async updateSongByFileHash(fileHash: string, newSongId: number): Promise<void> {
+    await this.db.run(
+      'UPDATE playlist_songs SET song_id = ? WHERE file_hash = ?',
+      [newSongId, fileHash]
+    );
+  }
+
+  // Get all playlists that reference a specific file_hash
+  async getPlaylistsByFileHash(fileHash: string): Promise<Array<{ playlist_id: number; position: number }>> {
+    return await this.db.query(
+      'SELECT playlist_id, position FROM playlist_songs WHERE file_hash = ?',
+      [fileHash]
+    );
   }
 }
 

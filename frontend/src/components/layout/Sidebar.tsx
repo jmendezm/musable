@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { 
-  HomeIcon, 
+import {
+  HomeIcon,
   MagnifyingGlassIcon,
   MusicalNoteIcon,
   HeartIcon,
@@ -14,7 +14,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon
 } from '@heroicons/react/24/outline';
-import { 
+import {
   HomeIcon as HomeIconSolid,
   MagnifyingGlassIcon as MagnifyingGlassIconSolid,
   MusicalNoteIcon as MusicalNoteIconSolid,
@@ -28,6 +28,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useFollowedAlbumsStore } from '../../stores/followedAlbumsStore';
 import { useFollowedPlaylistsStore } from '../../stores/followedPlaylistsStore';
 import { useUserPlaylistsStore } from '../../stores/userPlaylistsStore';
+import logoImage from '../../assets/logo.png';
 import { apiService } from '../../services/api';
 import { Playlist } from '../../types';
 import clsx from 'clsx';
@@ -110,16 +111,23 @@ const Sidebar: React.FC = () => {
   };
 
   return (
-    <div className="hidden md:flex w-64 bg-black border-r border-gray-800 flex-col h-full overflow-y-auto sidebar-scrollable" 
-         style={{ 
-           scrollbarWidth: 'thin', 
+    <div className="hidden md:flex w-64 bg-black flex-col h-full overflow-y-auto sidebar-scrollable"
+         style={{
+           scrollbarWidth: 'thin',
            scrollbarColor: '#4b5563 #1f1f1f'
          }}>
       {/* Logo */}
-      <div className="p-6 border-b border-gray-800">
-        <h1 className="text-2xl font-bold gradient-text">
-          Musable
-        </h1>
+      <div className="p-6">
+        <div className="flex items-center gap-3">
+          <img
+            src={logoImage}
+            alt="Musable Logo"
+            className="w-10 h-10"
+          />
+          <h1 className="text-2xl font-bold gradient-text">
+            Musable
+          </h1>
+        </div>
       </div>
 
       {/* Navigation */}

@@ -7,6 +7,7 @@ export interface Song {
   album_id?: number;
   file_path: string;
   file_size?: number;
+  file_hash?: string;
   duration?: number;
   track_number?: number;
   genre?: string;
@@ -31,6 +32,7 @@ export interface CreateSongData {
   album_id?: number;
   file_path: string;
   file_size?: number;
+  file_hash?: string;
   duration?: number;
   track_number?: number;
   genre?: string;
@@ -47,14 +49,15 @@ export class SongModel {
   async create(songData: CreateSongData): Promise<Song> {
     const result = await this.db.run(
       `INSERT INTO songs (
-        title, album_id, file_path, file_size, duration,
+        title, album_id, file_path, file_size, file_hash, duration,
         track_number, genre, year, bitrate, sample_rate, source, youtube_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         songData.title,
         songData.album_id || null,
         songData.file_path,
         songData.file_size || null,
+        songData.file_hash || null,
         songData.duration || null,
         songData.track_number || null,
         songData.genre || null,
@@ -93,6 +96,60 @@ export class SongModel {
       'SELECT * FROM songs WHERE youtube_id = ?',
       [youtubeId]
     );
+  }
+
+  async findByFileHash(fileHash: string): Promise<Song | null> {
+    return await this.db.get<Song>(
+      'SELECT * FROM songs WHERE file_hash = ?',
+      [fileHash]
+    );
+  }
+
+  async findByFileHashExcludingPath(fileHash: string, filePath: string): Promise<Song | null> {
+    return await this.db.get<Song>(
+      'SELECT * FROM songs WHERE file_hash = ? AND file_path != ?',
+      [fileHash, filePath]
+    );
+  }
+
+  async updateFileHash(songId: number, fileHash: string): Promise<void> {
+    await this.db.run(
+      'UPDATE songs SET file_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [fileHash, songId]
+    );
+  }
+
+  async getAllFilePathsByLibraryPath(libraryPath: string): Promise<{ id: number; file_path: string; file_hash?: string }[]> {
+    return await this.db.query<{ id: number; file_path: string; file_hash?: string }>(
+      'SELECT id, file_path, file_hash FROM songs WHERE file_path LIKE ?',
+      [`${libraryPath}%`]
+    );
+  }
+
+  async getDuplicates(): Promise<{ file_hash: string; count: number; files: Array<{ id: number; file_path: string; title: string }> }[]> {
+    const duplicates = await this.db.query<{ file_hash: string; count: number }>(
+      `SELECT file_hash, COUNT(*) as count
+       FROM songs
+       WHERE file_hash IS NOT NULL
+       GROUP BY file_hash
+       HAVING count > 1
+       ORDER BY count DESC`
+    );
+
+    const result = [];
+    for (const dup of duplicates) {
+      const files = await this.db.query<{ id: number; file_path: string; title: string }>(
+        'SELECT id, file_path, title FROM songs WHERE file_hash = ?',
+        [dup.file_hash]
+      );
+      result.push({
+        file_hash: dup.file_hash,
+        count: dup.count,
+        files
+      });
+    }
+
+    return result;
   }
 
   // Artist management for songs

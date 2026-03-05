@@ -9,7 +9,10 @@ interface ScanProgress {
   filesScanned: number;
   filesAdded: number;
   filesUpdated: number;
+  filesRemoved: number;
+  filesRenamed: number;
   filesSkipped: number;
+  duplicatesFound: number;
   errorsCount: number;
   startedAt: string;
   completedAt?: string;
@@ -238,7 +241,10 @@ class ScannerWorkerService {
       filesScanned: 0,
       filesAdded: 0,
       filesUpdated: 0,
+      filesRemoved: 0,
+      filesRenamed: 0,
       filesSkipped: 0,
+      duplicatesFound: 0,
       errorsCount: 0,
       startedAt: new Date().toISOString(),
       totalFiles: 0,

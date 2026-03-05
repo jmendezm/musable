@@ -31,6 +31,46 @@ export class Database {
             logger.debug('artists.image_path column check:', err.message);
           }
         });
+
+        // Add file_hash column to songs table if it doesn't exist
+        this.db.run(`ALTER TABLE songs ADD COLUMN file_hash TEXT`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            logger.debug('songs.file_hash column check:', err.message);
+          }
+        });
+
+        // Create index on file_hash if it doesn't exist
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_songs_file_hash ON songs(file_hash)`, (err) => {
+          if (err) {
+            logger.debug('idx_songs_file_hash index creation:', err.message);
+          }
+        });
+
+        // Add file_hash column to playlist_songs table if it doesn't exist
+        this.db.run(`ALTER TABLE playlist_songs ADD COLUMN file_hash TEXT`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            logger.debug('playlist_songs.file_hash column check:', err.message);
+          }
+        });
+
+        // Add new columns to library_path_scan_reports if they don't exist
+        this.db.run(`ALTER TABLE library_path_scan_reports ADD COLUMN files_removed INTEGER DEFAULT 0`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            logger.debug('library_path_scan_reports.files_removed column check:', err.message);
+          }
+        });
+
+        this.db.run(`ALTER TABLE library_path_scan_reports ADD COLUMN files_renamed INTEGER DEFAULT 0`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            logger.debug('library_path_scan_reports.files_renamed column check:', err.message);
+          }
+        });
+
+        this.db.run(`ALTER TABLE library_path_scan_reports ADD COLUMN duplicates_found INTEGER DEFAULT 0`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            logger.debug('library_path_scan_reports.duplicates_found column check:', err.message);
+          }
+        });
       }
     });
   }

@@ -56,11 +56,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         
         {/* Main content */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Header - hidden on mobile */}
-          <div className="hidden md:block">
-            <Header />
-          </div>
-          
+          {/* Header - visible on all screens */}
+          <Header />
+
           {/* Page content */}
           <main className={`flex-1 ${disablePadding ? 'overflow-hidden' : 'overflow-auto'} bg-gradient-to-b from-gray-900 to-black p-6 pb-8 ${disablePadding ? 'md:p-0' : 'md:pb-6'}`}>
             <div className={`${disablePadding ? '' : 'max-w-screen-2xl'} mx-auto ${disablePadding ? 'h-full' : ''}`}>

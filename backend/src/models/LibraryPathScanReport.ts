@@ -20,7 +20,10 @@ export interface LibraryPathScanReport {
   files_scanned: number;
   files_added: number;
   files_updated: number;
+  files_removed: number;
+  files_renamed: number;
   files_skipped: number;
+  duplicates_found: number;
   errors_count: number;
   error_message?: string;
   progress: number;
@@ -44,9 +47,9 @@ class LibraryPathScanReportModel {
     const result = await this.db.run(
       `INSERT INTO library_path_scan_reports (
         library_path_id, scan_id, status, started_at,
-        files_scanned, files_added, files_updated, files_skipped,
-        errors_count, progress, total_files
-      ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0)`,
+        files_scanned, files_added, files_updated, files_removed, files_renamed, files_skipped,
+        duplicates_found, errors_count, progress, total_files
+      ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)`,
       [
         data.library_path_id,
         data.scan_id || null,
@@ -154,6 +157,35 @@ class LibraryPathScanReportModel {
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [filesScanned, filesAdded, filesUpdated, filesSkipped, errorsCount, progress, id]
+    );
+  }
+
+  async updateFullProgress(
+    id: number,
+    filesScanned: number,
+    filesAdded: number,
+    filesUpdated: number,
+    filesRemoved: number,
+    filesRenamed: number,
+    filesSkipped: number,
+    duplicatesFound: number,
+    errorsCount: number,
+    progress: number
+  ): Promise<void> {
+    await this.db.run(
+      `UPDATE library_path_scan_reports
+       SET files_scanned = ?,
+           files_added = ?,
+           files_updated = ?,
+           files_removed = ?,
+           files_renamed = ?,
+           files_skipped = ?,
+           duplicates_found = ?,
+           errors_count = ?,
+           progress = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [filesScanned, filesAdded, filesUpdated, filesRemoved, filesRenamed, filesSkipped, duplicatesFound, errorsCount, progress, id]
     );
   }
 
