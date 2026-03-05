@@ -170,8 +170,8 @@ class ScannerWorkerService {
       logger.info('[ScannerWorkerService] Initializing worker on first scan...');
       this.initializeWorker();
 
-      // Wait for worker to be ready
-      const waited = await this.waitForWorkerReady(10000);
+      // Wait for worker to be ready (increased timeout for logger initialization)
+      const waited = await this.waitForWorkerReady(30000);
       if (!waited) {
         throw new Error('Worker failed to initialize within timeout period');
       }

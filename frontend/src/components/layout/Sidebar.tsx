@@ -28,7 +28,6 @@ import { useAuthStore } from '../../stores/authStore';
 import { useFollowedAlbumsStore } from '../../stores/followedAlbumsStore';
 import { useFollowedPlaylistsStore } from '../../stores/followedPlaylistsStore';
 import { useUserPlaylistsStore } from '../../stores/userPlaylistsStore';
-import logoImage from '../../assets/logo.png';
 import { apiService } from '../../services/api';
 import { Playlist } from '../../types';
 import clsx from 'clsx';
@@ -120,7 +119,7 @@ const Sidebar: React.FC = () => {
       <div className="p-6">
         <div className="flex items-center gap-3">
           <img
-            src={logoImage}
+            src="/logo.png"
             alt="Musable Logo"
             className="w-10 h-10"
           />

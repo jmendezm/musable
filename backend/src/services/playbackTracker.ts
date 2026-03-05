@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { UserWithoutPassword, UserModel } from '../models/User';
 import { SongModel } from '../models/Song';
 import config from '../config/config';
+import logger from '../utils/logger';
 
 interface AuthenticatedSocket extends Socket {
   user?: UserWithoutPassword;
@@ -77,35 +78,35 @@ export class PlaybackTracker {
 
   private setupSocketHandlers(): void {
     this.io.on('connection', (socket: Socket) => {
-      console.log(`🎵 PlaybackTracker: Socket ${socket.id} connected`);
+      logger.debug(`🎵 PlaybackTracker: Socket ${socket.id} connected`);
 
       // Authenticate and track user immediately on connection
       this.handleUserConnection(socket);
 
       // Listen for playback events (will authenticate per-event)
       socket.on('playback_play', (data) => {
-        console.log('🎵 Received playback_play event:', data);
+        logger.debug('🎵 Received playback_play event:', data);
         this.handleAuthenticatedEvent(socket, data, this.handlePlay.bind(this));
       });
       socket.on('playback_pause', (data) => {
-        console.log('🎵 Received playback_pause event:', data);
+        logger.debug('🎵 Received playback_pause event:', data);
         this.handleAuthenticatedEvent(socket, data, this.handlePause.bind(this));
       });
       socket.on('playback_seek', (data) => {
-        console.log('🎵 Received playback_seek event:', data);
+        logger.debug('🎵 Received playback_seek event:', data);
         this.handleAuthenticatedEvent(socket, data, this.handleSeek.bind(this));
       });
       socket.on('playback_progress', (data) => {
         this.handleAuthenticatedEvent(socket, data, this.handleProgress.bind(this));
       });
       socket.on('playback_song_change', (data) => {
-        console.log('🎵 Received playback_song_change event:', data);
+        logger.debug('🎵 Received playback_song_change event:', data);
         this.handleAuthenticatedEvent(socket, data, this.handleSongChange.bind(this));
       });
 
       // Handle request for current state (for dashboard initialization)
       socket.on('get_currently_playing', (data) => {
-        console.log('🎵 Received get_currently_playing request from socket:', socket.id);
+        logger.debug('🎵 Received get_currently_playing request from socket:', socket.id);
         // Emit directly to this socket with current state
         socket.emit('currently_playing_update', {
           currentlyPlaying: Array.from(this.playbackStates.values())
@@ -131,12 +132,12 @@ export class PlaybackTracker {
 
       // Identify room service sockets (to exclude from "Currently Using")
       socket.on('identify_room_service', () => {
-        console.log(`🎵 Marking socket ${socket.id} as room service connection (will be excluded from "Currently Using")`);
+        logger.debug(`🎵 Marking socket ${socket.id} as room service connection (will be excluded from "Currently Using")`);
         this.roomServiceSockets.add(socket.id);
         // Remove from playbackStates if it was already added
         if (this.playbackStates.has(socket.id)) {
           this.playbackStates.delete(socket.id);
-          console.log(`🎵 Removed room service socket ${socket.id} from playback tracking`);
+          logger.debug(`🎵 Removed room service socket ${socket.id} from playback tracking`);
           this.emitToAdmins();
         }
       });
@@ -158,7 +159,7 @@ export class PlaybackTracker {
         return;
       }
 
-      console.log(`🎵 PlaybackTracker: Authenticated user ${user.username} for event`);
+      logger.debug(`🎵 PlaybackTracker: Authenticated user ${user.username} for event`);
       const authSocket: AuthenticatedSocket = socket as AuthenticatedSocket;
       authSocket.user = user;
 
@@ -176,19 +177,19 @@ export class PlaybackTracker {
         return;
       }
 
-      console.log(`🎵 PlaybackTracker: User ${user.username} (ID: ${user.id}) connected via socket ${socket.id}`);
+      logger.debug(`🎵 PlaybackTracker: User ${user.username} (ID: ${user.id}) connected via socket ${socket.id}`);
 
       // Parse device info from User-Agent
       const deviceInfo = this.parseDeviceInfo(socket.handshake.headers['user-agent']);
-      console.log(`🎵 Device info: ${deviceInfo}`);
+      logger.debug(`🎵 Device info: ${deviceInfo}`);
 
       // Check if this socket already has state (reconnection scenario)
       const existingState = this.playbackStates.get(socket.id);
 
       if (existingState) {
         // Socket is reconnecting - keep existing state
-        console.log(`🎵 PlaybackTracker: Socket ${socket.id} reconnected - preserving existing state`);
-        console.log('🎵 Existing state:', JSON.stringify(existingState, null, 2));
+        logger.debug(`🎵 PlaybackTracker: Socket ${socket.id} reconnected - preserving existing state`);
+        logger.debug('🎵 Existing state:', JSON.stringify(existingState, null, 2));
         existingState.lastUpdate = new Date();
 
         // Send current state back to the user so they can resume
@@ -200,10 +201,10 @@ export class PlaybackTracker {
           isPaused: existingState.isPaused,
           isIdle: existingState.isIdle
         });
-        console.log('🎵 Sent playback_state_restored to user');
+        logger.debug('🎵 Sent playback_state_restored to user');
       } else {
         // New connection - create new state (user can have multiple connections)
-        console.log(`🎵 PlaybackTracker: New connection for ${user.username} - tracking as idle`);
+        logger.debug(`🎵 PlaybackTracker: New connection for ${user.username} - tracking as idle`);
 
         // Generate a unique connection ID (short random string for display)
         const connectionId = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -227,12 +228,12 @@ export class PlaybackTracker {
         };
 
         this.playbackStates.set(socket.id, state);
-        console.log(`🎵 Created new idle state for socket: ${socket.id} (Connection ID: ${connectionId}, Device: ${deviceInfo})`);
+        logger.debug(`🎵 Created new idle state for socket: ${socket.id} (Connection ID: ${connectionId}, Device: ${deviceInfo})`);
       }
 
-      console.log('🎵 About to emit to admins with total states:', this.playbackStates.size);
+      logger.debug('🎵 About to emit to admins with total states:', this.playbackStates.size);
       this.emitToAdmins();
-      console.log('🎵 Finished emitting to admins');
+      logger.debug('🎵 Finished emitting to admins');
     } catch (error) {
       console.error('🎵 PlaybackTracker: Error handling user connection:', error);
     }
@@ -248,7 +249,7 @@ export class PlaybackTracker {
       }
 
       const decoded = jwt.verify(token, config.jwtSecret) as any;
-      console.log('🎵 PlaybackTracker: Decoded token for user ID:', decoded.id);
+      logger.debug('🎵 PlaybackTracker: Decoded token for user ID:', decoded.id);
 
       const userModel = new UserModel();
       const user = await userModel.findById(decoded.id);
@@ -258,7 +259,7 @@ export class PlaybackTracker {
         return null;
       }
 
-      console.log('🎵 PlaybackTracker: Authenticated user:', user.username);
+      logger.debug('🎵 PlaybackTracker: Authenticated user:', user.username);
       return user;
     } catch (error) {
       console.error('🎵 PlaybackTracker: Authentication error:', error instanceof Error ? error.message : String(error));
@@ -303,7 +304,7 @@ export class PlaybackTracker {
       this.playbackStates.set(socket.id, state);
       this.emitToAdmins();
 
-      console.log(`▶️ ${socket.user.username} (socket: ${socket.id}, ID: ${connectionId}, Device: ${deviceInfo}) is playing: ${song.title}`);
+      logger.debug(`▶️ ${socket.user.username} (socket: ${socket.id}, ID: ${connectionId}, Device: ${deviceInfo}) is playing: ${song.title}`);
     } catch (error) {
       console.error('Error handling play event:', error);
     }
@@ -322,7 +323,7 @@ export class PlaybackTracker {
 
     this.emitToAdmins();
 
-    console.log(`⏸️ ${socket.user.username} (socket: ${socket.id}) paused: ${existingState.songTitle}`);
+    logger.debug(`⏸️ ${socket.user.username} (socket: ${socket.id}) paused: ${existingState.songTitle}`);
   }
 
   private async handleSeek(socket: AuthenticatedSocket, data: { currentTime: number }): Promise<void> {
@@ -336,7 +337,7 @@ export class PlaybackTracker {
 
     this.emitToAdmins();
 
-    console.log(`⏭️ ${socket.user.username} (socket: ${socket.id}) seeked to ${data.currentTime}s in ${existingState.songTitle}`);
+    logger.debug(`⏭️ ${socket.user.username} (socket: ${socket.id}) seeked to ${data.currentTime}s in ${existingState.songTitle}`);
   }
 
   private async handleProgress(socket: AuthenticatedSocket, data: { currentTime: number }): Promise<void> {
@@ -391,7 +392,7 @@ export class PlaybackTracker {
       this.playbackStates.set(socket.id, state);
       this.emitToAdmins();
 
-      console.log(`🎵 ${socket.user.username} (socket: ${socket.id}, ID: ${connectionId}, Device: ${deviceInfo}) changed to: ${song.title}`);
+      logger.debug(`🎵 ${socket.user.username} (socket: ${socket.id}, ID: ${connectionId}, Device: ${deviceInfo}) changed to: ${song.title}`);
     } catch (error) {
       console.error('Error handling song change event:', error);
     }
@@ -400,7 +401,7 @@ export class PlaybackTracker {
   private handleDisconnect(socket: Socket): void {
     // Remove from room service sockets set if it was a room service connection
     if (this.roomServiceSockets.has(socket.id)) {
-      console.log(`🎵 Room service socket ${socket.id} disconnected - removing from exclusion list`);
+      logger.debug(`🎵 Room service socket ${socket.id} disconnected - removing from exclusion list`);
       this.roomServiceSockets.delete(socket.id);
       return; // Don't track room service sockets in playback states
     }
@@ -409,7 +410,7 @@ export class PlaybackTracker {
     const state = this.playbackStates.get(socket.id);
 
     if (state) {
-      console.log(`👋 ${state.username} (socket: ${socket.id}) disconnected - removing from tracking`);
+      logger.debug(`👋 ${state.username} (socket: ${socket.id}) disconnected - removing from tracking`);
       this.playbackStates.delete(socket.id);
       this.emitToAdmins();
     }
@@ -435,8 +436,8 @@ export class PlaybackTracker {
         device_info: state.deviceInfo
       }));
 
-    console.log(`🎵 Broadcasting currently_playing_update to admins. Count: ${currentlyPlaying.length}`);
-    console.log('🎵 Data being sent:', JSON.stringify(currentlyPlaying, null, 2));
+    logger.debug(`🎵 Broadcasting currently_playing_update to admins. Count: ${currentlyPlaying.length}`);
+    logger.debug('🎵 Data being sent:', JSON.stringify(currentlyPlaying, null, 2));
     // Broadcast to all connected admin users
     this.io.emit('currently_playing_update', { currentlyPlaying });
   }
@@ -455,7 +456,7 @@ export class PlaybackTracker {
 
       toDelete.forEach(socketId => {
         const state = this.playbackStates.get(socketId);
-        console.log(`🧹 Cleaning up stale playback state for ${state?.username} (socket: ${socketId})`);
+        logger.debug(`🧹 Cleaning up stale playback state for ${state?.username} (socket: ${socketId})`);
         this.playbackStates.delete(socketId);
       });
 

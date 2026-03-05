@@ -1239,17 +1239,136 @@ export const clearAllSongsAndRescan = asyncHandler(async (req: AuthRequest, res:
     throw new AppError('A scan is already in progress. Please wait for it to complete.', 400);
   }
 
-  // Delete all songs
+  // Save playlist songs before deleting songs (to preserve playlists across rescan)
+  // We store the file_hash so we can restore them after the scan
+  const { Database } = await import('../config/database');
+  const db = Database.getInstance();
+
+  // Get all playlist songs WITH their file hashes
+  const playlistSongsBefore = await db.query<{
+    playlist_id: number;
+    song_id: number;
+    file_hash: string;
+    position: number;
+  }>(
+    'SELECT playlist_id, song_id, file_hash, position FROM playlist_songs WHERE file_hash IS NOT NULL'
+  );
+
+  console.log(`[Rescan] Found ${playlistSongsBefore.length} playlist entries to preserve`);
+
+  // Also save which songs are currently in the database (for matching after scan)
+  const songsBefore = await db.query<{
+    id: number;
+    file_hash: string;
+  }>(
+    'SELECT id, file_hash FROM songs WHERE file_hash IS NOT NULL'
+  );
+
+  console.log(`[Rescan] Found ${songsBefore.length} songs with file_hash before deletion`);
+
+  // Create a map for quick lookup
+  const songsBeforeMap = new Map<string, { id: number; playlist_songs: Array<{ playlist_id: number; position: number }> }>();
+  for (const song of songsBefore) {
+    songsBeforeMap.set(song.file_hash, { id: song.id, playlist_songs: [] });
+  }
+
+  // Map each playlist entry to its song's file_hash
+  for (const entry of playlistSongsBefore) {
+    const songData = songsBeforeMap.get(entry.file_hash);
+    if (songData) {
+      songData.playlist_songs.push({ playlist_id: entry.playlist_id, position: entry.position });
+    }
+  }
+
+  // Delete all songs (this will cascade delete playlist_songs due to foreign key)
   const deletedCount = await SongModel.deleteAllSongs();
+  console.log(`[Rescan] Deleted ${deletedCount} songs`);
 
   // Start a fresh scan of all library paths
   await scannerService.startScan();
+  console.log('[Rescan] Scan started, waiting for completion...');
+
+  // Restore playlist songs after scan by matching file_hash
+  // This runs asynchronously after the scan starts
+  (async () => {
+    try {
+      // Wait for scan to complete (max 10 minutes)
+      const maxWaitTime = 10 * 60 * 1000; // 10 minutes
+      const checkInterval = 2000; // Check every 2 seconds
+      const startTime = Date.now();
+      let wasScanning = false;
+
+      while (true) {
+        const currentlyScanning = scannerService.isCurrentlyScanning();
+        if (currentlyScanning) {
+          wasScanning = true;
+        }
+
+        if (wasScanning && !currentlyScanning) {
+          console.log('[Rescan] Scan completed, starting restoration...');
+          break;
+        }
+
+        if (Date.now() - startTime > maxWaitTime) {
+          console.error('[Rescan] Timeout waiting for scan to complete');
+          return;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+      }
+
+      // Small delay to ensure all database operations are complete
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Now restore the playlist entries
+      let restoredCount = 0;
+      let notFoundCount = 0;
+
+      for (const [file_hash, songData] of songsBeforeMap) {
+        // Find the new song_id by file_hash
+        const newSong = await db.get<{ id: number }>(
+          'SELECT id FROM songs WHERE file_hash = ?',
+          [file_hash]
+        );
+
+        if (newSong) {
+          // Restore each playlist entry for this song
+          for (const playlistEntry of songData.playlist_songs) {
+            // Check if this entry already exists
+            const exists = await db.get<{ id: number }>(
+              'SELECT id FROM playlist_songs WHERE playlist_id = ? AND song_id = ?',
+              [playlistEntry.playlist_id, newSong.id]
+            );
+
+            if (!exists) {
+              // Restore the playlist entry with the new song_id
+              await db.run(
+                'INSERT INTO playlist_songs (playlist_id, song_id, file_hash, position) VALUES (?, ?, ?, ?)',
+                [playlistEntry.playlist_id, newSong.id, file_hash, playlistEntry.position]
+              );
+              restoredCount++;
+              console.log(`[Rescan] Restored: playlist=${playlistEntry.playlist_id}, song=${newSong.id}, hash=${file_hash.substring(0, 8)}...`);
+            }
+          }
+        } else {
+          notFoundCount++;
+          console.log(`[Rescan] Could not find song with file_hash=${file_hash.substring(0, 8)}... to restore in playlist`);
+        }
+      }
+
+      console.log(`[Rescan] Restoration complete: ${restoredCount} entries restored, ${notFoundCount} songs not found`);
+    } catch (error) {
+      console.error('[Rescan] Error restoring playlist songs:', error);
+    }
+  })();
 
   res.json({
     success: true,
     data: {
-      message: `Deleted ${deletedCount} songs and started fresh scan`,
-      deletedCount
+      message: `Deleted ${deletedCount} songs and started fresh scan. Playlists will be preserved.`,
+      deletedCount,
+      playlistEntriesToRestore: playlistSongsBefore.length,
+      uniqueSongsToRestore: songsBeforeMap.size
     }
   });
 });

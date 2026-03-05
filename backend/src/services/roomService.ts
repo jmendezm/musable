@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { RoomModel, Room, RoomParticipant } from '../models/Room';
 import { UserWithoutPassword, UserModel } from '../models/User';
 import config from '../config/config';
+import logger from '../utils/logger';
 
 interface AuthenticatedSocket extends Socket {
   user?: UserWithoutPassword;
@@ -118,9 +119,9 @@ export class RoomService {
       );
 
       this.io.emit('active_rooms_update', { activeRooms: roomsWithParticipants });
-      console.log(`🎵 Broadcasted active_rooms_update. Count: ${roomsWithParticipants.length}`);
+      logger.debug(`🎵 Broadcasted active_rooms_update. Count: ${roomsWithParticipants.length}`);
     } catch (error) {
-      console.error('Error broadcasting active rooms update:', error);
+      logger.error('Error broadcasting active rooms update:', error);
     }
   }
 
@@ -165,7 +166,7 @@ export class RoomService {
 
   private setupSocketHandlers(): void {
     this.io.on('connection', (socket: Socket) => {
-      console.log(`🎵 Socket ${socket.id} connected to room service`);
+      logger.debug(`🎵 Socket ${socket.id} connected to room service`);
 
       // Join room
       socket.on('join_room', async (data: { roomCode: string }) => {
@@ -270,17 +271,17 @@ export class RoomService {
               if (participants.length === 0) {
                 await RoomModel.delete(roomId);
                 this.roomStates.delete(roomId);
-                console.log(`🎵 Room ${roomId} auto-deleted on disconnect (last participant)`);
+                logger.debug(`🎵 Room ${roomId} auto-deleted on disconnect (last participant)`);
               }
             } catch (error) {
-              console.error('Error cleaning up room on disconnect:', error);
+              logger.error('Error cleaning up room on disconnect:', error);
             }
             // Remove from tracking
             this.socketRooms.delete(socket.id);
           }
         }
 
-        console.log(`🎵 Socket ${socket.id} disconnected from room service`);
+        logger.debug(`🎵 Socket ${socket.id} disconnected from room service`);
       });
     });
   }
@@ -290,7 +291,7 @@ export class RoomService {
       const token = socket.handshake.auth.token || socket.handshake.headers.authorization;
 
       if (!token) {
-        console.warn('🔍 Room Service: No token provided');
+        logger.warn('🔍 Room Service: No token provided');
         return null;
       }
 
@@ -300,7 +301,7 @@ export class RoomService {
       const user = await userModel.findById(decoded.id);
 
       if (!user) {
-        console.warn('🔍 Room Service: User not found');
+        logger.warn('🔍 Room Service: User not found');
         return null;
       }
 
@@ -308,7 +309,7 @@ export class RoomService {
       authSocket.user = user;
       return authSocket;
     } catch (error) {
-      console.error('🔍 Room Service: Authentication error:', error instanceof Error ? error.message : String(error));
+      logger.error('🔍 Room Service: Authentication error:', error instanceof Error ? error.message : String(error));
       return null;
     }
   }
@@ -387,9 +388,9 @@ export class RoomService {
       // Broadcast active rooms update to admins
       this.broadcastActiveRoomsUpdate();
 
-      console.log(`🎵 User ${socket.user.username} joined room ${room.name} (${room.code})`);
+      logger.debug(`🎵 User ${socket.user.username} joined room ${room.name} (${room.code})`);
     } catch (error) {
-      console.error('Error joining room:', error);
+      logger.error('Error joining room:', error);
       socket.emit('room_error', { message: 'Failed to join room' });
     }
   }
@@ -414,7 +415,7 @@ export class RoomService {
 
       // Check if this was the last participant
       const remainingParticipants = await RoomModel.getParticipants(roomId);
-      console.log(`🎵 After ${socket.user.username} left room ${roomId}, remaining participants: ${remainingParticipants.length}`);
+      logger.debug(`🎵 After ${socket.user.username} left room ${roomId}, remaining participants: ${remainingParticipants.length}`);
       
       if (remainingParticipants.length === 0) {
         // This was the last person - delete the room
@@ -427,9 +428,9 @@ export class RoomService {
           // Broadcast active rooms update to admins (room was removed)
           this.broadcastActiveRoomsUpdate();
 
-          console.log(`🎵 Room ${roomId} auto-deleted - last participant left`);
+          logger.debug(`🎵 Room ${roomId} auto-deleted - last participant left`);
         } catch (deleteError) {
-          console.error(`🎵 Failed to auto-delete room ${roomId}:`, deleteError);
+          logger.error(`🎵 Failed to auto-delete room ${roomId}:`, deleteError);
         }
       } else {
         // Notify all remaining participants about the updated participant list
@@ -448,7 +449,7 @@ export class RoomService {
         // Broadcast active rooms update to admins
         this.broadcastActiveRoomsUpdate();
 
-        console.log(`🎵 Notified ${remainingParticipants.length} participants about ${socket.user.username} leaving room ${roomId}`);
+        logger.debug(`🎵 Notified ${remainingParticipants.length} participants about ${socket.user.username} leaving room ${roomId}`);
       }
       
       // Leave socket room
@@ -458,9 +459,9 @@ export class RoomService {
       // Remove from socketRooms tracking
       this.socketRooms.delete(socket.id);
 
-      console.log(`🎵 User ${socket.user.username} left room ${roomId}`);
+      logger.debug(`🎵 User ${socket.user.username} left room ${roomId}`);
     } catch (error) {
-      console.error('Error leaving room:', error);
+      logger.error('Error leaving room:', error);
     }
   }
 
@@ -563,9 +564,9 @@ export class RoomService {
       // Update active rooms on dashboard
       await this.broadcastActiveRoomsUpdate();
 
-      console.log(`🎵 Room ${roomId} playback control: ${type} by ${socket.user.username}`);
+      logger.debug(`🎵 Room ${roomId} playback control: ${type} by ${socket.user.username}`);
     } catch (error) {
-      console.error('Error handling playback control:', error);
+      logger.error('Error handling playback control:', error);
       socket.emit('room_error', { message: 'Failed to control playback' });
     }
   }
@@ -584,9 +585,9 @@ export class RoomService {
       // Broadcast updated queue to all participants
       this.io.to(`room_${roomId}`).emit('queue_updated', { queue });
       
-      console.log(`🎵 Song ${songId} added to room ${roomId} queue by ${socket.user.username}`);
+      logger.debug(`🎵 Song ${songId} added to room ${roomId} queue by ${socket.user.username}`);
     } catch (error) {
-      console.error('Error adding to queue:', error);
+      logger.error('Error adding to queue:', error);
       socket.emit('room_error', { message: 'Failed to add song to queue' });
     }
   }
@@ -608,9 +609,9 @@ export class RoomService {
       // Automatically play the song that was added to top
       await this.handlePlaybackControl(socket, 'song_change', { song_id: songId });
       
-      console.log(`🎵 Song ${songId} added to TOP of room ${roomId} queue and playing by ${socket.user.username}`);
+      logger.debug(`🎵 Song ${songId} added to TOP of room ${roomId} queue and playing by ${socket.user.username}`);
     } catch (error) {
-      console.error('Error adding to queue top:', error);
+      logger.error('Error adding to queue top:', error);
       socket.emit('room_error', { message: 'Failed to add song to queue' });
     }
   }
@@ -652,9 +653,9 @@ export class RoomService {
       // Broadcast updated queue to all participants
       this.io.to(`room_${roomId}`).emit('queue_updated', { queue });
       
-      console.log(`🎵 Queue item ${queueItemId} removed from room ${roomId} by ${socket.user.username} (${isHost ? 'host' : 'owner'})`);
+      logger.debug(`🎵 Queue item ${queueItemId} removed from room ${roomId} by ${socket.user.username} (${isHost ? 'host' : 'owner'})`);
     } catch (error) {
-      console.error('Error removing from queue:', error);
+      logger.error('Error removing from queue:', error);
       socket.emit('room_error', { message: 'Failed to remove song from queue' });
     }
   }
@@ -679,7 +680,7 @@ export class RoomService {
       
       // TODO: Store in database if needed
     } catch (error) {
-      console.error('Error handling chat message:', error);
+      logger.error('Error handling chat message:', error);
     }
   }
 
@@ -711,7 +712,7 @@ export class RoomService {
 
       socket.emit('playback_sync', syncEvent);
     } catch (error) {
-      console.error('Error sending room sync:', error);
+      logger.error('Error sending room sync:', error);
     }
   }
 
@@ -751,7 +752,7 @@ export class RoomService {
             }
           }
         } catch (error) {
-          console.error('Error in periodic sync:', error);
+          logger.error('Error in periodic sync:', error);
         }
       });
     }, 5000); // Every 5 seconds

@@ -459,6 +459,7 @@ async function performScan(
     reportId: number;
   }>
 ): Promise<void> {
+  console.log('[Worker] performScan called with scanId:', scanId, 'paths:', scanPaths);
   let totalFilesScanned = 0;
   let totalFilesAdded = 0;
   let totalFilesUpdated = 0;
@@ -829,13 +830,17 @@ function sendMessage(message: WorkerResponse): void {
 if (parentPort) {
   parentPort.on('message', async (message: ScanRequest) => {
     try {
+      console.log('[Worker] Received message:', message.type);
       switch (message.type) {
         case 'scan':
+          console.log('[Worker] Processing scan message, scanId:', message.scanId, 'paths:', message.paths?.length);
           if (message.scanId && message.paths) {
             isScanning = true;
             shouldStop = false;
             currentScanId = message.scanId;
+            console.log('[Worker] About to call performScan...');
             await performScan(message.scanId, message.paths, message.pathReports);
+            console.log('[Worker] performScan completed');
           } else {
             console.error('[Worker] Invalid scan message:', message);
           }
