@@ -153,6 +153,22 @@ async function initializeWorker() {
       });
     });
 
+    // Add unique index on lowercase artist names to prevent duplicates during parallel scanning
+    await new Promise<void>((resolve, reject) => {
+      workerDb!.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_artists_name_lowercase ON artists(LOWER(name))`, (err: any) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    // Add unique index on lowercase album titles to prevent duplicates during parallel scanning
+    await new Promise<void>((resolve, reject) => {
+      workerDb!.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_albums_title_lowercase ON albums(LOWER(title))`, (err: any) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
     // Test database connection
     await new Promise<void>((resolve, reject) => {
       workerDb!.get('SELECT 1 as test', (err) => {
@@ -229,30 +245,35 @@ async function scanFile(filePath: string): Promise<ScanFileResult> {
     const albumTitle = metadata.common.album;
     const title = metadata.common.title || path.basename(filePath, path.extname(filePath));
 
-    // Atomic insert-or-ignore to prevent duplicate artists during concurrent scanning
+    // Create artist (INSERT OR IGNORE works with the unique index on LOWER(name))
     await Database.run(
       'INSERT OR IGNORE INTO artists (name) VALUES (?)',
       [artistName]
     );
 
-    // Now fetch the artist (it either existed or was just created)
+    // Fetch the artist (insert OR IGNORE ensures only one exists per case-insensitive name)
     const artistResult = await Database.query(
-      'SELECT * FROM artists WHERE name = ? COLLATE NOCASE',
+      'SELECT * FROM artists WHERE LOWER(name) = LOWER(?)',
       [artistName]
     );
-    const artist = artistResult;
+
+    if (!artistResult || artistResult.length === 0) {
+      throw new Error(`Artist "${artistName}" not found after insert`);
+    }
+
+    const artist = artistResult[0];
 
     let album = null;
     if (albumTitle) {
-      // Atomic insert-or-ignore to prevent duplicate albums during concurrent scanning
+      // Create album (INSERT OR IGNORE works with the unique index on LOWER(title))
       await Database.run(
         'INSERT OR IGNORE INTO albums (title, release_year) VALUES (?, ?)',
         [albumTitle, metadata.common.year || null]
       );
 
-      // Now fetch the album (it either existed or was just created)
-      let albumResult = await Database.query(
-        'SELECT * FROM albums WHERE title = ? COLLATE NOCASE',
+      // Fetch the album (insert OR IGNORE ensures only one exists per case-insensitive title)
+      const albumResult = await Database.query(
+        'SELECT * FROM albums WHERE LOWER(title) = LOWER(?)',
         [albumTitle]
       );
 
@@ -372,7 +393,7 @@ async function scanFile(filePath: string): Promise<ScanFileResult> {
     await Database.run('DELETE FROM song_artists WHERE song_id = ?', [song.id]);
     await Database.run(
       'INSERT INTO song_artists (song_id, artist_id) VALUES (?, ?)',
-      [song.id, artist[0].id]
+      [song.id, artist.id]
     );
 
     return { added: wasAdded, updated: wasUpdated, skipped: !wasAdded && !wasUpdated, renamed: false, duplicate: false };
