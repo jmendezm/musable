@@ -151,7 +151,12 @@ const GlobalSearchBar: React.FC = () => {
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      // Check if click is outside both the search container AND the results dropdown
+      const isOutsideSearch = !searchContainerRef.current?.contains(target);
+      const isOutsideResults = !resultsRef.current?.contains(target);
+
+      if (isOutsideSearch && isOutsideResults) {
         setShowResults(false);
         setSelectedIndex(-1);
       }
@@ -164,7 +169,6 @@ const GlobalSearchBar: React.FC = () => {
   // Handle result click
   const handleResultClick = useCallback((result: SearchResult) => {
     setShowResults(false);
-    setQuery('');
 
     switch (result.type) {
       case 'song':
