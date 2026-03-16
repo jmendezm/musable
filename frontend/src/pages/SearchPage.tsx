@@ -49,6 +49,18 @@ const SearchPage: React.FC = () => {
     (searchParams.get('category') as 'all' | 'songs' | 'artists' | 'albums' | 'playlists') || 'all'
   );
 
+  // Update search query when URL params change (e.g., when navigating from top bar search)
+  useEffect(() => {
+    const urlQuery = searchParams.get('q');
+    if (urlQuery !== null && urlQuery !== searchQuery) {
+      setSearchQuery(urlQuery);
+    }
+    const urlCategory = searchParams.get('category') as 'all' | 'songs' | 'artists' | 'albums' | 'playlists' | null;
+    if (urlCategory && urlCategory !== selectedCategory) {
+      setSelectedCategory(urlCategory);
+    }
+  }, [searchParams]);
+
   const [debouncedQuery] = useDebounce(searchQuery, 300);
   const [results, setResults] = useState<SearchResults>({
     songs: [],

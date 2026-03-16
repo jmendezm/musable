@@ -13,12 +13,12 @@ import {
 } from '@heroicons/react/24/outline';
 import { useDebounce } from 'use-debounce';
 import { apiService } from '../services/api';
-import { Song, Artist, Album, Playlist } from '../types';
+import { Song, Artist, Album, Playlist, User } from '../types';
 import { usePlayerStore } from '../stores/playerStore';
 import clsx from 'clsx';
 
 interface SearchResult {
-  type: 'song' | 'artist' | 'album' | 'playlist';
+  type: 'song' | 'artist' | 'album' | 'playlist' | 'user';
   id: number;
   title: string;
   subtitle?: string;
@@ -26,6 +26,7 @@ interface SearchResult {
   imageUrl?: string;
   songCount?: number;
   fullSongData?: Song; // Store full song data for playback
+  username?: string; // For user type
 }
 
 const GlobalSearchBar: React.FC = () => {
@@ -79,11 +80,12 @@ const GlobalSearchBar: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const [songsRes, artistsRes, albumsRes, playlistsRes] = await Promise.all([
+      const [songsRes, artistsRes, albumsRes, playlistsRes, usersRes] = await Promise.all([
         apiService.getSongs({ search: searchQuery, limit: 5 }),
         apiService.getArtists(searchQuery),
         apiService.getAlbums({ search: searchQuery }),
-        apiService.searchPlaylists(searchQuery)
+        apiService.searchPlaylists(searchQuery),
+        apiService.searchUsers(searchQuery)
       ]);
 
       const searchResults: SearchResult[] = [];
@@ -131,6 +133,18 @@ const GlobalSearchBar: React.FC = () => {
           title: playlist.name,
           subtitle: `${playlist.username} • ${playlist.song_count || 0} songs`,
           songCount: playlist.song_count
+        });
+      });
+
+      // Add users
+      usersRes.data.users?.forEach((user: User) => {
+        searchResults.push({
+          type: 'user',
+          id: user.id,
+          title: user.username,
+          subtitle: user.is_admin ? 'Admin' : 'User',
+          imageUrl: user.profile_picture,
+          username: user.username
         });
       });
 
@@ -185,6 +199,11 @@ const GlobalSearchBar: React.FC = () => {
         break;
       case 'playlist':
         navigate(`/playlist/${result.id}`);
+        break;
+      case 'user':
+        if (result.username) {
+          navigate(`/profile/${result.username}`);
+        }
         break;
     }
   }, [navigate, playSong]);
@@ -252,6 +271,8 @@ const GlobalSearchBar: React.FC = () => {
         return RectangleStackIcon;
       case 'playlist':
         return QueueListIcon;
+      case 'user':
+        return UserIcon;
     }
   };
 
@@ -266,6 +287,8 @@ const GlobalSearchBar: React.FC = () => {
         return 'Album';
       case 'playlist':
         return 'Playlist';
+      case 'user':
+        return 'User';
     }
   };
 
