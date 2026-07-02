@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  PlusIcon, 
+import {
+  PlusIcon,
   MagnifyingGlassIcon,
   PlayIcon,
   EllipsisHorizontalIcon,
@@ -13,12 +13,15 @@ import {
   MusicalNoteIcon,
   UserIcon,
   LockClosedIcon,
-  GlobeAltIcon
+  GlobeAltIcon,
+  UserGroupIcon
 } from '@heroicons/react/24/outline';
 import { apiService } from '../services/api';
 import { Playlist, Album } from '../types';
 import { useFollowedPlaylistsStore } from '../stores/followedPlaylistsStore';
 import { useFollowedAlbumsStore } from '../stores/followedAlbumsStore';
+import { useRoomStore } from '../stores/roomStore';
+import roomWebSocketService from '../services/roomService';
 import toast from 'react-hot-toast';
 
 interface PlaylistWithDetails extends Playlist {
@@ -231,6 +234,8 @@ const PlaylistsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'my' | 'public' | 'all' | 'followed'>('all');
   const { followedPlaylists, loadFollowedPlaylists } = useFollowedPlaylistsStore();
   const { followedAlbums, loadFollowedAlbums } = useFollowedAlbumsStore();
+  const roomStore = useRoomStore();
+  const isInRoom = roomStore.isInRoom();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingPlaylist, setEditingPlaylist] = useState<PlaylistWithDetails | null>(null);
@@ -368,6 +373,11 @@ const PlaylistsPage: React.FC = () => {
       console.error('Failed to copy link:', error);
       toast.error('Failed to copy link');
     }
+  };
+
+  const handleAddToRoomQueue = (playlist: PlaylistWithDetails) => {
+    roomWebSocketService.addPlaylistToQueue(playlist.id);
+    toast.success(`Adding "${playlist.name}" to the room queue`);
   };
 
   const handleContextMenu = (e: React.MouseEvent, playlist: PlaylistWithDetails) => {
@@ -744,6 +754,18 @@ const PlaylistsPage: React.FC = () => {
             <ShareIcon className="w-4 h-4" />
             Share Playlist
           </button>
+          {isInRoom && (
+            <button
+              onClick={() => {
+                handleAddToRoomQueue(contextMenu.playlist!);
+                closeContextMenu();
+              }}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-gray-700 w-full text-left"
+            >
+              <UserGroupIcon className="w-4 h-4" />
+              Add to Room Queue
+            </button>
+          )}
           <button
             onClick={() => {
               setEditingPlaylist(contextMenu.playlist);

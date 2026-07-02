@@ -5,6 +5,7 @@ import apiService from '../services/api';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import { useRoomStore } from '../stores/roomStore';
+import roomWebSocketService from '../services/roomService';
 import { useFollowedPlaylistsStore } from '../stores/followedPlaylistsStore';
 import { handleRoomAwarePlayback } from '../utils/roomPlayback';
 import { useContextMenu } from '../hooks/useContextMenu';
@@ -27,7 +28,8 @@ import {
   PencilIcon,
   TrashIcon,
   ShareIcon,
-  MusicalNoteIcon
+  MusicalNoteIcon,
+  UserGroupIcon
 } from '@heroicons/react/24/outline';
 import {
   HeartIcon as HeartIconSolid,
@@ -260,6 +262,12 @@ const PlaylistDetailPage: React.FC = () => {
     }
   };
 
+  const handleAddToRoomQueue = () => {
+    if (!playlist) return;
+    roomWebSocketService.addPlaylistToQueue(playlist.id);
+    showSuccess(`Adding "${playlist.name}" to the room queue`);
+  };
+
   const handleToggleFollow = async () => {
     if (playlist) {
       try {
@@ -441,6 +449,17 @@ const PlaylistDetailPage: React.FC = () => {
                   <ArrowsRightLeftIcon className="w-4 h-4 md:w-5 md:h-5" />
                   Shuffle
                 </button>
+
+                {roomStore.isInRoom() && (
+                  <button
+                    onClick={handleAddToRoomQueue}
+                    className="flex items-center gap-2 text-gray-400 hover:text-white border border-gray-600 hover:border-gray-500 px-3 md:px-4 py-2 md:py-3 rounded-full transition-colors text-sm md:text-base"
+                    title="Add to Room Queue"
+                  >
+                    <UserGroupIcon className="w-4 h-4 md:w-5 md:h-5" />
+                    <span className="hidden sm:inline">Add to Room Queue</span>
+                  </button>
+                )}
               </>
             )}
 

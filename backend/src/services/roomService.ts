@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { RoomModel, Room, RoomParticipant } from '../models/Room';
 import { UserWithoutPassword, UserModel } from '../models/User';
+import PlaylistModel from '../models/Playlist';
 
 interface AuthenticatedSocket extends Socket {
   user?: UserWithoutPassword;
@@ -83,6 +84,10 @@ export class RoomService {
 
       socket.on('add_to_queue_top', async (data: { song_id: number }) => {
         await this.handleAddToQueueTop(socket, data.song_id);
+      });
+
+      socket.on('add_playlist_to_queue', async (data: { playlist_id: number }) => {
+        await this.handleAddPlaylistToQueue(socket, data.playlist_id);
       });
 
       socket.on('remove_from_queue', async (data: { queue_item_id: number }) => {
@@ -362,6 +367,40 @@ export class RoomService {
     } catch (error) {
       console.error('Error handling playback control:', error);
       socket.emit('room_error', { message: 'Failed to control playback' });
+    }
+  }
+
+  private async handleAddPlaylistToQueue(socket: AuthenticatedSocket, playlistId: number): Promise<void> {
+    try {
+      if (!socket.user || !socket.currentRoom) return;
+
+      const roomId = parseInt(socket.currentRoom.replace('room_', ''));
+
+      const canAccess = await PlaylistModel.canUserAccessPlaylist(playlistId, socket.user.id);
+      if (!canAccess) {
+        socket.emit('room_error', { message: 'You do not have access to this playlist' });
+        return;
+      }
+
+      const playlistSongs = await PlaylistModel.getPlaylistSongs(playlistId);
+      if (playlistSongs.length === 0) {
+        socket.emit('room_error', { message: 'Playlist has no songs to add' });
+        return;
+      }
+
+      const songIds = playlistSongs.map(ps => ps.song_id);
+      await RoomModel.addSongsToQueue(roomId, songIds, socket.user.id);
+
+      // Get updated queue
+      const queue = await RoomModel.getQueue(roomId);
+
+      // Broadcast updated queue to all participants
+      this.io.to(`room_${roomId}`).emit('queue_updated', { queue });
+
+      console.log(`🎵 Playlist ${playlistId} (${songIds.length} songs) added to room ${roomId} queue by ${socket.user.username}`);
+    } catch (error) {
+      console.error('Error adding playlist to queue:', error);
+      socket.emit('room_error', { message: 'Failed to add playlist to queue' });
     }
   }
 

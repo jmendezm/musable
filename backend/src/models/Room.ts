@@ -568,6 +568,34 @@ export class RoomModel {
     await db.run(stmt, [roomId, songId, userId, nextPosition]);
   }
 
+  // Add multiple songs to the end of the room queue in one go (e.g. a whole playlist)
+  static async addSongsToQueue(roomId: number, songIds: number[], userId: number): Promise<void> {
+    if (songIds.length === 0) return;
+
+    const db = Database;
+
+    const positionRow = await db.get<{ next_position: number }>(
+      `SELECT COALESCE(MAX(position), 0) + 1 as next_position FROM room_queue WHERE room_id = ?`,
+      [roomId]
+    );
+    let nextPosition = positionRow!.next_position;
+
+    await db.run('BEGIN TRANSACTION');
+    try {
+      for (const songId of songIds) {
+        await db.run(
+          `INSERT INTO room_queue (room_id, song_id, added_by, position) VALUES (?, ?, ?, ?)`,
+          [roomId, songId, userId, nextPosition]
+        );
+        nextPosition++;
+      }
+      await db.run('COMMIT');
+    } catch (error) {
+      await db.run('ROLLBACK');
+      throw error;
+    }
+  }
+
   // Add song to top of room queue (for immediate play)
   static async addToQueueTop(roomId: number, songId: number, userId: number): Promise<void> {
     const db = Database;
