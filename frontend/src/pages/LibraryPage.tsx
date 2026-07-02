@@ -24,7 +24,7 @@ import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
 
 const LibraryPage: React.FC = () => {
   const navigate = useNavigate();
-  const [recentAlbums, setRecentAlbums] = useState<Album[]>([]);
+  const [albums, setAlbums] = useState<Album[]>([]);
   const [randomSongs, setRandomSongs] = useState<Song[]>([]);
   const [artists, setArtists] = useState<Artist[]>([]);
   const [genres, setGenres] = useState<string[]>([]);
@@ -87,13 +87,13 @@ const LibraryPage: React.FC = () => {
     try {
       setLoading(true);
       const [albumsRes, randomSongsRes, artistsRes, genresRes] = await Promise.all([
-        apiService.getRecentAlbums(12),
+        apiService.getAlbums(),
         apiService.getRandomSongs(20),
         apiService.getArtists(),
         apiService.getGenres()
       ]);
 
-      setRecentAlbums(albumsRes.data.albums);
+      setAlbums(albumsRes.data.albums.slice(0, 20));
       setRandomSongs(randomSongsRes.data.songs);
       setArtists(artistsRes.data.artists.slice(0, 20));
       setGenres(genresRes.data.genres.slice(0, 15));
@@ -197,14 +197,14 @@ const LibraryPage: React.FC = () => {
         <p className="text-gray-400">Browse your music collection</p>
       </div>
 
-      {/* Recent Albums */}
+      {/* Albums */}
       <section>
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-white">Recent Albums</h2>
+          <h2 className="text-2xl font-bold text-white">Albums</h2>
         </div>
         
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {recentAlbums.map((album) => (
+          {albums.map((album) => (
             <div
               key={album.id}
               onClick={() => navigate(`/album/${album.id}`)}
