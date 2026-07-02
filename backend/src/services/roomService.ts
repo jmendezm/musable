@@ -89,6 +89,10 @@ export class RoomService {
         await this.handleRemoveFromQueue(socket, data.queue_item_id);
       });
 
+      socket.on('move_queue_item', async (data: { queue_item_id: number; direction: 'up' | 'down' }) => {
+        await this.handleMoveQueueItem(socket, data.queue_item_id, data.direction);
+      });
+
       // Chat
       socket.on('room_chat', async (data: { message: string }) => {
         await this.handleChatMessage(socket, data.message);
@@ -447,6 +451,40 @@ export class RoomService {
     } catch (error) {
       console.error('Error removing from queue:', error);
       socket.emit('room_error', { message: 'Failed to remove song from queue' });
+    }
+  }
+
+  private async handleMoveQueueItem(socket: AuthenticatedSocket, queueItemId: number, direction: 'up' | 'down'): Promise<void> {
+    try {
+      if (!socket.user || !socket.currentRoom) return;
+
+      const roomId = parseInt(socket.currentRoom.replace('room_', ''));
+
+      // Only the host can reorder the queue - a move affects everyone's ordering,
+      // unlike removing a song which only shifts entries after it.
+      const room = await RoomModel.findById(roomId);
+      if (!room) {
+        socket.emit('room_error', { message: 'Room not found' });
+        return;
+      }
+
+      if (room.host_id !== socket.user.id) {
+        socket.emit('room_error', { message: 'Only the host can reorder the queue' });
+        return;
+      }
+
+      await RoomModel.moveQueueItem(roomId, queueItemId, direction);
+
+      // Get updated queue
+      const queue = await RoomModel.getQueue(roomId);
+
+      // Broadcast updated queue to all participants
+      this.io.to(`room_${roomId}`).emit('queue_updated', { queue });
+
+      console.log(`🎵 Queue item ${queueItemId} moved ${direction} in room ${roomId} by ${socket.user.username}`);
+    } catch (error) {
+      console.error('Error moving queue item:', error);
+      socket.emit('room_error', { message: 'Failed to reorder queue' });
     }
   }
 

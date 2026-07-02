@@ -6,7 +6,9 @@ import {
   TrashIcon,
   XMarkIcon,
   QueueListIcon,
-  UserIcon
+  UserIcon,
+  ChevronUpIcon,
+  ChevronDownIcon
 } from '@heroicons/react/24/outline';
 import { useRoomStore } from '../stores/roomStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -73,6 +75,12 @@ const RoomQueue: React.FC<RoomQueueProps> = ({ isOpen, onClose }) => {
   const playSong = (song: any) => {
     if (!isHost) return;
     roomWebSocketService.changeSong(song.song_id);
+  };
+
+  // Move a song up or down in the queue (host only)
+  const moveQueueItem = (queueItemId: number, direction: 'up' | 'down') => {
+    if (!isHost) return;
+    roomWebSocketService.moveQueueItem(queueItemId, direction);
   };
 
   if (!isOpen || !roomStore.currentRoom) return null;
@@ -197,6 +205,38 @@ const RoomQueue: React.FC<RoomQueueProps> = ({ isOpen, onClose }) => {
 
                     {/* Action buttons */}
                     <div className="flex items-center gap-1">
+                      {/* Reorder buttons (host only) */}
+                      {isHost && (
+                        <div className="flex flex-col">
+                          <button
+                            onClick={() => moveQueueItem(item.id, 'up')}
+                            disabled={index === 0}
+                            className={clsx(
+                              "p-0.5 rounded-md transition-all duration-200",
+                              index === 0
+                                ? "text-gray-600 cursor-not-allowed opacity-50"
+                                : "text-gray-400 hover:text-white hover:bg-gray-600/50"
+                            )}
+                            title="Move up"
+                          >
+                            <ChevronUpIcon className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => moveQueueItem(item.id, 'down')}
+                            disabled={index === roomStore.queue.length - 1}
+                            className={clsx(
+                              "p-0.5 rounded-md transition-all duration-200",
+                              index === roomStore.queue.length - 1
+                                ? "text-gray-600 cursor-not-allowed opacity-50"
+                                : "text-gray-400 hover:text-white hover:bg-gray-600/50"
+                            )}
+                            title="Move down"
+                          >
+                            <ChevronDownIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+
                       {/* Play button (host only) */}
                       {isHost && !(item.song_id === currentSong?.id && 
                         roomStore.queue.findIndex(queueItem => queueItem.song_id === currentSong?.id) === index) && (

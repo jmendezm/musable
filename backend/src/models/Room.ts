@@ -675,11 +675,38 @@ export class RoomModel {
     
     // Reorder remaining items
     const reorderStmt = `
-      UPDATE room_queue 
-      SET position = position - 1 
+      UPDATE room_queue
+      SET position = position - 1
       WHERE room_id = ? AND position > ?
     `;
     await db.run(reorderStmt, [roomId, positionRow.position]);
+  }
+
+  // Move a queue item one slot up or down by swapping positions with its neighbor
+  static async moveQueueItem(roomId: number, queueItemId: number, direction: 'up' | 'down'): Promise<void> {
+    const db = Database;
+
+    const itemStmt = `SELECT id, position FROM room_queue WHERE id = ? AND room_id = ?`;
+    const item = await db.get<{ id: number; position: number }>(itemStmt, [queueItemId, roomId]);
+
+    if (!item) return;
+
+    const neighborStmt = direction === 'up'
+      ? `SELECT id, position FROM room_queue WHERE room_id = ? AND position < ? ORDER BY position DESC LIMIT 1`
+      : `SELECT id, position FROM room_queue WHERE room_id = ? AND position > ? ORDER BY position ASC LIMIT 1`;
+    const neighbor = await db.get<{ id: number; position: number }>(neighborStmt, [roomId, item.position]);
+
+    if (!neighbor) return; // Already at the top/bottom of the queue
+
+    await db.run('BEGIN TRANSACTION');
+    try {
+      await db.run(`UPDATE room_queue SET position = ? WHERE id = ?`, [neighbor.position, item.id]);
+      await db.run(`UPDATE room_queue SET position = ? WHERE id = ?`, [item.position, neighbor.id]);
+      await db.run('COMMIT');
+    } catch (error) {
+      await db.run('ROLLBACK');
+      throw error;
+    }
   }
 
   // Delete room

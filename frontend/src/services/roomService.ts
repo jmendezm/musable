@@ -335,6 +335,12 @@ class RoomWebSocketService {
     this.socket.emit('remove_from_queue', { queue_item_id: queueItemId });
   }
 
+  moveQueueItem(queueItemId: number, direction: 'up' | 'down'): void {
+    if (!this.socket || !useRoomStore.getState().isHost()) return;
+
+    this.socket.emit('move_queue_item', { queue_item_id: queueItemId, direction });
+  }
+
   // Chat
   sendMessage(message: string): void {
     if (!this.socket || !message.trim()) return;
