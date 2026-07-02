@@ -9,6 +9,12 @@ export async function seedDatabase(): Promise<void> {
   try {
     const db = Database;
 
+    // Seed library_paths from LIBRARY_PATHS on every startup (idempotent - only
+    // inserts if the table is still empty). This must run unconditionally, not
+    // just on first-ever install, so it also applies when upgrading an existing
+    // installation that already has an admin user.
+    await Settings.initializeDefaultPaths();
+
     // Check if admin user already exists
     const existingAdmin = await UserModel.findByEmail(config.adminEmail);
 
