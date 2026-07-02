@@ -2,15 +2,16 @@ import bcrypt from 'bcryptjs';
 import Database from '../config/database';
 import UserModel from '../models/User';
 import Settings from '../models/Settings';
+import config from '../config/config';
 import logger from './logger';
 
 export async function seedDatabase(): Promise<void> {
   try {
     const db = Database;
-    
+
     // Check if admin user already exists
-    const existingAdmin = await UserModel.findByEmail('admin@admin.com');
-    
+    const existingAdmin = await UserModel.findByEmail(config.adminEmail);
+
     if (existingAdmin) {
       logger.info('Admin user already exists, skipping seed');
       return;
@@ -28,19 +29,19 @@ export async function seedDatabase(): Promise<void> {
 
     // Create default admin user
     logger.info('Creating default admin user...');
-    
+
     const saltRounds = 12;
-    const passwordHash = await bcrypt.hash('admin123', saltRounds);
+    const passwordHash = await bcrypt.hash(config.adminPassword, saltRounds);
 
     await db.run(
-      `INSERT INTO users (username, email, password_hash, is_admin) 
+      `INSERT INTO users (username, email, password_hash, is_admin)
        VALUES (?, ?, ?, ?)`,
-      ['admin', 'admin@admin.com', passwordHash, 1]
+      ['admin', config.adminEmail, passwordHash, 1]
     );
 
     logger.info('✅ Default admin user created successfully');
-    logger.info('📧 Email: admin@admin.com');
-    logger.info('🔑 Password: admin123');
+    logger.info(`📧 Email: ${config.adminEmail}`);
+    logger.info('🔑 Password: (as configured via ADMIN_PASSWORD)');
     logger.info('⚠️  Please change the default password after first login!');
 
     // Initialize default settings
