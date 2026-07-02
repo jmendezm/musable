@@ -5,12 +5,24 @@ interface Config {
 }
 
 let config: Config | null = null;
+let configPromise: Promise<Config> | null = null;
 
 export const loadConfig = async (): Promise<Config> => {
   if (config) {
     return config;
   }
 
+  // Dedupe concurrent callers (e.g. index.tsx and authStore.ts both call this
+  // on startup) so they share a single in-flight fetch instead of racing.
+  if (configPromise) {
+    return configPromise;
+  }
+
+  configPromise = loadConfigInternal();
+  return configPromise;
+};
+
+const loadConfigInternal = async (): Promise<Config> => {
   try {
     const isLocalDevelopment = window.location.hostname === 'localhost' && window.location.port === '3000';
     
@@ -46,10 +58,11 @@ export const loadConfig = async (): Promise<Config> => {
     // Fallback configuration 
     const isLocalDevelopment = window.location.hostname === 'localhost' && window.location.port === '3000';
     
+    const wsOrigin = window.location.origin.replace(/^http/, 'ws');
     config = {
-      BASE_URL: isLocalDevelopment ? window.location.origin : 'https://musable.breadjs.nl',
-      API_BASE_URL: isLocalDevelopment ? '/api' : 'https://musable.breadjs.nl/api',
-      WEBSOCKET_URL: isLocalDevelopment ? 'ws://localhost:3001' : 'wss://musable.breadjs.nl'
+      BASE_URL: window.location.origin,
+      API_BASE_URL: isLocalDevelopment ? '/api' : `${window.location.origin}/api`,
+      WEBSOCKET_URL: isLocalDevelopment ? 'ws://localhost:3001' : wsOrigin
     };
     
     return config;

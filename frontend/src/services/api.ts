@@ -34,17 +34,17 @@ class ApiService {
 
   async initialize() {
     if (this.initialized) return;
-    
+
     try {
       const apiBaseUrl = getApiBaseUrl();
       this.api.defaults.baseURL = apiBaseUrl;
       this.initialized = true;
     } catch (error) {
-      console.warn('Config not loaded yet, using fallback API URL');
-      // Check if we're on the development server (localhost:3000) vs production domain
+      // Config hasn't loaded yet - use a same-origin fallback for this call only.
+      // Don't latch `initialized`, so the next call retries and picks up the real
+      // config once it's available instead of being stuck on a guess forever.
       const isLocalDevelopment = window.location.hostname === 'localhost' && window.location.port === '3000';
-      this.api.defaults.baseURL = isLocalDevelopment ? '/api' : 'https://musable.breadjs.nl/api';
-      this.initialized = true;
+      this.api.defaults.baseURL = isLocalDevelopment ? '/api' : `${window.location.origin}/api`;
     }
   }
 
@@ -492,8 +492,8 @@ class ApiService {
       const baseUrl = getBaseUrl();
       return `${baseUrl}/api/stream/${songId}`;
     } catch (error) {
-      // Production fallback
-      return `https://musable.breadjs.nl/api/stream/${songId}`;
+      // Config not loaded yet - fall back to this deployment's own origin
+      return `${window.location.origin}/api/stream/${songId}`;
     }
   }
 
@@ -511,8 +511,8 @@ class ApiService {
       const baseUrl = getBaseUrl();
       return `${baseUrl}${path}`;
     } catch (error) {
-      // Production fallback
-      return `https://musable.breadjs.nl${path}`;
+      // Config not loaded yet - fall back to this deployment's own origin
+      return `${window.location.origin}${path}`;
     }
   }
 

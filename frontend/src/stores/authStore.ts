@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { User, LoginCredentials, RegisterData } from '../types';
 import { apiService } from '../services/api';
+import { loadConfig } from '../config/config';
 
 interface AuthState {
   user: User | null;
@@ -227,7 +228,13 @@ if (typeof window !== 'undefined') {
     if (token) {
       // Set loading state and attempt to get profile
       useAuthStore.setState({ isLoading: true });
-      useAuthStore.getState().getProfile();
+      // Wait for the runtime config (API base URL) to finish loading first.
+      // Without this, getProfile() can fire before the real API URL is known,
+      // apiService falls back to a guessed URL, the request fails, and a
+      // perfectly valid session gets wiped - forcing a re-login on every refresh.
+      loadConfig()
+        .catch(() => {})
+        .then(() => useAuthStore.getState().getProfile());
     }
   };
 
