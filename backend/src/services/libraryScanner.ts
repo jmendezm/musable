@@ -256,9 +256,16 @@ export class LibraryScanner {
 
       let album = null;
       if (albumTitle) {
+        // Album identity must not depend on any single track's artist (that's what
+        // fragments compilation albums into one row per track). Use the albumartist
+        // tag when present; otherwise fall back to the album title itself so every
+        // track sharing this title still resolves to the same album.
+        const albumArtistName = metadata.common.albumartist?.trim() || albumTitle;
+        const albumArtist = await ArtistModel.findOrCreate(albumArtistName);
+
         album = await AlbumModel.findOrCreate(
           albumTitle,
-          artist.id,
+          albumArtist.id,
           metadata.common.year
         );
 
