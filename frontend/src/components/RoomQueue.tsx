@@ -42,8 +42,8 @@ const RoomQueue: React.FC<RoomQueueProps> = ({ isOpen, onClose }) => {
 
     setIsSearching(true);
     try {
-      const response = await apiService.request('GET', `/songs/search?q=${encodeURIComponent(query)}&limit=10`);
-      setSearchResults((response as any).songs || []);
+      const response = await apiService.getSongs({ search: query, limit: 10, includeYTMusic: 'false' });
+      setSearchResults(response.data?.songs || []);
     } catch (error) {
       console.error('Failed to search songs:', error);
       setSearchResults([]);
