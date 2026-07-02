@@ -55,12 +55,12 @@ export class ArtistModel {
 
   async getAllWithStats(): Promise<ArtistWithStats[]> {
     return await this.db.query<ArtistWithStats>(
-      `SELECT 
+      `SELECT
         a.*,
-        COUNT(DISTINCT s.id) as song_count,
+        COUNT(DISTINCT sa.song_id) as song_count,
         COUNT(DISTINCT al.id) as album_count
        FROM artists a
-       LEFT JOIN songs s ON a.id = s.artist_id
+       LEFT JOIN song_artists sa ON a.id = sa.artist_id
        LEFT JOIN albums al ON a.id = al.artist_id
        GROUP BY a.id
        ORDER BY a.name`

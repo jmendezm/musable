@@ -10,6 +10,7 @@ import { useToast } from '../contexts/ToastContext';
 import { apiService } from '../services/api';
 import { Album, Song } from '../types';
 import clsx from 'clsx';
+import ArtistLinks from '../components/ArtistLinks';
 
 const AlbumPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -279,7 +280,7 @@ const AlbumPage: React.FC = () => {
                           {song.title}
                         </h3>
                         <p className="text-gray-400 text-sm truncate">
-                          {song.artist_name}
+                          <ArtistLinks artists={song.artists} fallbackName={song.artist_name} />
                         </p>
                       </div>
 
@@ -351,7 +352,7 @@ const AlbumPage: React.FC = () => {
                           {song.title}
                         </h3>
                         <p className="text-gray-400 text-sm truncate">
-                          {song.artist_name || 'Unknown Artist'}
+                          <ArtistLinks artists={song.artists} fallbackName={song.artist_name || 'Unknown Artist'} />
                         </p>
                         <div className="flex items-center text-xs text-gray-500 mt-1">
                           <span>{song.duration ? formatDuration(song.duration) : '--:--'}</span>

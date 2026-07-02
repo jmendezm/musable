@@ -14,6 +14,7 @@ interface Config {
   uploadPath: string;
   libraryPaths: string[];
   supportedFormats: string[];
+  artistSeparator: string;
   youtubeEnabled: boolean;
   youtubeDownloadPath: string;
   youtubeApiKey: string | undefined;
@@ -36,6 +37,7 @@ const config: Config = {
   uploadPath: process.env.UPLOAD_PATH || './uploads',
   libraryPaths: JSON.parse(process.env.LIBRARY_PATHS || '["./music"]'),
   supportedFormats: JSON.parse(process.env.SUPPORTED_FORMATS || '["mp3","flac","wav","m4a","aac","ogg"]'),
+  artistSeparator: process.env.ARTIST_SEPARATOR || ',',
   youtubeEnabled: process.env.YOUTUBE_ENABLED === 'true',
   youtubeDownloadPath: process.env.YOUTUBE_DOWNLOAD_PATH || './downloads',
   youtubeApiKey: process.env.YOUTUBE_API_KEY,

@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import Database from '../config/database';
+import { artistsSubquery, withArtists } from '../utils/songArtists';
 
 export interface ShareToken {
   id: number;
@@ -80,8 +81,9 @@ class ShareTokenModel {
     }
 
     // Get song details
-    const song = await this.db.get(
-      `SELECT s.*, a.name as artist_name, al.title as album_title, al.artwork_path
+    const songRow = await this.db.get<any>(
+      `SELECT s.*, a.name as artist_name, al.title as album_title, al.artwork_path,
+              ${artistsSubquery('s.id')} as artists_json
        FROM songs s
        JOIN artists a ON s.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
@@ -89,9 +91,11 @@ class ShareTokenModel {
       [shareToken.song_id]
     );
 
-    if (!song) {
+    if (!songRow) {
       return { valid: false };
     }
+
+    const song = withArtists(songRow);
 
     // Increment access count and update last accessed
     await this.db.run(

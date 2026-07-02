@@ -1,4 +1,5 @@
 import Database from '../config/database';
+import { artistsSubquery, withArtistsList, SongArtist } from '../utils/songArtists';
 
 export interface ListenHistory {
   id: number;
@@ -13,6 +14,7 @@ export interface ListenHistoryWithDetails extends ListenHistory {
   username: string;
   song_title: string;
   artist_name: string;
+  artists: SongArtist[];
   album_title?: string;
   song_duration?: number;
   artwork_path?: string;
@@ -50,15 +52,16 @@ export class ListenHistoryModel {
   }
 
   async getUserHistory(userId: number, limit: number = 50, offset: number = 0): Promise<ListenHistoryWithDetails[]> {
-    return await this.db.query<ListenHistoryWithDetails>(
-      `SELECT 
+    const rows = await this.db.query<ListenHistoryWithDetails & { artists_json: string }>(
+      `SELECT
         lh.*,
         u.username,
         s.title as song_title,
         a.name as artist_name,
         al.title as album_title,
         s.duration as song_duration,
-        al.artwork_path as artwork_path
+        al.artwork_path as artwork_path,
+        ${artistsSubquery('s.id')} as artists_json
        FROM listen_history lh
        JOIN users u ON lh.user_id = u.id
        JOIN songs s ON lh.song_id = s.id
@@ -69,18 +72,20 @@ export class ListenHistoryModel {
        LIMIT ? OFFSET ?`,
       [userId, limit, offset]
     );
+    return withArtistsList(rows);
   }
 
   async getAllHistory(limit: number = 100, offset: number = 0): Promise<ListenHistoryWithDetails[]> {
-    return await this.db.query<ListenHistoryWithDetails>(
-      `SELECT 
+    const rows = await this.db.query<ListenHistoryWithDetails & { artists_json: string }>(
+      `SELECT
         lh.*,
         u.username,
         s.title as song_title,
         a.name as artist_name,
         al.title as album_title,
         s.duration as song_duration,
-        al.artwork_path as artwork_path
+        al.artwork_path as artwork_path,
+        ${artistsSubquery('s.id')} as artists_json
        FROM listen_history lh
        JOIN users u ON lh.user_id = u.id
        JOIN songs s ON lh.song_id = s.id
@@ -90,10 +95,11 @@ export class ListenHistoryModel {
        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
+    return withArtistsList(rows);
   }
 
   async getRecentlyPlayedSongs(userId: number, limit: number = 20): Promise<ListenHistoryWithDetails[]> {
-    return await this.db.query<ListenHistoryWithDetails>(
+    const rows = await this.db.query<ListenHistoryWithDetails & { artists_json: string }>(
       `SELECT DISTINCT
         lh.*,
         u.username,
@@ -101,7 +107,8 @@ export class ListenHistoryModel {
         a.name as artist_name,
         al.title as album_title,
         s.duration as song_duration,
-        al.artwork_path
+        al.artwork_path,
+        ${artistsSubquery('s.id')} as artists_json
        FROM listen_history lh
        JOIN users u ON lh.user_id = u.id
        JOIN songs s ON lh.song_id = s.id
@@ -113,18 +120,20 @@ export class ListenHistoryModel {
        LIMIT ?`,
       [userId, limit]
     );
+    return withArtistsList(rows);
   }
 
   async getMostPlayedSongs(userId?: number, limit: number = 20): Promise<any[]> {
     if (userId) {
-      return await this.db.query(
-        `SELECT 
+      const rows = await this.db.query(
+        `SELECT
           s.id,
           s.title,
           a.name as artist_name,
           al.title as album_title,
           al.artwork_path,
-          COUNT(*) as play_count
+          COUNT(*) as play_count,
+          ${artistsSubquery('s.id')} as artists_json
          FROM listen_history lh
          JOIN songs s ON lh.song_id = s.id
          JOIN artists a ON s.artist_id = a.id
@@ -135,15 +144,17 @@ export class ListenHistoryModel {
          LIMIT ?`,
         [userId, limit]
       );
+      return withArtistsList(rows);
     } else {
-      return await this.db.query(
-        `SELECT 
+      const rows = await this.db.query(
+        `SELECT
           s.id,
           s.title,
           a.name as artist_name,
           al.title as album_title,
           al.artwork_path,
-          COUNT(*) as play_count
+          COUNT(*) as play_count,
+          ${artistsSubquery('s.id')} as artists_json
          FROM listen_history lh
          JOIN songs s ON lh.song_id = s.id
          JOIN artists a ON s.artist_id = a.id
@@ -153,6 +164,7 @@ export class ListenHistoryModel {
          LIMIT ?`,
         [limit]
       );
+      return withArtistsList(rows);
     }
   }
 

@@ -13,6 +13,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import roomWebSocketService from '../services/roomService';
 import roomApiService from '../services/roomApi'; // Updated import
+import { getArtistNames } from '../utils/formatters';
 
 interface MusicRoomsPaneProps {
   isOpen: boolean;
@@ -249,7 +250,7 @@ const MusicRoomsPane: React.FC<MusicRoomsPaneProps> = ({ isOpen, onClose }) => {
                       <span className="text-xs text-primary font-medium">
                         {currentSong.title}
                         {currentSong.artist_name && (
-                          <span className="text-gray-300 opacity-80"> • {currentSong.artist_name}</span>
+                          <span className="text-gray-300 opacity-80"> • {getArtistNames(currentSong)}</span>
                         )}
                       </span>
                     </div>
@@ -445,7 +446,7 @@ const MusicRoomsPane: React.FC<MusicRoomsPaneProps> = ({ isOpen, onClose }) => {
                             <div className="truncate">
                               <span className="font-medium text-xs">{room.current_song.title}</span>
                               {room.current_song.artist_name && (
-                                <span className="text-xs opacity-80"> • {room.current_song.artist_name}</span>
+                                <span className="text-xs opacity-80"> • {getArtistNames(room.current_song)}</span>
                               )}
                             </div>
                           </div>

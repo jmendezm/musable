@@ -17,6 +17,7 @@ import {
 import clsx from 'clsx';
 import { Song, ContextMenuItem } from '../types';
 import apiService from '../services/api';
+import { getArtistNames } from '../utils/formatters';
 import { useRoomStore } from '../stores/roomStore';
 import roomWebSocketService from '../services/roomService';
 
@@ -215,7 +216,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
           )}
           <div className="flex-1 min-w-0">
             <p className="text-white text-sm font-medium truncate">{song.title}</p>
-            <p className="text-gray-400 text-xs truncate">{song.artist_name}</p>
+            <p className="text-gray-400 text-xs truncate">{getArtistNames(song)}</p>
           </div>
         </div>
       </div>

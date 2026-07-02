@@ -1,4 +1,5 @@
 import Database from '../config/database';
+import { artistsSubquery, withArtists, withArtistsList, SongArtist } from '../utils/songArtists';
 
 export interface Song {
   id: number;
@@ -23,6 +24,7 @@ export interface SongWithDetails extends Song {
   artist_name: string;
   album_title?: string;
   artwork_path?: string;
+  artists: SongArtist[];
 }
 
 export interface CreateSongData {
@@ -97,77 +99,91 @@ export class SongModel {
   }
 
   async findWithDetails(id: number): Promise<SongWithDetails | null> {
-    return await this.db.get<SongWithDetails>(
-      `SELECT 
+    const row = await this.db.get<SongWithDetails & { artists_json: string }>(
+      `SELECT
         s.*,
         a.name as artist_name,
         al.title as album_title,
-        al.artwork_path
+        al.artwork_path,
+        ${artistsSubquery('s.id')} as artists_json
        FROM songs s
        JOIN artists a ON s.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
        WHERE s.id = ?`,
       [id]
     );
+    return row ? withArtists(row) : null;
   }
 
   async getAllWithDetails(): Promise<SongWithDetails[]> {
-    return await this.db.query<SongWithDetails>(
-      `SELECT 
+    const rows = await this.db.query<SongWithDetails & { artists_json: string }>(
+      `SELECT
         s.*,
         a.name as artist_name,
         al.title as album_title,
-        al.artwork_path
+        al.artwork_path,
+        ${artistsSubquery('s.id')} as artists_json
        FROM songs s
        JOIN artists a ON s.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
        ORDER BY a.name, al.title, s.track_number, s.title`
     );
+    return withArtistsList(rows);
   }
 
   async searchSongs(query: string): Promise<SongWithDetails[]> {
     const searchTerm = `%${query}%`;
-    return await this.db.query<SongWithDetails>(
-      `SELECT 
+    const rows = await this.db.query<SongWithDetails & { artists_json: string }>(
+      `SELECT
         s.*,
         a.name as artist_name,
         al.title as album_title,
-        al.artwork_path
+        al.artwork_path,
+        ${artistsSubquery('s.id')} as artists_json
        FROM songs s
        JOIN artists a ON s.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
-       WHERE s.title LIKE ? 
-          OR a.name LIKE ? 
+       WHERE s.title LIKE ?
+          OR a.name LIKE ?
           OR al.title LIKE ?
           OR s.genre LIKE ?
+          OR s.id IN (
+            SELECT sa.song_id FROM song_artists sa
+            JOIN artists ar ON sa.artist_id = ar.id
+            WHERE ar.name LIKE ?
+          )
        ORDER BY a.name, al.title, s.track_number, s.title`,
-      [searchTerm, searchTerm, searchTerm, searchTerm]
+      [searchTerm, searchTerm, searchTerm, searchTerm, searchTerm]
     );
+    return withArtistsList(rows);
   }
 
   async getSongsByArtist(artistId: number): Promise<SongWithDetails[]> {
-    return await this.db.query<SongWithDetails>(
-      `SELECT 
+    const rows = await this.db.query<SongWithDetails & { artists_json: string }>(
+      `SELECT
         s.*,
         a.name as artist_name,
         al.title as album_title,
-        al.artwork_path
+        al.artwork_path,
+        ${artistsSubquery('s.id')} as artists_json
        FROM songs s
        JOIN artists a ON s.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
-       WHERE s.artist_id = ?
+       WHERE s.id IN (SELECT song_id FROM song_artists WHERE artist_id = ?)
        ORDER BY al.title, s.track_number, s.title`,
       [artistId]
     );
+    return withArtistsList(rows);
   }
 
   async getSongsByAlbum(albumId: number): Promise<SongWithDetails[]> {
-    return await this.db.query<SongWithDetails>(
-      `SELECT 
+    const rows = await this.db.query<SongWithDetails & { artists_json: string }>(
+      `SELECT
         s.*,
         a.name as artist_name,
         al.title as album_title,
-        al.artwork_path
+        al.artwork_path,
+        ${artistsSubquery('s.id')} as artists_json
        FROM songs s
        JOIN artists a ON s.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
@@ -175,6 +191,7 @@ export class SongModel {
        ORDER BY s.track_number, s.title`,
       [albumId]
     );
+    return withArtistsList(rows);
   }
 
   async updateSong(id: number, updates: Partial<CreateSongData>): Promise<void> {
@@ -190,6 +207,17 @@ export class SongModel {
 
   async deleteSong(id: number): Promise<void> {
     await this.db.run('DELETE FROM songs WHERE id = ?', [id]);
+  }
+
+  async setArtists(songId: number, artistIds: number[]): Promise<void> {
+    await this.db.run('DELETE FROM song_artists WHERE song_id = ?', [songId]);
+
+    for (let position = 0; position < artistIds.length; position++) {
+      await this.db.run(
+        'INSERT OR IGNORE INTO song_artists (song_id, artist_id, position) VALUES (?, ?, ?)',
+        [songId, artistIds[position], position]
+      );
+    }
   }
 
   async getSongCount(): Promise<number> {
@@ -214,12 +242,13 @@ export class SongModel {
   }
 
   async getSongsByGenre(genre: string): Promise<SongWithDetails[]> {
-    return await this.db.query<SongWithDetails>(
-      `SELECT 
+    const rows = await this.db.query<SongWithDetails & { artists_json: string }>(
+      `SELECT
         s.*,
         a.name as artist_name,
         al.title as album_title,
-        al.artwork_path
+        al.artwork_path,
+        ${artistsSubquery('s.id')} as artists_json
        FROM songs s
        JOIN artists a ON s.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
@@ -227,15 +256,17 @@ export class SongModel {
        ORDER BY a.name, al.title, s.track_number, s.title`,
       [genre]
     );
+    return withArtistsList(rows);
   }
 
   async getRandomSongs(limit: number = 50): Promise<SongWithDetails[]> {
-    return await this.db.query<SongWithDetails>(
-      `SELECT 
+    const rows = await this.db.query<SongWithDetails & { artists_json: string }>(
+      `SELECT
         s.*,
         a.name as artist_name,
         al.title as album_title,
-        al.artwork_path
+        al.artwork_path,
+        ${artistsSubquery('s.id')} as artists_json
        FROM songs s
        JOIN artists a ON s.artist_id = a.id
        LEFT JOIN albums al ON s.album_id = al.id
@@ -243,6 +274,7 @@ export class SongModel {
        LIMIT ?`,
       [limit]
     );
+    return withArtistsList(rows);
   }
 }
 

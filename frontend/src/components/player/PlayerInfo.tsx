@@ -3,6 +3,7 @@ import { HeartIcon } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
 import { usePlayerStore } from '../../stores/playerStore';
 import apiService from '../../services/api';
+import ArtistLinks from '../ArtistLinks';
 
 const PlayerInfo: React.FC = () => {
   const { currentSong } = usePlayerStore();
@@ -67,7 +68,7 @@ const PlayerInfo: React.FC = () => {
         <p className="text-gray-400 text-xs truncate">
           {currentSong ? (
             <>
-              {currentSong.artist_name}
+              <ArtistLinks artists={currentSong.artists} fallbackName={currentSong.artist_name} />
               {currentSong.album_title && (
                 <>
                   <span className="mx-1">•</span>

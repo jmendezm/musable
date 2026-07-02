@@ -4,6 +4,7 @@ import { Howl } from 'howler';
 import { Song, PlayerState, RepeatMode } from '../types';
 import { apiService } from '../services/api';
 import { handleRoomAwareNext } from '../utils/roomPlayback';
+import { getArtistNames } from '../utils/formatters';
 
 // Media Session API helper functions
 const updateMediaSession = (song: Song | null, isPlaying: boolean) => {
@@ -12,7 +13,7 @@ const updateMediaSession = (song: Song | null, isPlaying: boolean) => {
 
     navigator.mediaSession.metadata = new MediaMetadata({
       title: song.title || 'Unknown Title',
-      artist: song.artist_name || 'Unknown Artist',
+      artist: getArtistNames(song),
       album: song.album_title || 'Unknown Album',
       artwork: artworkUrl ? [
         { src: artworkUrl, sizes: '96x96', type: 'image/jpeg' },

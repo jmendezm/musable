@@ -1,5 +1,6 @@
 import Database from '../config/database';
 import { SongWithDetails } from './Song';
+import { artistsSubquery, withArtistsList } from '../utils/songArtists';
 
 export interface Favorite {
   id: number;
@@ -45,12 +46,13 @@ export class FavoriteModel {
   static async getUserFavorites(userId: number): Promise<SongWithDetails[]> {
     try {
       const stmt = `
-        SELECT 
+        SELECT
           s.*,
           a.name as artist_name,
           al.title as album_title,
           al.artwork_path,
-          f.added_at as favorited_at
+          f.added_at as favorited_at,
+          ${artistsSubquery('s.id')} as artists_json
         FROM favorites f
         JOIN songs s ON f.song_id = s.id
         JOIN artists a ON s.artist_id = a.id
@@ -59,7 +61,7 @@ export class FavoriteModel {
         ORDER BY f.added_at DESC
       `;
       const favorites = await Database.query(stmt, [userId]);
-      return favorites as SongWithDetails[];
+      return withArtistsList(favorites) as SongWithDetails[];
     } catch (error) {
       throw error;
     }

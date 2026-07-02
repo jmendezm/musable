@@ -16,6 +16,8 @@ import { useRoomStore } from '../stores/roomStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import roomWebSocketService from '../services/roomService';
+import ArtistLinks from '../components/ArtistLinks';
+import { getArtistNames } from '../utils/formatters';
 
 const RoomView: React.FC = () => {
   const { code } = useParams<{ code: string }>();
@@ -167,7 +169,10 @@ const RoomView: React.FC = () => {
                       {roomStore.currentRoom.current_song.title}
                     </h3>
                     <p className="text-gray-400">
-                      {roomStore.currentRoom.current_song.artist_name}
+                      <ArtistLinks
+                        artists={roomStore.currentRoom.current_song.artists}
+                        fallbackName={roomStore.currentRoom.current_song.artist_name}
+                      />
                     </p>
                     {roomStore.currentRoom.current_song.album_title && (
                       <p className="text-sm text-gray-500">
@@ -254,7 +259,9 @@ const RoomView: React.FC = () => {
                       </span>
                       <div>
                         <p className="font-medium text-white">{item.song.title}</p>
-                        <p className="text-sm text-gray-400">{item.song.artist_name}</p>
+                        <p className="text-sm text-gray-400">
+                          <ArtistLinks artists={item.song.artists} fallbackName={item.song.artist_name} />
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -388,7 +395,7 @@ const RoomView: React.FC = () => {
                     >
                       <div>
                         <p className="font-medium text-white">{song.title}</p>
-                        <p className="text-sm text-gray-400">{song.artist_name}</p>
+                        <p className="text-sm text-gray-400">{getArtistNames(song)}</p>
                       </div>
                       <PlusIcon className="w-5 h-5 text-green-400" />
                     </div>

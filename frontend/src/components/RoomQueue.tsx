@@ -16,6 +16,8 @@ import { useAuthStore } from '../stores/authStore';
 import roomWebSocketService from '../services/roomService';
 import { apiService } from '../services/api';
 import clsx from 'clsx';
+import ArtistLinks from './ArtistLinks';
+import { getArtistNames } from '../utils/formatters';
 
 interface RoomQueueProps {
   isOpen: boolean;
@@ -138,7 +140,7 @@ const RoomQueue: React.FC<RoomQueueProps> = ({ isOpen, onClose }) => {
                       <MusicalNoteIcon className="w-4 h-4 text-primary flex-shrink-0" />
                       <div className="min-w-0">
                         <p className="text-white text-sm truncate">{song.title}</p>
-                        <p className="text-gray-400 text-xs truncate">{song.artist_name}</p>
+                        <p className="text-gray-400 text-xs truncate">{getArtistNames(song)}</p>
                       </div>
                     </div>
                     <PlusIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
@@ -194,7 +196,9 @@ const RoomQueue: React.FC<RoomQueueProps> = ({ isOpen, onClose }) => {
                           </div>
                         )}
                       </div>
-                      <p className="text-gray-400 text-xs truncate">{item.song.artist_name}</p>
+                      <p className="text-gray-400 text-xs truncate">
+                        <ArtistLinks artists={item.song.artists} fallbackName={item.song.artist_name} />
+                      </p>
                       <div className="flex items-center gap-2 mt-1">
                         <div className="flex items-center gap-1 px-2 py-0.5 bg-gray-700/50 rounded-md">
                           <UserIcon className="w-3 h-3 text-gray-400" />

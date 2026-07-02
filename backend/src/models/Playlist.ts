@@ -1,4 +1,5 @@
 import Database from '../config/database';
+import { artistsSubquery, withArtistsList, SongArtist } from '../utils/songArtists';
 
 export interface Playlist {
   id: number;
@@ -24,6 +25,7 @@ export interface PlaylistSong {
   added_at: string;
   title: string;
   artist_name: string;
+  artists: SongArtist[];
   album_title?: string;
   duration?: number;
   artwork_path?: string;
@@ -205,14 +207,15 @@ export class PlaylistModel {
   }
 
   async getPlaylistSongs(playlistId: number): Promise<PlaylistSong[]> {
-    return await this.db.query<PlaylistSong>(
-      `SELECT 
+    const rows = await this.db.query<PlaylistSong & { artists_json: string }>(
+      `SELECT
         ps.*,
         s.title,
         a.name as artist_name,
         al.title as album_title,
         s.duration,
-        al.artwork_path
+        al.artwork_path,
+        ${artistsSubquery('s.id')} as artists_json
        FROM playlist_songs ps
        JOIN songs s ON ps.song_id = s.id
        JOIN artists a ON s.artist_id = a.id
@@ -221,6 +224,7 @@ export class PlaylistModel {
        ORDER BY ps.position`,
       [playlistId]
     );
+    return withArtistsList(rows);
   }
 
   async searchPlaylists(query: string, userId?: number): Promise<PlaylistWithDetails[]> {

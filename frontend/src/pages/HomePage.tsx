@@ -10,6 +10,8 @@ import { useContextMenu } from '../hooks/useContextMenu';
 import ContextMenu from '../components/ContextMenu';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
 import { useToast } from '../contexts/ToastContext';
+import ArtistLinks from '../components/ArtistLinks';
+import { getArtistNames } from '../utils/formatters';
 import {
   ClockIcon,
   MusicalNoteIcon,
@@ -145,7 +147,7 @@ const HomePage: React.FC = () => {
     } catch (err) {
       console.error('Failed to create share URL:', err);
       // Fallback to copying song info
-      const shareText = `🎵 ${song.title} by ${song.artist_name}`;
+      const shareText = `🎵 ${song.title} by ${getArtistNames(song)}`;
       try {
         await navigator.clipboard.writeText(shareText);
         showSuccess('Song info copied to clipboard!');
@@ -293,7 +295,7 @@ const HomePage: React.FC = () => {
                   <div className="flex-1 min-w-0">
                     <p className="text-white font-medium truncate">{song.title}</p>
                     <p className="text-gray-400 text-sm truncate">
-                      {song.artist_name}{song.album_title ? ` • ${song.album_title}` : ''}
+                      <ArtistLinks artists={song.artists} fallbackName={song.artist_name} />{song.album_title ? ` • ${song.album_title}` : ''}
                     </p>
                   </div>
                   <button
@@ -410,7 +412,7 @@ const HomePage: React.FC = () => {
                   <div className="flex-1 min-w-0">
                     <p className="text-white font-medium truncate">{song.title}</p>
                     <p className="text-gray-400 text-sm truncate">
-                      {song.artist_name}{song.album_title ? ` • ${song.album_title}` : ''}
+                      <ArtistLinks artists={song.artists} fallbackName={song.artist_name} />{song.album_title ? ` • ${song.album_title}` : ''}
                     </p>
                   </div>
                   <button

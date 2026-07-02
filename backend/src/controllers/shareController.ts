@@ -35,6 +35,7 @@ export const getSharedSong = async (req: Request, res: Response): Promise<void> 
       id: result.song.id,
       title: result.song.title,
       artist_name: result.song.artist_name,
+      artists: result.song.artists,
       album_title: result.song.album_title,
       duration: result.song.duration,
       artwork_path: result.song.artwork_path,

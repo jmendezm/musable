@@ -8,6 +8,8 @@ import * as musicMetadata from 'music-metadata';
 import SongModel from '../models/Song';
 import ArtistModel from '../models/Artist';
 import AlbumModel from '../models/Album';
+import config from '../config/config';
+import { parseArtistNames } from '../utils/artistParser';
 
 const execAsync = promisify(exec);
 
@@ -373,10 +375,9 @@ class YTMusicService {
         artistName = songInfo.uploader_id;
       }
 
-      let artist = await ArtistModel.findByName(artistName);
-      if (!artist) {
-        artist = await ArtistModel.create(artistName);
-      }
+      const artistNames = parseArtistNames(artistName, config.artistSeparator);
+      const artists = await Promise.all(artistNames.map(name => ArtistModel.findOrCreate(name)));
+      const artist = artists[0];
 
       // Create or get album - always create an album for YouTube songs to display artwork
       let album = null;
@@ -414,7 +415,8 @@ class YTMusicService {
         youtube_id: songInfo.id  // Save YouTube video ID
       };
 
-      await SongModel.create(songData);
+      const song = await SongModel.create(songData);
+      await SongModel.setArtists(song.id, artists.map(a => a.id));
       console.log(`✅ Added downloaded song to database: "${cleanTitle}" by "${artist.name}" (YouTube ID: ${songInfo.id})`);
     } catch (error) {
       console.error('Error adding song to database:', error);

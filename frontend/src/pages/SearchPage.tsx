@@ -15,6 +15,8 @@ import { apiService } from '../services/api';
 import { Song, Artist, Album } from '../types';
 import { useDebounce } from 'use-debounce';
 import clsx from 'clsx';
+import ArtistLinks from '../components/ArtistLinks';
+import { getArtistNames } from '../utils/formatters';
 
 interface SearchResults {
   songs: Song[];
@@ -181,7 +183,7 @@ const SearchPage: React.FC = () => {
     } catch (err) {
       console.error('Failed to create share URL:', err);
       // Fallback to copying song info
-      const shareText = `🎵 ${song.title} by ${song.artist_name}`;
+      const shareText = `🎵 ${song.title} by ${getArtistNames(song)}`;
       try {
         await navigator.clipboard.writeText(shareText);
         showSuccess('Song info copied to clipboard!');
@@ -415,7 +417,7 @@ const SearchPage: React.FC = () => {
                     <div className="flex-1 min-w-0 ml-3 md:ml-4">
                       <h3 className="text-white font-medium truncate">{song.title}</h3>
                       <p className="text-gray-400 text-sm truncate">
-                        {song.artist_name} {song.album_title && `• ${song.album_title}`}
+                        <ArtistLinks artists={song.artists} fallbackName={song.artist_name} /> {song.album_title && `• ${song.album_title}`}
                       </p>
                     </div>
 

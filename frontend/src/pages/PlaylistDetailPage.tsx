@@ -13,6 +13,8 @@ import ContextMenu from '../components/ContextMenu';
 import EditPlaylistModal from '../components/EditPlaylistModal';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
 import { useToast } from '../contexts/ToastContext';
+import ArtistLinks from '../components/ArtistLinks';
+import { getArtistNames } from '../utils/formatters';
 import {
   PlayIcon,
   PauseIcon,
@@ -148,6 +150,7 @@ const PlaylistDetailPage: React.FC = () => {
       id: playlistSong.song_id,
       title: playlistSong.title,
       artist_name: playlistSong.artist_name,
+      artists: playlistSong.artists,
       album_title: playlistSong.album_title,
       duration: playlistSong.duration,
       artwork_path: playlistSong.artwork_path,
@@ -172,6 +175,7 @@ const PlaylistDetailPage: React.FC = () => {
       id: playlistSong.song_id,
       title: playlistSong.title,
       artist_name: playlistSong.artist_name,
+      artists: playlistSong.artists,
       album_title: playlistSong.album_title,
       duration: playlistSong.duration,
       artwork_path: playlistSong.artwork_path,
@@ -192,6 +196,7 @@ const PlaylistDetailPage: React.FC = () => {
       id: playlistSong.song_id,
       title: playlistSong.title,
       artist_name: playlistSong.artist_name,
+      artists: playlistSong.artists,
       album_title: playlistSong.album_title,
       duration: playlistSong.duration,
       artwork_path: playlistSong.artwork_path,
@@ -312,7 +317,7 @@ const PlaylistDetailPage: React.FC = () => {
       showSuccess('Share URL copied to clipboard!');
     } catch (err) {
       console.error('Failed to create share URL:', err);
-      const shareText = `🎵 ${song.title} by ${song.artist_name}`;
+      const shareText = `🎵 ${song.title} by ${getArtistNames(song)}`;
       try {
         await navigator.clipboard.writeText(shareText);
         showSuccess('Song info copied to clipboard!');
@@ -584,7 +589,7 @@ const PlaylistDetailPage: React.FC = () => {
                             {song.title}
                           </h4>
                           <p className="text-gray-400 text-xs truncate">
-                            {song.artist_name}
+                            <ArtistLinks artists={song.artists} fallbackName={song.artist_name} />
                           </p>
                         </div>
                       </div>
@@ -668,7 +673,7 @@ const PlaylistDetailPage: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <h3 className="text-white font-medium truncate">{song.title}</h3>
                       <p className="text-gray-400 text-sm truncate">
-                        {song.artist_name || 'Unknown Artist'}
+                        <ArtistLinks artists={song.artists} fallbackName={song.artist_name || 'Unknown Artist'} />
                         {song.album_title && ` • ${song.album_title}`}
                       </p>
                       <div className="flex items-center text-xs text-gray-500 mt-1">

@@ -11,6 +11,8 @@ import ContextMenu from '../components/ContextMenu';
 import EditSongModal from '../components/EditSongModal';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
 import { useToast } from '../contexts/ToastContext';
+import ArtistLinks from '../components/ArtistLinks';
+import { getArtistNames } from '../utils/formatters';
 import {
   MusicalNoteIcon,
   PlayIcon,
@@ -144,7 +146,7 @@ const LibraryPage: React.FC = () => {
     } catch (err) {
       console.error('Failed to create share URL:', err);
       // Fallback to copying song info
-      const shareText = `🎵 ${song.title} by ${song.artist_name}`;
+      const shareText = `🎵 ${song.title} by ${getArtistNames(song)}`;
       try {
         await navigator.clipboard.writeText(shareText);
         showSuccess('Song info copied to clipboard!');
@@ -315,7 +317,7 @@ const LibraryPage: React.FC = () => {
                     {song.title}
                   </h4>
                   <p className="text-gray-400 text-xs truncate">
-                    {song.artist_name} • {song.album_title || 'Unknown Album'}
+                    <ArtistLinks artists={song.artists} fallbackName={song.artist_name} /> • {song.album_title || 'Unknown Album'}
                   </p>
                 </div>
 

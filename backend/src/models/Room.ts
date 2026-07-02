@@ -1,11 +1,13 @@
 import Database from '../config/database';
 import { Song, SongWithDetails } from './Song';
 import { User } from './User';
+import { artistsSubquery, parseArtistsJson, SongArtist } from '../utils/songArtists';
 
 export interface RoomSong {
   id: number;
   title: string;
   artist_name: string;
+  artists?: SongArtist[];
   album_title?: string;
   duration?: number;
   file_path: string;
@@ -129,7 +131,8 @@ export class RoomModel {
     
     const stmt = `
       SELECT lr.*, u.username as host_username, u.email as host_email,
-             s.title as current_song_title, s.artist_id, a.name as current_song_artist
+             s.title as current_song_title, s.artist_id, a.name as current_song_artist,
+             ${artistsSubquery('s.id')} as current_song_artists_json
       FROM listening_rooms lr
       LEFT JOIN users u ON lr.host_id = u.id
       LEFT JOIN songs s ON lr.current_song_id = s.id
@@ -173,6 +176,7 @@ export class RoomModel {
         id: row.current_song_id,
         title: row.current_song_title,
         artist_name: row.current_song_artist,
+        artists: parseArtistsJson(row.current_song_artists_json),
         file_path: ''
       };
     }
@@ -228,7 +232,8 @@ export class RoomModel {
       SELECT lr.*, u.username as host_username,
              (SELECT COUNT(*) FROM room_participants rp WHERE rp.room_id = lr.id AND rp.is_active = 1) as participant_count,
              s.id as song_id, s.title as song_title, s.duration, s.file_path,
-             a.name as artist_name, al.title as album_title, al.artwork_path
+             a.name as artist_name, al.title as album_title, al.artwork_path,
+             ${artistsSubquery('s.id')} as song_artists_json
       FROM listening_rooms lr
       LEFT JOIN users u ON lr.host_id = u.id
       LEFT JOIN songs s ON lr.current_song_id = s.id
@@ -261,6 +266,7 @@ export class RoomModel {
         id: row.song_id,
         title: row.song_title,
         artist_name: row.artist_name,
+        artists: parseArtistsJson(row.song_artists_json),
         album_title: row.album_title,
         duration: row.duration,
         file_path: row.file_path,
@@ -510,7 +516,8 @@ export class RoomModel {
     const db = Database;
     
     const stmt = `
-      SELECT rq.*, s.title, s.artist_id, s.duration, a.name as artist_name, u.username as added_by_username
+      SELECT rq.*, s.title, s.artist_id, s.duration, a.name as artist_name, u.username as added_by_username,
+             ${artistsSubquery('s.id')} as artists_json
       FROM room_queue rq
       JOIN songs s ON rq.song_id = s.id
       JOIN artists a ON s.artist_id = a.id
@@ -518,9 +525,9 @@ export class RoomModel {
       WHERE rq.room_id = ?
       ORDER BY rq.position
     `;
-    
+
     const rows = await db.query(stmt, [roomId]);
-    
+
     return rows.map(row => ({
       id: row.id,
       room_id: row.room_id,
@@ -533,6 +540,7 @@ export class RoomModel {
         title: row.title,
         artist_id: row.artist_id,
         artist_name: row.artist_name,
+        artists: parseArtistsJson(row.artists_json),
         duration: row.duration,
         file_path: '',
         source: 'local' as const,
@@ -633,7 +641,7 @@ export class RoomModel {
     const db = Database;
     
     const stmt = `
-      SELECT 
+      SELECT
         rq.*,
         s.title,
         s.artist_id,
@@ -641,7 +649,8 @@ export class RoomModel {
         a.name as artist_name,
         al.title as album_title,
         al.artwork_path,
-        u.username as added_by_username
+        u.username as added_by_username,
+        ${artistsSubquery('s.id')} as artists_json
       FROM room_queue rq
       LEFT JOIN songs s ON rq.song_id = s.id
       LEFT JOIN artists a ON s.artist_id = a.id
@@ -650,11 +659,11 @@ export class RoomModel {
       WHERE rq.id = ? AND rq.room_id = ?
       ORDER BY rq.position ASC
     `;
-    
+
     const row = await db.get(stmt, [queueItemId, roomId]);
-    
+
     if (!row) return null;
-    
+
     return {
       id: row.id,
       room_id: row.room_id,
@@ -667,6 +676,7 @@ export class RoomModel {
         title: row.title,
         artist_id: row.artist_id,
         artist_name: row.artist_name,
+        artists: parseArtistsJson(row.artists_json),
         album_title: row.album_title,
         duration: row.duration,
         artwork_path: row.artwork_path,

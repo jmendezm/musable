@@ -53,11 +53,17 @@ export interface Album {
   total_duration?: number;
 }
 
+export interface SongArtist {
+  id: number;
+  name: string;
+}
+
 export interface Song {
   id: number;
   title: string;
   artist_id: number;
   artist_name: string;
+  artists?: SongArtist[];
   album_id?: number;
   album_title?: string;
   file_path: string;
@@ -97,6 +103,7 @@ export interface PlaylistSong {
   added_at: string;
   title: string;
   artist_name: string;
+  artists?: SongArtist[];
   album_title?: string;
   duration?: number;
   artwork_path?: string;
@@ -116,6 +123,7 @@ export interface ListenHistory {
   song_id: number;
   song_title: string;
   artist_name: string;
+  artists?: SongArtist[];
   album_title?: string;
   song_duration?: number;
   artwork_path?: string;

@@ -11,6 +11,7 @@ import {
 import { apiService } from '../services/api';
 import { Song, Playlist } from '../types';
 import { useToast } from '../contexts/ToastContext';
+import { getArtistNames } from '../utils/formatters';
 
 interface PlaylistWithDetails extends Playlist {
   username: string;
@@ -140,7 +141,7 @@ const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose
             )}
             <div className="flex-1 min-w-0">
               <p className="text-white text-sm font-medium truncate">{song.title}</p>
-              <p className="text-gray-400 text-xs truncate">{song.artist_name}</p>
+              <p className="text-gray-400 text-xs truncate">{getArtistNames(song)}</p>
             </div>
           </div>
         </div>

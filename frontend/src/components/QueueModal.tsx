@@ -13,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 import apiService from '../services/api';
+import ArtistLinks from './ArtistLinks';
 
 interface QueueModalProps {
   isOpen: boolean;
@@ -132,7 +133,7 @@ const QueueModal: React.FC<QueueModalProps> = ({ isOpen, onClose }) => {
                     <div className="flex-1 min-w-0">
                       <p className="text-white font-medium truncate">{currentSong.title}</p>
                       <p className="text-gray-400 text-sm truncate">
-                        {currentSong.artist_name}{currentSong.album_title ? ` • ${currentSong.album_title}` : ''}
+                        <ArtistLinks artists={currentSong.artists} fallbackName={currentSong.artist_name} />{currentSong.album_title ? ` • ${currentSong.album_title}` : ''}
                       </p>
                     </div>
                     <span className="text-gray-400 text-sm">
@@ -175,7 +176,7 @@ const QueueModal: React.FC<QueueModalProps> = ({ isOpen, onClose }) => {
                           <div className="flex-1 min-w-0">
                             <p className="text-white font-medium truncate">{song.title}</p>
                             <p className="text-gray-400 text-sm truncate">
-                              {song.artist_name}{song.album_title ? ` • ${song.album_title}` : ''}
+                              <ArtistLinks artists={song.artists} fallbackName={song.artist_name} />{song.album_title ? ` • ${song.album_title}` : ''}
                             </p>
                           </div>
                           <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -237,7 +238,7 @@ const QueueModal: React.FC<QueueModalProps> = ({ isOpen, onClose }) => {
                           <div className="flex-1 min-w-0">
                             <p className="text-gray-300 font-medium truncate">{song.title}</p>
                             <p className="text-gray-500 text-sm truncate">
-                              {song.artist_name}{song.album_title ? ` • ${song.album_title}` : ''}
+                              <ArtistLinks artists={song.artists} fallbackName={song.artist_name} />{song.album_title ? ` • ${song.album_title}` : ''}
                             </p>
                           </div>
                           <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

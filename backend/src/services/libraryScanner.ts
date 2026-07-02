@@ -12,6 +12,7 @@ import ArtistModel from '../models/Artist';
 import AlbumModel from '../models/Album';
 import SettingsModel from '../models/Settings';
 import Database from '../config/database';
+import { parseArtistNames } from '../utils/artistParser';
 
 export interface ScanProgress {
   id: number;
@@ -246,11 +247,12 @@ export class LibraryScanner {
       const metadata = await parseFile(filePath);
       const fileStats = fs.statSync(filePath);
 
-      const artistName = metadata.common.artist || 'Unknown Artist';
       const albumTitle = metadata.common.album;
       const title = metadata.common.title || path.basename(filePath, path.extname(filePath));
 
-      const artist = await ArtistModel.findOrCreate(artistName);
+      const artistNames = parseArtistNames(metadata.common.artist, config.artistSeparator);
+      const artists = await Promise.all(artistNames.map(name => ArtistModel.findOrCreate(name)));
+      const artist = artists[0];
 
       let album = null;
       if (albumTitle) {
@@ -284,11 +286,11 @@ export class LibraryScanner {
       };
 
       const existingSong = await SongModel.findByPath(filePath);
-      if (existingSong) {
-        await SongModel.updateSong(existingSong.id, songData);
-      } else {
-        await SongModel.create(songData);
-      }
+      const song = existingSong
+        ? await SongModel.updateSong(existingSong.id, songData).then(() => existingSong)
+        : await SongModel.create(songData);
+
+      await SongModel.setArtists(song.id, artists.map(a => a.id));
 
     } catch (error: any) {
       logger.error(`Failed to scan file ${filePath}:`, error);

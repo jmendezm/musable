@@ -66,6 +66,7 @@ export const getRecentlyPlayed = asyncHandler(async (req: AuthRequest, res: Resp
     title: item.song_title,
     artist_id: 0, // We don't have this in the history query, but it's not used in the frontend
     artist_name: item.artist_name,
+    artists: item.artists,
     album_id: 0, // We don't have this in the history query, but it's not used in the frontend
     album_title: item.album_title,
     file_path: '', // We don't expose file paths to frontend

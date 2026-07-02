@@ -1,4 +1,15 @@
 /**
+ * Get a display string for a song/track's artist(s), joining all linked
+ * artists when available and falling back to the single artist_name field.
+ */
+export const getArtistNames = (entity: { artist_name?: string; artists?: { id: number; name: string }[] }): string => {
+  if (entity.artists && entity.artists.length > 0) {
+    return entity.artists.map(a => a.name).join(', ');
+  }
+  return entity.artist_name || 'Unknown Artist';
+};
+
+/**
  * Format time in seconds to MM:SS format
  */
 export const formatTime = (seconds: number): string => {

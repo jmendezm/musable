@@ -5,6 +5,7 @@ import { MusicalNoteIcon, PlayIcon, PauseIcon, SpeakerWaveIcon, SpeakerXMarkIcon
 import { Howl } from 'howler';
 import { getBaseUrl, getApiBaseUrl } from '../config/config';
 import apiService from '../services/api';
+import { getArtistNames } from '../utils/formatters';
 
 const SharePage: React.FC = () => {
   const { token } = useParams<{ token: string }>();
@@ -188,7 +189,7 @@ const SharePage: React.FC = () => {
         {/* Song Info */}
         <div className="p-6">
           <h1 className="text-2xl font-bold text-white mb-2 text-center">{song.title}</h1>
-          <p className="text-gray-400 text-center mb-1">{song.artist_name}</p>
+          <p className="text-gray-400 text-center mb-1">{getArtistNames(song)}</p>
           {song.album_title && (
             <p className="text-gray-500 text-sm text-center mb-6">{song.album_title}</p>
           )}

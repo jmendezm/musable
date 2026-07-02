@@ -69,6 +69,16 @@ CREATE TABLE songs (
     FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE SET NULL
 );
 
+-- Song artists table (all artists parsed from a song's artist tag, including the primary one)
+CREATE TABLE IF NOT EXISTS song_artists (
+    song_id INTEGER NOT NULL,
+    artist_id INTEGER NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (song_id, artist_id),
+    FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE,
+    FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
+);
+
 -- Playlists table
 CREATE TABLE playlists (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -286,6 +296,8 @@ CREATE INDEX idx_room_queue_position ON room_queue(room_id, position);
 CREATE INDEX idx_room_messages_room ON room_messages(room_id);
 CREATE INDEX idx_room_messages_user ON room_messages(user_id);
 CREATE INDEX idx_room_messages_time ON room_messages(sent_at);
+CREATE INDEX idx_song_artists_song ON song_artists(song_id);
+CREATE INDEX idx_song_artists_artist ON song_artists(artist_id);
 
 -- Migration: Add role column to existing room_participants table
 ALTER TABLE room_participants ADD COLUMN role VARCHAR(20) DEFAULT 'listener';
