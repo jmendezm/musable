@@ -21,10 +21,24 @@ interface PlaylistWithDetails extends Playlist {
 interface AddToPlaylistModalProps {
   isOpen: boolean;
   onClose: () => void;
-  song: Song | null;
+  song?: Song | null;
+  songs?: Song[] | null;
+  headerTitle?: string;
+  headerSubtitle?: string;
+  headerArtwork?: string;
 }
 
-const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose, song }) => {
+const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
+  isOpen,
+  onClose,
+  song,
+  songs,
+  headerTitle,
+  headerSubtitle,
+  headerArtwork
+}) => {
+  const items = songs && songs.length > 0 ? songs : (song ? [song] : []);
+  const isBatch = Boolean(songs && songs.length > 0);
   const [playlists, setPlaylists] = useState<PlaylistWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,26 +71,34 @@ const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose
   };
 
   const handleAddToPlaylist = async (playlist: PlaylistWithDetails) => {
-    if (!song) return;
+    if (items.length === 0) return;
 
     try {
-      const response = await apiService.addSongToPlaylist(playlist.id, song.id);
-      if (response.success) {
-        showSuccess(`Added "${song.title}" to "${playlist.name}"`);
-        onClose();
+      if (isBatch) {
+        const response = await apiService.addSongsToPlaylist(playlist.id, items.map(s => s.id));
+        if (response.success) {
+          showSuccess(`Added ${items.length} songs to "${playlist.name}"`);
+          onClose();
+        }
+      } else {
+        const response = await apiService.addSongToPlaylist(playlist.id, items[0].id);
+        if (response.success) {
+          showSuccess(`Added "${items[0].title}" to "${playlist.name}"`);
+          onClose();
+        }
       }
     } catch (error: any) {
-      console.error('Failed to add song to playlist:', error);
-      if (error.message?.includes('already exists')) {
-        showError(`"${song.title}" is already in "${playlist.name}"`);
+      console.error('Failed to add song(s) to playlist:', error);
+      if (!isBatch && error.message?.includes('already exists')) {
+        showError(`"${items[0].title}" is already in "${playlist.name}"`);
       } else {
-        showError('Failed to add song to playlist');
+        showError(isBatch ? 'Failed to add songs to playlist' : 'Failed to add song to playlist');
       }
     }
   };
 
   const handleCreateAndAdd = async () => {
-    if (!song || !newPlaylistName.trim()) return;
+    if (items.length === 0 || !newPlaylistName.trim()) return;
 
     try {
       // Create the playlist
@@ -88,16 +110,23 @@ const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose
 
       if (createResponse.success && createResponse.data) {
         const newPlaylist = createResponse.data.playlist;
-        
-        // Add the song to the new playlist
-        const addResponse = await apiService.addSongToPlaylist(newPlaylist.id, song.id);
-        if (addResponse.success) {
-          showSuccess(`Created "${newPlaylistName}" and added "${song.title}"`);
-          onClose();
+
+        if (isBatch) {
+          const addResponse = await apiService.addSongsToPlaylist(newPlaylist.id, items.map(s => s.id));
+          if (addResponse.success) {
+            showSuccess(`Created "${newPlaylistName}" and added ${items.length} songs`);
+            onClose();
+          }
+        } else {
+          const addResponse = await apiService.addSongToPlaylist(newPlaylist.id, items[0].id);
+          if (addResponse.success) {
+            showSuccess(`Created "${newPlaylistName}" and added "${items[0].title}"`);
+            onClose();
+          }
         }
       }
     } catch (error) {
-      console.error('Failed to create playlist and add song:', error);
+      console.error('Failed to create playlist and add song(s):', error);
       showError('Failed to create playlist');
     }
   };
@@ -106,7 +135,7 @@ const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose
     playlist.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (!isOpen || !song) return null;
+  if (!isOpen || items.length === 0) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -125,13 +154,13 @@ const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose
           </button>
         </div>
 
-        {/* Song info */}
+        {/* Song / album info */}
         <div className="px-4 py-3 border-b border-gray-700">
           <div className="flex items-center gap-3">
-            {song.artwork_path ? (
+            {(headerArtwork || items[0].artwork_path) ? (
               <img
-                src={apiService.getArtworkUrl(song.artwork_path)}
-                alt={song.album_title || 'Album artwork'}
+                src={apiService.getArtworkUrl(headerArtwork || items[0].artwork_path!)}
+                alt={headerTitle || items[0].album_title || 'Album artwork'}
                 className="w-10 h-10 rounded object-cover"
               />
             ) : (
@@ -140,8 +169,10 @@ const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ isOpen, onClose
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate">{song.title}</p>
-              <p className="text-gray-400 text-xs truncate">{getArtistNames(song)}</p>
+              <p className="text-white text-sm font-medium truncate">{headerTitle || items[0].title}</p>
+              <p className="text-gray-400 text-xs truncate">
+                {headerSubtitle || (isBatch ? `${items.length} songs` : getArtistNames(items[0]))}
+              </p>
             </div>
           </div>
         </div>

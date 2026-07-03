@@ -1,28 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { PlayIcon, MusicalNoteIcon, ClockIcon, CalendarIcon, HeartIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { PlayIcon, MusicalNoteIcon, ClockIcon, CalendarIcon, HeartIcon, ArrowLeftIcon, PlusIcon, UserGroupIcon } from '@heroicons/react/24/outline';
 import { PlayIcon as PlayIconSolid, PauseIcon, HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
 import { usePlayerStore } from '../stores/playerStore';
 import { useFollowedAlbumsStore } from '../stores/followedAlbumsStore';
 import { useRoomStore } from '../stores/roomStore';
+import roomWebSocketService from '../services/roomService';
 import { handleRoomAwarePlayback } from '../utils/roomPlayback';
+import { useContextMenu } from '../hooks/useContextMenu';
+import ContextMenu from '../components/ContextMenu';
+import AddToPlaylistModal from '../components/AddToPlaylistModal';
 import { useToast } from '../contexts/ToastContext';
 import { apiService } from '../services/api';
 import { Album, Song } from '../types';
 import clsx from 'clsx';
 import ArtistLinks from '../components/ArtistLinks';
+import { getArtistNames } from '../utils/formatters';
 
 const AlbumPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { play, setQueue, currentSong, isPlaying } = usePlayerStore();
+  const { play, setQueue, currentSong, isPlaying, addToQueue } = usePlayerStore();
   const { isFollowing, toggleFollow, loadFollowedAlbums } = useFollowedAlbumsStore();
   const roomStore = useRoomStore();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const [album, setAlbum] = useState<Album | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<Set<number>>(new Set());
+  const [addToPlaylistModalOpen, setAddToPlaylistModalOpen] = useState(false);
+  const [addToPlaylistSong, setAddToPlaylistSong] = useState<Song | null>(null);
+  const [addAlbumToPlaylistModalOpen, setAddAlbumToPlaylistModalOpen] = useState(false);
+  const {
+    contextMenu,
+    closeContextMenu,
+    handleContextMenu,
+    handleTouchStart,
+    handleTouchEnd,
+    handleTouchMove,
+    handleClick
+  } = useContextMenu();
 
   useEffect(() => {
     if (!id) {
@@ -52,7 +70,35 @@ const AlbumPage: React.FC = () => {
 
     fetchAlbum();
     loadFollowedAlbums();
+    fetchUserFavorites();
   }, [id, navigate, loadFollowedAlbums]);
+
+  const fetchUserFavorites = async () => {
+    try {
+      const response: any = await apiService.getFavorites();
+      const favoriteIds = new Set(response.data?.songs?.map((song: Song) => song.id) || []);
+      setFavorites(favoriteIds as Set<number>);
+    } catch (error) {
+      console.error('Error fetching favorites:', error);
+    }
+  };
+
+  const toggleFavorite = async (songId: number) => {
+    try {
+      await apiService.toggleFavorite(songId);
+      setFavorites(prev => {
+        const newFavorites = new Set(prev);
+        if (newFavorites.has(songId)) {
+          newFavorites.delete(songId);
+        } else {
+          newFavorites.add(songId);
+        }
+        return newFavorites;
+      });
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
+  };
 
   const handlePlayAlbum = () => {
     if (songs.length > 0) {
@@ -71,6 +117,54 @@ const AlbumPage: React.FC = () => {
         showSuccess(isNowFollowing ? 'Album followed!' : 'Album unfollowed!');
       } catch (error) {
         console.error('Failed to toggle album follow:', error);
+      }
+    }
+  };
+
+  const handleAddAlbumToRoomQueue = () => {
+    if (!album) return;
+    roomWebSocketService.addAlbumToQueue(album.id);
+    showSuccess(`Adding "${album.title}" to the room queue`);
+  };
+
+  const handleAddAlbumToPlaylist = () => {
+    setAddAlbumToPlaylistModalOpen(true);
+  };
+
+  // Context menu handlers
+  const handleContextMenuPlay = (song: Song) => {
+    handleRoomAwarePlayback(song, songs);
+  };
+
+  const handleContextMenuAddToQueue = (song: Song) => {
+    addToQueue(song);
+  };
+
+  const handleContextMenuAddToPlaylist = (song: Song) => {
+    setAddToPlaylistSong(song);
+    setAddToPlaylistModalOpen(true);
+  };
+
+  const handleContextMenuToggleFavorite = (song: Song) => {
+    toggleFavorite(song.id);
+  };
+
+  const handleContextMenuShare = async (song: Song) => {
+    try {
+      const response = await apiService.createShareToken(song.id);
+      const shareUrl = response.data.shareUrl;
+
+      await navigator.clipboard.writeText(shareUrl);
+      showSuccess('Share URL copied to clipboard!');
+    } catch (err) {
+      console.error('Failed to create share URL:', err);
+      const shareText = `🎵 ${song.title} by ${getArtistNames(song)}`;
+      try {
+        await navigator.clipboard.writeText(shareText);
+        showSuccess('Song info copied to clipboard!');
+      } catch (clipboardErr) {
+        console.error('Failed to copy to clipboard:', clipboardErr);
+        showError('Failed to copy share URL. Please try again.');
       }
     }
   };
@@ -219,6 +313,33 @@ const AlbumPage: React.FC = () => {
                   {isFollowing(album?.id || 0) ? 'Following' : 'Follow'}
                 </span>
               </button>
+
+              <button
+                onClick={handleAddAlbumToPlaylist}
+                disabled={songs.length === 0}
+                className={clsx(
+                  'flex items-center gap-1 md:gap-2 px-3 md:px-4 py-2 md:py-3 rounded-full border-2 transition-all text-sm md:text-base',
+                  songs.length > 0
+                    ? 'border-gray-400 text-gray-400 hover:border-white hover:text-white'
+                    : 'border-gray-700 text-gray-700 cursor-not-allowed'
+                )}
+                title="Add to Playlist"
+              >
+                <PlusIcon className="w-4 h-4 md:w-5 md:h-5" />
+                <span className="font-medium hidden sm:inline">Add to Playlist</span>
+              </button>
+
+              {roomStore.isInRoom() && (
+                <button
+                  onClick={handleAddAlbumToRoomQueue}
+                  disabled={songs.length === 0}
+                  className="flex items-center gap-1 md:gap-2 px-3 md:px-4 py-2 md:py-3 rounded-full border-2 border-gray-400 text-gray-400 hover:border-white hover:text-white transition-all text-sm md:text-base disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Add to Room Queue"
+                >
+                  <UserGroupIcon className="w-4 h-4 md:w-5 md:h-5" />
+                  <span className="font-medium hidden sm:inline">Add to Room Queue</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -253,7 +374,11 @@ const AlbumPage: React.FC = () => {
                         'flex items-center gap-4 p-3 rounded-lg hover:bg-gray-800 transition-colors group cursor-pointer',
                         isCurrentSong && 'bg-gray-800'
                       )}
-                      onClick={() => handlePlaySong(song, index)}
+                      onClick={(e) => handleClick(e, () => handlePlaySong(song, index))}
+                      onContextMenu={(e) => handleContextMenu(e, song)}
+                      onTouchStart={(e) => handleTouchStart(e, song)}
+                      onTouchEnd={handleTouchEnd}
+                      onTouchMove={handleTouchMove}
                     >
                       {/* Track Number / Play Button */}
                       <div className="w-8 h-8 flex items-center justify-center text-gray-400 group-hover:text-white transition-colors">
@@ -307,7 +432,11 @@ const AlbumPage: React.FC = () => {
                       'group relative bg-gray-800 rounded-lg p-4 cursor-pointer transition-all duration-200 hover:bg-gray-700 active:bg-gray-700',
                       isCurrentSong && 'bg-red-500 bg-opacity-20 border-l-4 border-red-500'
                     )}
-                    onClick={() => handlePlaySong(song, index)}
+                    onClick={(e) => handleClick(e, () => handlePlaySong(song, index))}
+                    onContextMenu={(e) => handleContextMenu(e, song)}
+                    onTouchStart={(e) => handleTouchStart(e, song)}
+                    onTouchEnd={handleTouchEnd}
+                    onTouchMove={handleTouchMove}
                   >
                     <div className="flex items-center space-x-3">
                       {/* Track Number & Artwork */}
@@ -372,6 +501,35 @@ const AlbumPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Context Menu */}
+      <ContextMenu
+        isOpen={contextMenu.isOpen}
+        position={contextMenu.position}
+        onClose={closeContextMenu}
+        song={contextMenu.song}
+        isAdmin={false}
+        isFavorited={contextMenu.song ? favorites.has(contextMenu.song.id) : false}
+        onPlay={handleContextMenuPlay}
+        onAddToQueue={handleContextMenuAddToQueue}
+        onAddToPlaylist={handleContextMenuAddToPlaylist}
+        onToggleFavorite={handleContextMenuToggleFavorite}
+        onShare={handleContextMenuShare}
+      />
+
+      {/* Add to Playlist Modal (single song or whole album) */}
+      <AddToPlaylistModal
+        isOpen={addToPlaylistModalOpen || addAlbumToPlaylistModalOpen}
+        onClose={() => {
+          setAddToPlaylistModalOpen(false);
+          setAddAlbumToPlaylistModalOpen(false);
+        }}
+        song={addToPlaylistModalOpen ? addToPlaylistSong : null}
+        songs={addAlbumToPlaylistModalOpen ? songs : null}
+        headerTitle={addAlbumToPlaylistModalOpen ? album.title : undefined}
+        headerSubtitle={addAlbumToPlaylistModalOpen ? `${songs.length} song${songs.length !== 1 ? 's' : ''} • ${album.artist_name}` : undefined}
+        headerArtwork={addAlbumToPlaylistModalOpen ? album.artwork_path : undefined}
+      />
     </div>
   );
 };

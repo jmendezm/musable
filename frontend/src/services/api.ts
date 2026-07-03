@@ -242,6 +242,10 @@ class ApiService {
     return this.request('POST', `/playlists/${playlistId}/songs`, { songId });
   }
 
+  async addSongsToPlaylist(playlistId: number, songIds: number[]): Promise<ApiResponse<any>> {
+    return this.request('POST', `/playlists/${playlistId}/songs/batch`, { songIds });
+  }
+
   async removeSongFromPlaylist(playlistId: number, songId: number): Promise<ApiResponse<any>> {
     return this.request('DELETE', `/playlists/${playlistId}/songs/${songId}`);
   }

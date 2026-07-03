@@ -8,6 +8,7 @@ import {
   updatePlaylist,
   deletePlaylist,
   addSongToPlaylist,
+  addSongsToPlaylistBatch,
   removeSongFromPlaylist,
   reorderPlaylistSongs,
   searchPlaylists,
@@ -36,6 +37,7 @@ router.put('/:id', authenticateToken, updatePlaylist);
 router.delete('/:id', authenticateToken, deletePlaylist);
 
 router.post('/:id/songs', authenticateToken, addSongToPlaylist);
+router.post('/:id/songs/batch', authenticateToken, addSongsToPlaylistBatch);
 router.delete('/:id/songs/:songId', authenticateToken, removeSongFromPlaylist);
 router.put('/:id/songs/reorder', authenticateToken, reorderPlaylistSongs);
 

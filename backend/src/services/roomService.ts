@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { RoomModel, Room, RoomParticipant } from '../models/Room';
 import { UserWithoutPassword, UserModel } from '../models/User';
 import PlaylistModel from '../models/Playlist';
+import SongModel from '../models/Song';
 
 interface AuthenticatedSocket extends Socket {
   user?: UserWithoutPassword;
@@ -88,6 +89,10 @@ export class RoomService {
 
       socket.on('add_playlist_to_queue', async (data: { playlist_id: number }) => {
         await this.handleAddPlaylistToQueue(socket, data.playlist_id);
+      });
+
+      socket.on('add_album_to_queue', async (data: { album_id: number }) => {
+        await this.handleAddAlbumToQueue(socket, data.album_id);
       });
 
       socket.on('remove_from_queue', async (data: { queue_item_id: number }) => {
@@ -401,6 +406,34 @@ export class RoomService {
     } catch (error) {
       console.error('Error adding playlist to queue:', error);
       socket.emit('room_error', { message: 'Failed to add playlist to queue' });
+    }
+  }
+
+  private async handleAddAlbumToQueue(socket: AuthenticatedSocket, albumId: number): Promise<void> {
+    try {
+      if (!socket.user || !socket.currentRoom) return;
+
+      const roomId = parseInt(socket.currentRoom.replace('room_', ''));
+
+      const albumSongs = await SongModel.getSongsByAlbum(albumId);
+      if (albumSongs.length === 0) {
+        socket.emit('room_error', { message: 'Album has no songs to add' });
+        return;
+      }
+
+      const songIds = albumSongs.map(s => s.id);
+      await RoomModel.addSongsToQueue(roomId, songIds, socket.user.id);
+
+      // Get updated queue
+      const queue = await RoomModel.getQueue(roomId);
+
+      // Broadcast updated queue to all participants
+      this.io.to(`room_${roomId}`).emit('queue_updated', { queue });
+
+      console.log(`🎵 Album ${albumId} (${songIds.length} songs) added to room ${roomId} queue by ${socket.user.username}`);
+    } catch (error) {
+      console.error('Error adding album to queue:', error);
+      socket.emit('room_error', { message: 'Failed to add album to queue' });
     }
   }
 

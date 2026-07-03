@@ -335,6 +335,12 @@ class RoomWebSocketService {
     this.socket.emit('add_playlist_to_queue', { playlist_id: playlistId });
   }
 
+  addAlbumToQueue(albumId: number): void {
+    if (!this.socket) return;
+
+    this.socket.emit('add_album_to_queue', { album_id: albumId });
+  }
+
   removeFromQueue(queueItemId: number): void {
     if (!this.socket) return;
 

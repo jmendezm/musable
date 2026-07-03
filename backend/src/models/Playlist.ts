@@ -164,6 +164,36 @@ export class PlaylistModel {
     );
   }
 
+  async addSongs(playlistId: number, songIds: number[]): Promise<void> {
+    if (songIds.length === 0) return;
+
+    const maxPosition = await this.db.get<{ max_pos: number }>(
+      'SELECT MAX(position) as max_pos FROM playlist_songs WHERE playlist_id = ?',
+      [playlistId]
+    );
+    let position = (maxPosition?.max_pos || 0) + 1;
+
+    await this.db.run('BEGIN TRANSACTION');
+    try {
+      for (const songId of songIds) {
+        await this.db.run(
+          'INSERT OR IGNORE INTO playlist_songs (playlist_id, song_id, position) VALUES (?, ?, ?)',
+          [playlistId, songId, position]
+        );
+        position++;
+      }
+      await this.db.run('COMMIT');
+    } catch (error) {
+      await this.db.run('ROLLBACK');
+      throw error;
+    }
+
+    await this.db.run(
+      'UPDATE playlists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [playlistId]
+    );
+  }
+
   async removeSong(playlistId: number, songId: number): Promise<void> {
     await this.db.run(
       'DELETE FROM playlist_songs WHERE playlist_id = ? AND song_id = ?',

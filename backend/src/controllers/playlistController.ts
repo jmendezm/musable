@@ -22,6 +22,10 @@ const addSongSchema = Joi.object({
   songId: Joi.number().integer().positive().required()
 });
 
+const addSongsBatchSchema = Joi.object({
+  songIds: Joi.array().items(Joi.number().integer().positive()).min(1).required()
+});
+
 const reorderSongsSchema = Joi.object({
   songIds: Joi.array().items(Joi.number().integer().positive()).required()
 });
@@ -175,6 +179,30 @@ export const addSongToPlaylist = asyncHandler(async (req: AuthRequest, res: Resp
   res.json({
     success: true,
     data: { message: 'Song added to playlist successfully' }
+  });
+});
+
+export const addSongsToPlaylistBatch = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { error } = addSongsBatchSchema.validate(req.body);
+  if (error) {
+    throw new AppError(error.details[0].message, 400);
+  }
+
+  const { id } = req.params;
+  const { songIds } = req.body;
+  const playlistId = parseInt(id);
+  const userId = req.user!.id;
+
+  const canModify = await PlaylistModel.canUserModifyPlaylist(playlistId, userId, req.user!.is_admin);
+  if (!canModify) {
+    throw new AppError('Permission denied', 403);
+  }
+
+  await PlaylistModel.addSongs(playlistId, songIds);
+
+  res.json({
+    success: true,
+    data: { message: 'Songs added to playlist successfully' }
   });
 });
 
