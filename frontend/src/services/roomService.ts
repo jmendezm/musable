@@ -72,7 +72,24 @@ class RoomWebSocketService {
       this.socket.on('connect_error', (error) => {
         console.error('🎵 Room service connection error:', error);
         useRoomStore.getState().setConnectionState(false, error.message);
-        
+
+        // The backend's socket auth middleware rejects with one of these exact
+        // messages (see authenticateSocket in backend/src/services/roomService.ts).
+        // Retrying reuses the same dead token from the auth store, so it can
+        // only ever fail again - treat it as a session loss instead of a
+        // transient network error.
+        const authErrorMessages = ['Authentication token required', 'User not found', 'Authentication failed'];
+        if (authErrorMessages.includes(error.message)) {
+          if (useAuthStore.getState().isAuthenticated) {
+            useAuthStore.getState().logout();
+            if (window.location.pathname !== '/login') {
+              window.location.href = '/login';
+            }
+          }
+          reject(error);
+          return;
+        }
+
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           setTimeout(() => {
             this.reconnectAttempts++;

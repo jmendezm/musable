@@ -15,6 +15,7 @@ import {
   ScanProgress
 } from '../types';
 import { getApiBaseUrl, getBaseUrl } from '../config/config';
+import { useAuthStore } from '../stores/authStore';
 
 class ApiService {
   private api: AxiosInstance;
@@ -52,7 +53,7 @@ class ApiService {
     // Request interceptor to add auth token
     this.api.interceptors.request.use(
       (config) => {
-        const token = localStorage.getItem('authToken');
+        const token = useAuthStore.getState().token;
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
@@ -68,10 +69,20 @@ class ApiService {
       (response: AxiosResponse) => response,
       (error) => {
         if (error.response?.status === 401) {
-          localStorage.removeItem('authToken');
-          localStorage.removeItem('user');
-          // Don't auto-redirect - let components handle 401 errors gracefully
-          // Components can check if user is logged in and show appropriate UI
+          const url: string = error.config?.url || '';
+          // Login/register 401s are expected credential failures, not session
+          // death, and /auth/logout is triggered BY logout() itself - excluding
+          // it avoids a logout -> 401 -> logout infinite loop.
+          const isExemptEndpoint = ['/auth/login', '/auth/register', '/auth/logout'].some((path) =>
+            url.includes(path)
+          );
+
+          if (!isExemptEndpoint && useAuthStore.getState().isAuthenticated) {
+            useAuthStore.getState().logout();
+            if (window.location.pathname !== '/login') {
+              window.location.href = '/login';
+            }
+          }
         }
         return Promise.reject(error);
       }

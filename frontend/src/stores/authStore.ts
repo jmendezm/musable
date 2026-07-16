@@ -42,9 +42,7 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const response = await apiService.login(credentials);
           const { user, token } = response.data;
-          
-          localStorage.setItem('authToken', token);
-          
+
           set({
             user,
             token,
@@ -69,9 +67,7 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const response = await apiService.register(data);
           const { user, token } = response.data;
-          
-          localStorage.setItem('authToken', token);
-          
+
           set({
             user,
             token,
@@ -107,7 +103,7 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       getProfile: async () => {
-        const token = get().token || localStorage.getItem('authToken');
+        const token = get().token;
         if (!token) {
           set({ isAuthenticated: false, user: null, token: null });
           return;
@@ -224,7 +220,11 @@ export const useAuthStore = create<AuthStore>()(
 if (typeof window !== 'undefined') {
   // Wait for the store to rehydrate, then check auth
   const checkAuth = () => {
-    const token = localStorage.getItem('authToken');
+    // Read the token from the (already-rehydrated) Zustand store rather than
+    // the old flat localStorage key: that key gets cleared independently by
+    // the axios 401 interceptor, and gating this check on it meant a dead
+    // session's stale isAuthenticated:true could survive refreshes forever.
+    const token = useAuthStore.getState().token;
     if (token) {
       // Set loading state and attempt to get profile
       useAuthStore.setState({ isLoading: true });
