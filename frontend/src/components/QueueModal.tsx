@@ -34,9 +34,10 @@ const QueueModal: React.FC<QueueModalProps> = ({ isOpen, onClose }) => {
   const handlePlaySong = (song: Song, index: number) => {
     console.log('🎵 HandlePlaySong called with song:', song.id, song.title);
     
-    // Check room permissions
+    // Check room permissions (changeSong() is gated on isMasterHost(),
+    // matching the backend's host_id-based authorization)
     const isInRoom = roomStore.isInRoom();
-    const isHost = roomStore.isHost();
+    const isHost = roomStore.isMasterHost();
     
     if (isInRoom && !isHost) {
       // Listeners cannot play songs directly - only add to room queue

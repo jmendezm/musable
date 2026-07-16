@@ -10,9 +10,11 @@ const PlayerProgress: React.FC = () => {
   const { user } = useAuthStore();
   const progressRef = useRef<HTMLDivElement>(null);
   
-  // Check if user is in a room and their role
+  // Check if user is in a room and their role. seekRoom() is gated on
+  // isMasterHost() (matches the backend's host_id-based authorization),
+  // not the live participant role isHost() reads.
   const isInRoom = roomStore.isInRoom();
-  const isHost = roomStore.isHost();
+  const isHost = roomStore.isMasterHost();
 
   const handleSeek = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!progressRef.current || !duration) return;

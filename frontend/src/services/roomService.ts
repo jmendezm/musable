@@ -301,34 +301,44 @@ class RoomWebSocketService {
   }
 
   leaveRoom(): void {
-    if (!this.socket) return;
-
-    this.socket.emit('leave_room');
+    // Always reset local room state, even if the socket never connected -
+    // otherwise a stuck `currentRoom` makes every later onend (including
+    // plain, non-room playlist playback) misroute into room-only logic.
+    if (this.socket) {
+      this.socket.emit('leave_room');
+    }
     useRoomStore.getState().reset();
     toast.success('Left the room');
   }
 
-  // Playback control methods (host only)
+  // Playback control methods (host only). Gated on isMasterHost(), not
+  // isHost(): the backend authorizes these purely by `listening_rooms.host_id`
+  // (see handlePlaybackControl in backend/src/services/roomService.ts), which
+  // is exactly what isMasterHost() checks. isHost() also looks at the live
+  // room_participants role, which gets reassigned to another participant on
+  // any host disconnect (including an ordinary page refresh) without ever
+  // updating host_id - so gating on isHost() here could silently drop a
+  // request the backend would've accepted, or vice versa.
   playRoom(songId?: number, position?: number): void {
-    if (!this.socket || !useRoomStore.getState().isHost()) return;
+    if (!this.socket || !useRoomStore.getState().isMasterHost()) return;
 
     this.socket.emit('room_play', { song_id: songId, position });
   }
 
   pauseRoom(): void {
-    if (!this.socket || !useRoomStore.getState().isHost()) return;
+    if (!this.socket || !useRoomStore.getState().isMasterHost()) return;
 
     this.socket.emit('room_pause');
   }
 
   seekRoom(position: number): void {
-    if (!this.socket || !useRoomStore.getState().isHost()) return;
+    if (!this.socket || !useRoomStore.getState().isMasterHost()) return;
 
     this.socket.emit('room_seek', { position });
   }
 
   changeSong(songId: number): void {
-    if (!this.socket || !useRoomStore.getState().isHost()) return;
+    if (!this.socket || !useRoomStore.getState().isMasterHost()) return;
 
     this.socket.emit('room_song_change', { song_id: songId });
   }

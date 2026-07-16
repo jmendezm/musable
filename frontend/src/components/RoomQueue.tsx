@@ -73,9 +73,10 @@ const RoomQueue: React.FC<RoomQueueProps> = ({ isOpen, onClose }) => {
     roomWebSocketService.removeFromQueue(queueItemId);
   };
 
-  // Play specific song from queue (host only)
+  // Play specific song from queue (master host only - changeSong() itself
+  // is gated on isMasterHost(), matching the backend's host_id authorization)
   const playSong = (song: any) => {
-    if (!isHost) return;
+    if (!roomStore.isMasterHost()) return;
     roomWebSocketService.changeSong(song.song_id);
   };
 
@@ -241,8 +242,8 @@ const RoomQueue: React.FC<RoomQueueProps> = ({ isOpen, onClose }) => {
                         </div>
                       )}
 
-                      {/* Play button (host only) */}
-                      {isHost && !(item.song_id === currentSong?.id && 
+                      {/* Play button (master host only - matches playSong()'s guard) */}
+                      {roomStore.isMasterHost() && !(item.song_id === currentSong?.id &&
                         roomStore.queue.findIndex(queueItem => queueItem.song_id === currentSong?.id) === index) && (
                         <button
                           onClick={() => playSong(item)}

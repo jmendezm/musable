@@ -34,9 +34,13 @@ const PlayerControls: React.FC = () => {
   const roomStore = useRoomStore();
   const { user } = useAuthStore();
 
-  // Check if user is in a room and their role
+  // Check if user is in a room and their role. Room playback control
+  // (play/pause/seek/song-change) is authorized server-side purely by
+  // listening_rooms.host_id, i.e. isMasterHost() - not the live
+  // room_participants role that isHost() reads, which can drift after a
+  // host disconnect/reconnect (e.g. a page refresh) without host_id changing.
   const isInRoom = roomStore.isInRoom();
-  const isHost = roomStore.isHost();
+  const isHost = roomStore.isMasterHost();
   const currentUserParticipant = roomStore.participants.find(p => p.user_id === user?.id);
   const userRole = currentUserParticipant?.role;
 

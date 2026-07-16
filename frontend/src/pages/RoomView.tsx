@@ -69,7 +69,7 @@ const RoomView: React.FC = () => {
   };
 
   const handlePlayPause = () => {
-    if (!roomStore.isHost()) {
+    if (!roomStore.isMasterHost()) {
       alert('Only the room host can control playback');
       return;
     }
@@ -85,7 +85,7 @@ const RoomView: React.FC = () => {
   };
 
   const handleNext = () => {
-    if (!roomStore.isHost()) {
+    if (!roomStore.isMasterHost()) {
       alert('Only the room host can control playback');
       return;
     }
@@ -97,7 +97,7 @@ const RoomView: React.FC = () => {
   };
 
   const handlePrevious = () => {
-    if (!roomStore.isHost()) {
+    if (!roomStore.isMasterHost()) {
       alert('Only the room host can control playback');
       return;
     }
